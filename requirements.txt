@@ -1,0 +1,13 @@
+fastapi
+sqlalchemy
+pydantic-settings
+psycopg2-binary
+pyngrok
+uvicorn
+aiogram
+pyrogram
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+openpyxl
+playwright

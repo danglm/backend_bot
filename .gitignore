@@ -1,0 +1,13 @@
+.venv
+Logs
+.env
+userbot.session
+userbot.session-journal
+appsettings.json
+images
+bot.session
+__pycache__/
+*.pyc
+.env
+.vscode/
+tmp/
