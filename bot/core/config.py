@@ -20,4 +20,14 @@ class Settings:
     API_ID = int(telegram_config.get("API_ID", 0)) if telegram_config.get("API_ID") else 0
     API_HASH = telegram_config.get("API_HASH", "")
 
+    # Read Scheduler config from appsettings.json -> "Scheduler"
+    scheduler_config = app_config.get("Scheduler", {})
+    SCHEDULER_MONTHLY_REPORT = scheduler_config.get("Monthly_Attendance_Report", {"day": 1, "hour": 8, "minute": 0})
+    SCHEDULER_RESTART_TASK = scheduler_config.get("Recurring_Task_Restart", {"hour": 22, "minute": 21})
+    SCHEDULER_BAD_DEBT = scheduler_config.get("Bad_Debt_Notification", {"hour": 8, "minute": 0})
+    SCHEDULER_INTEREST = scheduler_config.get("Interest_Payment_Notification", {"hour": 8, "minute": 0})
+    SCHEDULER_RENTAL = scheduler_config.get("Rental_Payment_Notification", {"hour": 16, "minute": 2})
+    SCHEDULER_MONTHLY_SUMMARY = scheduler_config.get("Monthly_Attendance_Summary", {"day": 1, "hour": 8, "minute": 0})
+    SCHEDULER_DAILY_PURCHASE = scheduler_config.get("Daily_Purchase_Summary", {"hour": 20, "minute": 0})
+
 settings = Settings()

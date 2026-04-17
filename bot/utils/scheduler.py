@@ -12,8 +12,9 @@ from app.models.employee import Employee
 from app.models.finance import Salary, Attendance
 from bot.utils.logger import LogInfo, LogError, LogType
 from pyrogram.enums import ParseMode
+from bot.utils.enums import CustomTitle
 from bot.utils.bot import bot
-
+from bot.core.config import settings
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helper: build an Excel workbook for one month's attendance
@@ -381,6 +382,7 @@ async def generate_and_send_attendance_report(
             )
 
             from bot.utils.bot import bot
+
             client = bot
             
             # Send text notification
@@ -421,7 +423,8 @@ async def monthly_attendance_report_worker():
             now = datetime.datetime.now()
 
             # Trigger condition: 1st of month at 08:00
-            if now.day == 1 and now.hour == 8 and now.minute == 0:
+            cfg = settings.SCHEDULER_MONTHLY_REPORT
+            if now.day == cfg.get('day', 1) and now.hour == cfg.get('hour', 8) and now.minute == cfg.get('minute', 0):
                 report_month = now.month - 1 if now.month > 1 else 12
                 report_year = (now.year if now.month > 1 else now.year - 1)
 
@@ -644,12 +647,14 @@ async def recurring_task_worker():
             now = datetime.datetime.now()
             
             # Run at exactly 09:00 system time
-            if now.hour == 22 and now.minute == 21:
+            cfg = settings.SCHEDULER_RESTART_TASK
+            if now.hour == cfg.get('hour', 8) and now.minute == cfg.get('minute', 0):
                 LogInfo("Checking for recurring tasks to restart...", LogType.SYSTEM_STATUS)
                 db = SessionLocal()
                 try:
                     from app.models.task import Task
                     from bot.utils.bot import bot
+
                     
                     # We might want to restart tasks that are COMPLETED (or even PENDING/IN_PROGRESS if they missed it, but user mentioned COMPLETED)
                     tasks = db.query(Task).filter(
@@ -769,7 +774,8 @@ async def bad_debt_notification_worker():
             now = datetime.datetime.now()
             
             # Run at 08:00 system time
-            if now.hour == 8 and now.minute == 0:
+            cfg = settings.SCHEDULER_BAD_DEBT
+            if now.hour == cfg.get('hour', 8) and now.minute == cfg.get('minute', 0):
                 current_date = now.date()
                 if last_sent_date == current_date:
                     await asyncio.sleep(60)
@@ -781,6 +787,7 @@ async def bad_debt_notification_worker():
                     from app.models.credit import Credit, CreditCustomer, CreditStatus
                     from app.models.telegram import TelegramProjectMember
                     from bot.utils.bot import bot
+
                     
                     # Criteria: ACTIVE status, remaining > 0, due_date < today - 7
                     seven_days_ago = current_date - datetime.timedelta(days=7)
@@ -891,7 +898,8 @@ async def interest_payment_notification_worker():
             now = datetime.datetime.now()
             
             # Run at 08:00 system time
-            if now.hour == 8 and now.minute == 0:
+            cfg = settings.SCHEDULER_INTEREST
+            if now.hour == cfg.get('hour', 8) and now.minute == cfg.get('minute', 0):
                 current_date = now.date()
                 if last_sent_date == current_date:
                     await asyncio.sleep(60)
@@ -903,6 +911,7 @@ async def interest_payment_notification_worker():
                     from app.models.credit import Credit, CreditCustomer, CreditStatus
                     from app.models.telegram import TelegramProjectMember
                     from bot.utils.bot import bot
+
                     
                     active_contracts = db.query(Credit).filter(
                         Credit.credit_status == CreditStatus.ACTIVE.value,
@@ -1074,7 +1083,8 @@ async def rental_payment_notification_worker():
             now = datetime.datetime.now()
             
             # Run at 08:00 system time
-            if now.hour == 16 and now.minute == 2:
+            cfg = settings.SCHEDULER_RENTAL
+            if now.hour == cfg.get('hour', 8) and now.minute == cfg.get('minute', 0):
                 current_date = now.date()
                 if last_sent_date == current_date:
                     await asyncio.sleep(60)
@@ -1269,8 +1279,8 @@ async def monthly_attendance_summary_worker():
         try:
             now = datetime.datetime.now()
 
-            # if now.day == 1 and now.hour == 8 and now.minute == 0:
-            if now.day == 8 and now.hour == 20 and now.minute == 19:
+            cfg = settings.SCHEDULER_MONTHLY_SUMMARY
+            if now.day == cfg.get('day', 1) and now.hour == cfg.get('hour', 8) and now.minute == cfg.get('minute', 0):
                 if now.month == 1:
                     report_month = 12
                     report_year = now.year - 1
@@ -1292,6 +1302,7 @@ async def monthly_attendance_summary_worker():
                     from app.models.business import Projects
                     from bot.utils.attendance_generator import generate_attendance_image
                     from bot.utils.bot import bot
+
                     import os
 
                     project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
@@ -1303,7 +1314,7 @@ async def monthly_attendance_summary_worker():
 
                     main_members = db.query(TelegramProjectMember).filter(
                         TelegramProjectMember.project_id == project_id,
-                        TelegramProjectMember.custom_title.in_(["super_main", "main_ns"]),
+                        TelegramProjectMember.custom_title.in_([CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR]),
                     ).all()
                     main_chat_ids = list(set(m.chat_id for m in main_members))
                     if not main_chat_ids:
@@ -1314,7 +1325,7 @@ async def monthly_attendance_summary_worker():
 
                     members = db.query(TelegramProjectMember).filter(
                         TelegramProjectMember.project_id == project_id,
-                        TelegramProjectMember.custom_title == "member_ns",
+                        TelegramProjectMember.custom_title == CustomTitle.MEMBER_HR,
                         TelegramProjectMember.is_bot == False,
                     ).all()
 
@@ -1407,7 +1418,8 @@ async def daily_purchase_summary_worker():
         try:
             now = datetime.datetime.now()
 
-            if now.hour == 20 and now.minute == 0:
+            cfg = settings.SCHEDULER_DAILY_PURCHASE
+            if now.hour == cfg.get('hour', 20) and now.minute == cfg.get('minute', 0):
                 current_date = now.date()
                 if last_sent_date == current_date:
                     await asyncio.sleep(60)
@@ -1420,6 +1432,7 @@ async def daily_purchase_summary_worker():
                     from app.models.telegram import TelegramProjectMember
                     from bot.utils.receipt_generator import generate_chotso_ketoan_image, fmt_money_vn
                     from bot.utils.bot import bot
+
                     from sqlalchemy import func
 
                     # Tìm project Tiến Nga
@@ -1460,7 +1473,7 @@ async def daily_purchase_summary_worker():
                             # Tìm member trong project Tiến Nga có user_name khớp
                             member = db.query(TelegramProjectMember).filter(
                                 TelegramProjectMember.project_id == project.id,
-                                TelegramProjectMember.custom_title == "member_ncc",
+                                TelegramProjectMember.custom_title == CustomTitle.MEMBER_SUPPLIER,
                                 TelegramProjectMember.user_name == cust_username or TelegramProjectMember.user_name == "@" + cust_username or "@" + TelegramProjectMember.user_name == cust_username,
                             ).first()
 

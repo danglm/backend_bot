@@ -30,6 +30,35 @@ from bot.utils.enums import UserType
 from bot.utils.logger import LogType
 from pyrogram.enums import ParseMode
 
+def fmt_money(val):
+    if val is None: return "0 VNĐ"
+    try:
+        return f"{int(val):,} VNĐ".replace(",", ".")
+    except:
+        return str(val)
+
+def fmt_vn(val):
+    if val is None: return "0 VNĐ"
+    try:
+        return f"{int(val):,} VNĐ".replace(",", ".")
+    except:
+        return str(val)
+
+def fmt_num(val):
+    if val is None: return "0"
+    try:
+        if float(val) == int(val):
+            return f"{int(val):,}".replace(",", ".")
+        return f"{float(val):,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return str(val)
+
+def fmt_weight(val):
+    try:
+        return f"{val:,.1f} Kg".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "0,0 Kg"
+
 def get_best_match(word: str, candidates: List[str], threshold: float = 0.70) -> Optional[str]:
     """
     Finds the best matching string from a list of candidates using difflib.
@@ -264,7 +293,7 @@ def require_group_role(*allowed_roles):
 
 def require_custom_title(*allowed_titles):
     """
-    Decorator to check if the current chat has a specific custom_title (e.g. 'main_device', 'member_vehicle')
+    Decorator to check if the current chat has a specific custom_title (e.g. CustomTitle.MAIN_DEVICE)
     in TelegramProjectMember table. Used for Other project sub-groups.
     """
     def decorator(func):
@@ -274,19 +303,22 @@ def require_custom_title(*allowed_titles):
             message = update.message if is_callback else update
             chat_id = str(get_chat_id(message))
             
+            # Convert allowed_titles to strings in case Enum is passed
+            str_titles = [t.value if hasattr(t, 'value') else str(t) for t in allowed_titles]
+            
             db = SessionLocal()
             try:
                 from app.models.telegram import TelegramProjectMember
 
                 group_member = db.query(TelegramProjectMember).filter(
                     TelegramProjectMember.chat_id == chat_id,
-                    TelegramProjectMember.custom_title.in_(allowed_titles)
+                    TelegramProjectMember.custom_title.in_(str_titles)
                 ).first()
 
                 if group_member:
                     return await func(client, update, *args, **kwargs)
                 else:
-                    titles_str = ", ".join([f"<b>{t}</b>" for t in allowed_titles])
+                    titles_str = ", ".join([f"<b>{t}</b>" for t in str_titles])
                     text = f"⚠️ Lệnh này chỉ được phép sử dụng trong nhóm có custom title: {titles_str}."
                     if is_callback:
                         await update.answer(text, show_alert=True)
@@ -383,9 +415,11 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, 
 from bot.utils.bot import bot
 from pyrogram.enums import ParseMode
 
+from bot.utils.enums import CustomTitle
+
 @bot.on_message(filters.command(["list_employee", "list_customer"]) | filters.regex(r"^@\w+\s+/(list_employee|list_customer)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_custom_title("super_main", "main", "main_ns")
+@require_custom_title(CustomTitle.SUPER_MAIN, "main", CustomTitle.MAIN_HR)
 async def list_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["list_employee", "list_customer"])
     if args is None: return

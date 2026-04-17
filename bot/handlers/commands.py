@@ -743,7 +743,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
 
         # ===================== TIẾN NGA =====================
         elif "tiến nga" in project_name or "tien nga" in project_name:
-            if custom_title in ("super_main", "main_ns"):
+            if custom_title in ("super_main", "main_hr"):
                 label = "Tiến Nga (Quản Lý)"
                 commands_to_set = [
                     BotCommand("tien_nga_create_employee", "Thêm nhân viên"),
@@ -757,25 +757,49 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_export_payroll", "Xuất bảng lương"),
                     BotCommand("tien_nga_xuat_luong", "Xuất bảng lương"),
                     BotCommand("tien_nga_recreate_att_report", "Tạo lại báo cáo chấm công"),
+                    BotCommand("tien_nga_tao_lai_bang_cham_cong", "Tạo lại báo cáo chấm công"),
                     BotCommand("tien_nga_check_tasks", "Xem công việc của nhân viên"),      
+                    BotCommand("tien_nga_xem_cong_viec", "Xem công việc của nhân viên"),      
                 ]
-            elif custom_title == "main_ncc":
+            elif custom_title == "main_supplier":
                 label = "Tiến Nga (Nhà Cung Cấp)"
                 commands_to_set = [
                     BotCommand("tien_nga_daily_purchase", "Nhập mua mủ hàng ngày"),
-                    BotCommand("tien_nga_export_info", "Xuất thông tin báo cáo"),
+                    BotCommand("tien_nga_thu_mua_hang_ngay", "Nhập mua mủ hàng ngày"),
+                    BotCommand("tien_nga_export_daily_purchase", "Xuất báo cáo mua mủ KH"),
+                    BotCommand("tien_nga_xuat_bao_cao_thu_mua", "Xuất báo cáo mua mủ KH"),
+                    BotCommand("tien_nga_export_info", "Truy xuất thông tin báo cáo"),
+                    BotCommand("tien_nga_truy_xuat_thong_tin", "Truy xuất thông tin báo cáo"),
                     BotCommand("tien_nga_create_collection_point", "Tạo điểm thu mua"),
+                    BotCommand("tien_nga_tao_diem_thu_mua", "Tạo điểm thu mua"),
+                    BotCommand("tien_nga_list_collection_point", "Danh sách điểm thu mua"),
+                    BotCommand("tien_nga_danh_sach_diem_thu_mua", "Danh sách điểm thu mua"),
                     BotCommand("tien_nga_create_customer", "Tạo khách hàng"),
+                    BotCommand("tien_nga_tao_khach_hang", "Tạo khách hàng"),
+                    BotCommand("tien_nga_chart_purcharse", "Biểu đồ thu mua mủ"),
+                    BotCommand("tien_nga_bieu_do_thu_mua", "Biểu đồ thu mua mủ"),
+                    BotCommand("tien_nga_check_customer", "Xem thông tin khách hàng"),
+                    BotCommand("tien_nga_kiem_tra_khach_hang", "Xem thông tin khách hàng"),
                     BotCommand("tien_nga_update_customer", "Cập nhật khách hàng"),
+                    BotCommand("tien_nga_cap_nhat_khach_hang", "Cập nhật khách hàng"),
                     BotCommand("tien_nga_delete_customer", "Xóa khách hàng"),
+                    BotCommand("tien_nga_xoa_khach_hang", "Xóa khách hàng"),
                     BotCommand("tien_nga_list_customers", "Xuất DS khách hàng Excel"),
                     BotCommand("tien_nga_ds_khach_hang", "Xuất DS khách hàng Excel"),
-                    BotCommand("tien_nga_paid_amount", "Thống kê đã thanh toán"),
-                    BotCommand("tien_nga_da_thanh_toan", "Thống kê đã thanh toán"),
-                    BotCommand("tien_nga_save_amount", "Thống kê lưu sổ"),
-                    BotCommand("tien_nga_luu_so", "Thống kê lưu sổ"),
+                    BotCommand("tien_nga_paid_amount_report", "Báo cáo đã thanh toán"),
+                    BotCommand("tien_nga_bao_cao_da_thanh_toan", "Báo cáo đã thanh toán"),
+                    BotCommand("tien_nga_save_amount_report", "Báo cáo lưu sổ"),
+                    BotCommand("tien_nga_bao_cao_luu_so", "Báo cáo lưu sổ"),
+                    BotCommand("tien_nga_firewood_purcharse", "Nhập mua củi"),
+                    BotCommand("tien_nga_nhap_mua_cui", "Nhập mua củi"),
+                    BotCommand("tien_nga_export_summary", "Báo cáo tổng hợp Excel"),
+                    BotCommand("tien_nga_xuat_bao_cao_tong_hop", "Báo cáo tổng hợp Excel"),
+                    BotCommand("tien_nga_create_company", "Tạo đơn vị (Công ty)"),
+                    BotCommand("tien_nga_tao_don_vi", "Tạo đơn vị (Công ty)"),
+                    BotCommand("tien_nga_company_business", "Giao dịch công ty"),
+                    BotCommand("tien_nga_kinh_doanh_don_vi", "Giao dịch công ty"),
                 ]
-            elif custom_title == "member_ns":
+            elif custom_title == "member_hr":
                 label = "Tiến Nga (Nhân Viên)"
                 commands_to_set = [
                     BotCommand("tien_nga_check_in", "Chấm công vào ca"),

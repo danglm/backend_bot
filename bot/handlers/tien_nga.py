@@ -2,8 +2,8 @@ from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode
 from bot.utils.bot import bot
-from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_custom_title, require_group_role
-from bot.utils.enums import UserType
+from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_custom_title, require_group_role, fmt_vn, fmt_money, fmt_num, fmt_weight
+from bot.utils.enums import UserType, CustomTitle
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
 import re
@@ -18,7 +18,7 @@ import traceback
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ns")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 async def tien_nga_create_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_create_employee", "tien_nga_tao_nhan_vien"])
     if args is None: return
@@ -32,7 +32,7 @@ async def tien_nga_create_employee_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ns")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 async def tien_nga_update_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_update_employee", "tien_nga_cap_nhat_nhan_vien"])
     if args is None: return
@@ -46,7 +46,7 @@ async def tien_nga_update_employee_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ns")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 async def tien_nga_delete_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_delete_employee", "tien_nga_xoa_nhan_vien"])
     if args is None: return
@@ -62,14 +62,10 @@ async def tien_nga_delete_employee_cb_handler(client, callback_query):
     from bot.utils.human_resource import handle_delete_employee_callback
     await handle_delete_employee_callback(client, callback_query)
 
-
-
-
-# --- Chấm công (Check-in) ---
 @bot.on_message(filters.command(["tien_nga_check_in", "tien_nga_cham_cong"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_in|tien_nga_cham_cong)\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
-@require_custom_title("member_ns")
+@require_custom_title(CustomTitle.MEMBER_HR)
 async def tien_nga_check_in_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_check_in", "tien_nga_cham_cong"])
     if args is None: return
@@ -77,12 +73,10 @@ async def tien_nga_check_in_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_check_in
     await handle_check_in(client, message, "/tien_nga_check_in")
 
-
-# --- Tan ca (Check-out) ---
 @bot.on_message(filters.command(["tien_nga_check_out", "tien_nga_tan_ca"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_out|tien_nga_tan_ca)\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
-@require_custom_title("member_ns")
+@require_custom_title(CustomTitle.MEMBER_HR)
 async def tien_nga_check_out_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_check_out", "tien_nga_tan_ca"])
     if args is None: return
@@ -90,12 +84,10 @@ async def tien_nga_check_out_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_check_out
     await handle_check_out(client, message, "/tien_nga_check_out")
 
-
-# --- Xin nghỉ phép (Request Leave) ---
 @bot.on_message(filters.command(["tien_nga_request_leave", "tien_nga_xin_nghi_phep"]) | filters.regex(r"^@\w+\s+/(tien_nga_request_leave|tien_nga_xin_nghi_phep)\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
-@require_custom_title("member_ns")
+@require_custom_title(CustomTitle.MEMBER_HR)
 async def tien_nga_request_leave_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_request_leave", "tien_nga_xin_nghi_phep"])
     if args is None: return
@@ -103,12 +95,10 @@ async def tien_nga_request_leave_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_request_leave
     await handle_request_leave(client, message, "/tien_nga_request_leave")
 
-
-# --- Đăng ký tăng ca (Request Overtime) ---
 @bot.on_message(filters.command(["tien_nga_request_overtime", "tien_nga_dang_ky_tang_ca"]) | filters.regex(r"^@\w+\s+/(tien_nga_request_overtime|tien_nga_dang_ky_tang_ca)\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
-@require_custom_title("member_ns")
+@require_custom_title(CustomTitle.MEMBER_HR)
 async def tien_nga_request_overtime_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_request_overtime", "tien_nga_dang_ky_tang_ca"])
     if args is None: return
@@ -116,12 +106,10 @@ async def tien_nga_request_overtime_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_request_overtime
     await handle_request_overtime(client, message, "/tien_nga_request_overtime")
 
-
-# --- Xem chấm công (List Check-in) ---
 @bot.on_message(filters.command(["tien_nga_list_check_in", "tien_nga_xem_cham_cong"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_check_in|tien_nga_xem_cham_cong)\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
-@require_custom_title("member_ns")
+@require_custom_title(CustomTitle.MEMBER_HR)
 async def tien_nga_list_check_in_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_check_in", "tien_nga_xem_cham_cong"])
     if args is None: return
@@ -129,12 +117,10 @@ async def tien_nga_list_check_in_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_list_check_in
     await handle_list_check_in(client, message, "/tien_nga_list_check_in")
 
-
-# --- Xem danh sách nghỉ phép (List Request Leave) ---
 @bot.on_message(filters.command(["tien_nga_list_request_leave", "tien_nga_xem_nghi_phep"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_request_leave|tien_nga_xem_nghi_phep)\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
-@require_custom_title("member_ns")
+@require_custom_title(CustomTitle.MEMBER_HR)
 async def tien_nga_list_request_leave_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_request_leave", "tien_nga_xem_nghi_phep"])
     if args is None: return
@@ -142,13 +128,11 @@ async def tien_nga_list_request_leave_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_list_request_leave
     await handle_list_request_leave(client, message, "/tien_nga_list_request_leave")
 
-
-# --- Giao việc (Create Task) ---
 @bot.on_message(filters.command(["tien_nga_create_task", "tien_nga_giao_viec"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_task|tien_nga_giao_viec)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
-@require_group_role("main", "member")
-@require_custom_title("super_main", "main_ns")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 async def tien_nga_create_task_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_create_task", "tien_nga_giao_viec"])
     if args is None: return
@@ -156,12 +140,10 @@ async def tien_nga_create_task_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_create_task
     await handle_create_task(client, message, "/tien_nga_create_task")
 
-
-# --- Xem danh sách task (List Tasks) ---
 @bot.on_message(filters.command(["tien_nga_list_tasks", "tien_nga_xem_cong_viec"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_tasks|tien_nga_xem_cong_viec)\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
-@require_custom_title("member_ns")
+@require_custom_title(CustomTitle.MEMBER_HR)
 async def tien_nga_list_tasks_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_tasks", "tien_nga_xem_cong_viec"])
     if args is None: return
@@ -201,38 +183,117 @@ async def _tsk_cancel(client, callback_query):
     from bot.utils.human_resource import task_cancel_callback
     await task_cancel_callback(client, callback_query)
 
-
-# --- Hủy task (Reply /cancel vào tin nhắn task) ---
 @bot.on_message(filters.command(["cancel", "huy_task"]) & filters.reply)
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ns")
-async def tien_nga_cancel_task_handler(client, message: Message) -> None:
+async def tien_nga_cancel_handler(client, message: Message) -> None:
+    replied = message.reply_to_message
+    if not replied or not replied.text:
+        await message.reply_text("⚠️ Vui lòng reply vào tin nhắn cần hủy.", parse_mode=ParseMode.HTML)
+        return
+    
+    replied_text = replied.text or ""
+    
+    # --- Hủy nhập mua mủ ---
+    if "NHẬP MUA MỦ THÀNH CÔNG" in replied_text:
+        # Parse purchase ID from the replied message
+        id_match = re.search(r"🆔\s*([a-f0-9\-]{36})", replied_text)
+        if not id_match:
+            await message.reply_text(
+                "⚠️ Không tìm thấy mã giao dịch trong tin nhắn. Không thể hủy.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        purchase_id = id_match.group(1)
+        
+        from app.models.business import DailyPurchases
+        db = SessionLocal()
+        try:
+            import uuid as uuid_lib
+            purchase = db.query(DailyPurchases).filter(
+                DailyPurchases.id == uuid_lib.UUID(purchase_id)
+            ).first()
+            
+            if not purchase:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy giao dịch <b>{purchase_id}</b> trong hệ thống (có thể đã bị xóa trước đó).",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            # Lưu thông tin trước khi xóa để hiển thị
+            ho_id = purchase.hoursehold_id
+            ngay = purchase.day.strftime("%d/%m/%Y") if purchase.day else "—"
+            total = purchase.total_amount or 0
+            saved = purchase.saved_amount or 0
+            
+            def fmt_money(val):
+                if val is None: return "0 đ"
+                try:
+                    return f"{int(val):,} đ".replace(",", ".")
+                except:
+                    return str(val)
+            
+            # Update total debt for customer if there was a saved amount
+            if saved > 0:
+                from app.models.business import Customers
+                customer = db.query(Customers).filter(Customers.hoursehold_id == ho_id).first()
+                if customer:
+                    if customer.total_debt is None:
+                        customer.total_debt = 0
+                    customer.total_debt -= int(saved)
+                    if customer.total_debt < 0:
+                        customer.total_debt = 0
+                        
+            db.delete(purchase)
+            db.commit()
+            
+            LogInfo(
+                f"[TienNga] Cancelled daily purchase '{purchase_id}' for '{ho_id}' on {ngay} by user {message.from_user.id}",
+                LogType.SYSTEM_STATUS
+            )
+            
+            await message.reply_text(
+                f"<b>ĐÃ HỦY NHẬP MUA MỦ</b>\n\n"
+                f"<b>Mã Hộ:</b> {ho_id}\n"
+                f"<b>Ngày:</b> {ngay}\n"
+                f"<b>Thành Tiền:</b> <code>{fmt_money(total)}</code>\n\n"
+                f"<i>Giao dịch đã được xóa khỏi hệ thống.</i>",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            db.rollback()
+            LogError(f"Error cancelling daily purchase: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text(
+                f"❌ Có lỗi xảy ra khi hủy giao dịch: {e}",
+                parse_mode=ParseMode.HTML
+            )
+        finally:
+            db.close()
+        return
+    
     from bot.utils.human_resource import handle_cancel_task_reply
     await handle_cancel_task_reply(client, message)
 
-
-# --- Xem công việc của nhân viên (Admin) ---
-@bot.on_message(filters.command(["tien_nga_check_tasks"]) | filters.regex(r"^@\w+\s+/tien_nga_check_tasks\b"))
+@bot.on_message(filters.command(["tien_nga_check_tasks", "tien_nga_xem_cong_viec"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_tasks|tien_nga_xem_cong_viec)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ns")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 async def tien_nga_check_tasks_handler(client, message: Message) -> None:
-    args = await check_command_target(client, message.text, ["tien_nga_check_tasks"])
+    args = await check_command_target(client, message.text, ["tien_nga_check_tasks", "tien_nga_xem_cong_viec"])
     if args is None: return
 
     from bot.utils.human_resource import handle_check_tasks
     await handle_check_tasks(client, message, "/tien_nga_check_tasks")
 
-
-# --- Xuất bảng lương (Export Payroll) ---
 @bot.on_message(filters.command(["export_payroll", "tien_nga_xuat_luong", "tien_nga_export_payroll"]) | filters.regex(r"^@\w+\s+/(export_payroll|tien_nga_xuat_luong|tien_nga_export_payroll)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ns")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 async def tien_nga_export_payroll_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["export_payroll", "tien_nga_xuat_luong", "tien_nga_export_payroll"])
     if args is None: return
@@ -244,15 +305,13 @@ async def tien_nga_export_payroll_handler(client, message: Message) -> None:
     message.text = f"/{cmd} " + " ".join(args[1:]) if len(args) > 1 else f"/{cmd}"
     await handle_export_payroll(client, message, f"/{cmd}")
 
-
-# --- Tạo lại bảng chấm công (Recreate Attendance Report) ---
-@bot.on_message(filters.command(["tien_nga_recreate_attendance_report"]) | filters.regex(r"^@\w+\s+/tien_nga_recreate_attendance_report\b"))
+@bot.on_message(filters.command(["tien_nga_recreate_attendance_report", "tien_nga_tao_lai_bang_cham_cong"]) | filters.regex(r"^@\w+\s+/(tien_nga_recreate_attendance_report|tien_nga_tao_lai_bang_cham_cong)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ns")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 async def tien_nga_recreate_attendance_report_handler(client, message: Message) -> None:
-    args = await check_command_target(client, message.text, ["tien_nga_recreate_attendance_report"])
+    args = await check_command_target(client, message.text, ["tien_nga_recreate_attendance_report", "tien_nga_tao_lai_bang_cham_cong"])
     if args is None: return
 
     from bot.utils.human_resource import handle_recreate_attendance_report
@@ -262,17 +321,15 @@ async def tien_nga_recreate_attendance_report_handler(client, message: Message) 
     await handle_recreate_attendance_report(client, message, f"/{cmd}")
 
 
-#############  Nhà cung cấp #############
-# --- Tạo điểm thu mua (Create Collection Point) ---
-@bot.on_message(filters.command(["tien_nga_create_collection_point"]) | filters.regex(r"^@\w+\s+/tien_nga_create_collection_point\b"))
+#############  Supplier #############
+@bot.on_message(filters.command(["tien_nga_create_collection_point", "tien_nga_tao_diem_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_collection_point|tien_nga_tao_diem_thu_mua)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ncc")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_create_collection_point_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     
-    # Nếu chỉ gõ lệnh không -> hiển thị form
     if len(lines) < 2:
         form_template = """<b>FORM TẠO ĐIỂM THU MUA MỚI</b>
 Vui lòng sao chép form dưới đây, điền đầy đủ thông tin và gửi lại:
@@ -324,7 +381,7 @@ Tên Điểm Thu Mua:
         LogInfo(f"[TienNga] Created collection point '{collection_name}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
         
         await message.reply_text(
-            f"✅ <b>TẠO ĐIỂM THU MUA THÀNH CÔNG</b>\n\n"
+            f"<b>TẠO ĐIỂM THU MUA THÀNH CÔNG</b>\n\n"
             f"<b>Tên:</b> {collection_name}\n"
             f"<b>Địa Chỉ:</b> {address}",
             parse_mode=ParseMode.HTML
@@ -336,18 +393,43 @@ Tên Điểm Thu Mua:
     finally:
         db.close()
 
-
-
-# --- Tạo Khách Hàng Mới (Create Customer) ---
-@bot.on_message(filters.command(["tien_nga_create_customer"]) | filters.regex(r"^@\w+\s+/tien_nga_create_customer\b"))
+@bot.on_message(filters.command(["tien_nga_list_collection_point", "tien_nga_danh_sach_diem_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_collection_point|tien_nga_danh_sach_diem_thu_mua)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", 'main_ncc')
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_list_collection_point_handler(client, message: Message) -> None:
+    from app.db.session import SessionLocal
+    from app.models.business import CollectionPoint
+    
+    db = SessionLocal()
+    try:
+        points = db.query(CollectionPoint).all()
+        if not points:
+            await message.reply_text("⚠️ <b>Không có Điểm Thu Mua nào trong hệ thống.</b>", parse_mode=ParseMode.HTML)
+            return
+            
+        text = "<b>DANH SÁCH ĐIỂM THU MUA</b>\n\n"
+        for idx, p in enumerate(points, 1):
+            text += f"<b>{idx}. {p.collection_name}</b>\n"
+            text += f"   Mã: <code>{p.id}</code>\n"
+            text += f"   Địa chỉ: {p.address}\n\n"
+            
+        await message.reply_text(text, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        LogError(f"Error listing collection points: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra khi tải danh sách Điểm Thu Mua.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_create_customer", "tien_nga_tao_khach_hang"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_customer|tien_nga_tao_khach_hang)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_create_customer_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     
-    # Nếu chỉ gõ lệnh không -> hiển thị button chọn xưởng thu mua
     if len(lines) < 2:
         from app.db.session import SessionLocal
         from app.models.business import CollectionPoint
@@ -471,15 +553,13 @@ Username TG: </pre>
     finally:
         db.close()
 
-# --- Cập Nhật Khách Hàng (Update Customer) ---
-@bot.on_message(filters.command(["tien_nga_update_customer"]) | filters.regex(r"^@\w+\s+/tien_nga_update_customer\b"))
+@bot.on_message(filters.command(["tien_nga_update_customer", "tien_nga_cap_nhat_khach_hang"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_customer|tien_nga_cap_nhat_khach_hang)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
-@require_custom_title("super_main", 'main_ncc')
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_update_customer_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     
-    # Nếu chỉ có 1 dòng (chứa lệnh và có thể là ID)
     if len(lines) < 2:
         args = lines[0].split()
         if len(args) != 2:
@@ -568,10 +648,6 @@ Username: {customer.username or ''}</pre>"""
         db.commit()
         
         LogInfo(f"[TienNga] Updated customer '{hoursehold_id}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
-        
-        def fmt_vn(val):
-            if val is None: return "0"
-            return f"{int(val):,}".replace(",", ".")
             
         await message.reply_text(
             f"✅ <b>CẬP NHẬT KHÁCH HÀNG THÀNH CÔNG</b>\n\n"
@@ -593,13 +669,67 @@ Username: {customer.username or ''}</pre>"""
     finally:
         db.close()
 
-
-# --- Xóa Khách Hàng (Soft Delete Customer) ---
-@bot.on_message(filters.command(["tien_nga_delete_customer"]) | filters.regex(r"^@\w+\s+/tien_nga_delete_customer\b"))
+@bot.on_message(filters.command(["tien_nga_check_customer", "tien_nga_kiem_tra_khach_hang"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_customer|tien_nga_kiem_tra_khach_hang)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ncc")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_check_customer_handler(client, message: Message) -> None:
+    args = message.text.split()
+    if len(args) != 2:
+        await message.reply_text(
+            "⚠️ Cú pháp: <code>/tien_nga_check_customer [Mã Hộ]</code>\n\n"
+            "<i>Ví dụ: <code>/tien_nga_check_customer KH001</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+        
+    hoursehold_id = args[1]
+    
+    from app.db.session import SessionLocal
+    from app.models.business import Customers, CollectionPoint
+    
+    db = SessionLocal()
+    try:
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            await message.reply_text(f"⚠️ Không tìm thấy Khách hàng mã hộ <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        cp_name = "Chưa rõ"
+        if customer.collection_point_id:
+            cp = db.query(CollectionPoint).filter(CollectionPoint.id == customer.collection_point_id).first()
+            if cp:
+                cp_name = cp.collection_name
+                
+        status_str = "Hoạt động" if customer.status == "ACTIVE" else ("Đã ẩn/xóa" if customer.status == "DELETED" else customer.status)
+        
+        await message.reply_text(
+            f"<b>THÔNG TIN KHÁCH HÀNG: {customer.fullname or '—'}</b>\n\n"
+            f"<b>Mã Hộ:</b> {customer.hoursehold_id}\n"
+            f"<b>Tên Khách Hàng:</b> {customer.fullname or '—'}\n"
+            f"<b>Điểm Thu Mua:</b> {cp_name}\n"
+            f"<b>SĐT:</b> {customer.number_phone or '—'}\n"
+            f"<b>Địa Chỉ:</b> {customer.address or '—'}\n"
+            f"<b>Nguyên Liệu:</b> {customer.ingredient or '—'}\n"
+            f"<b>Số Tiền Nợ:</b> <code>{fmt_vn(customer.amount_of_debt)}</code>\n"
+            f"<b>Ứng Cuối Mùa:</b> <code>{fmt_vn(customer.cash_advance)}</code>\n"
+            f"<b>Tổng Công Nợ:</b> <code>{fmt_vn(customer.total_debt)}</code>\n"
+            f"<b>Trạng Thái:</b> {status_str}\n"
+            f"<b>Tài khoản TG:</b> {customer.username or '—'}",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error checking customer: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Lỗi hệ thống khi tìm kiếm khách hàng.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_delete_customer", "tien_nga_xoa_khach_hang"]) | filters.regex(r"^@\w+\s+/(tien_nga_delete_customer|tien_nga_xoa_khach_hang)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_delete_customer_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) != 2:
@@ -645,13 +775,11 @@ async def tien_nga_delete_customer_handler(client, message: Message) -> None:
     finally:
         db.close()
 
-
-# --- Xuất danh sách khách hàng (List Customers) ---
 @bot.on_message(filters.command(["tien_nga_list_customers", "tien_nga_ds_khach_hang"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_customers|tien_nga_ds_khach_hang)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ncc")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_list_customers_handler(client, message: Message) -> None:
     args = message.text.strip().split()
 
@@ -708,6 +836,7 @@ async def tien_nga_list_customers_handler(client, message: Message) -> None:
             "STT",
             "Mã Hộ",
             "Tên Khách Hàng",
+            "Trợ Giá",
             "Số Điện Thoại",
             "Địa Chỉ",
             "Nguyên Liệu",
@@ -718,7 +847,7 @@ async def tien_nga_list_customers_handler(client, message: Message) -> None:
             "Trạng Thái",
         ]
 
-        col_widths = [6, 10, 22, 16, 25, 15, 18, 20, 18, 18, 12]
+        col_widths = [6, 10, 22, 10, 16, 25, 15, 18, 20, 18, 18, 12]
 
         total_customers = 0
 
@@ -749,6 +878,7 @@ async def tien_nga_list_customers_handler(client, message: Message) -> None:
                     idx,
                     cust.hoursehold_id or cust.id,
                     cust.fullname,
+                    cust.is_subsidized or 0,
                     cust.number_phone,
                     cust.address,
                     cust.ingredient,
@@ -762,7 +892,7 @@ async def tien_nga_list_customers_handler(client, message: Message) -> None:
                 for col_idx, val in enumerate(values, 1):
                     cell = ws.cell(row=row, column=col_idx, value=val)
                     cell.border = thin_border
-                    if col_idx in (7, 8, 9):  # Money columns
+                    if col_idx in (8, 9, 10):  # Money columns
                         cell.alignment = money_align
                     elif col_idx == 1:
                         cell.alignment = center_align
@@ -860,12 +990,11 @@ def parse_float_vn(val_str: str) -> float:
     except ValueError:
         return 0.0
 
-# --- Nhập mua mủ hàng ngày (Daily Purchase) ---
-@bot.on_message(filters.command(["tien_nga_daily_purchase"]) | filters.regex(r"^@\w+\s+/tien_nga_daily_purchase\b"))
+@bot.on_message(filters.command(["tien_nga_daily_purchase", "tien_nga_thu_mua_hang_ngay"]) | filters.regex(r"^@\w+\s+/(tien_nga_daily_purchase|tien_nga_thu_mua_hang_ngay)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ncc")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_daily_purchase_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     
@@ -904,6 +1033,7 @@ async def tien_nga_daily_purchase_handler(client, message: Message) -> None:
                     cp_id_str = str(cp.id)
             
             today_str = datetime.now().strftime("%d/%m/%Y")
+            tro_gia = customer.is_subsidized or 0
             
             form_template = f"""<b>📋 FORM NHẬP MUA MỦ NGÀY</b>
 Khách hàng: <b>{customer.fullname}</b> (<code>{hoursehold_id}</code>)
@@ -913,23 +1043,17 @@ Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
 <pre>/tien_nga_daily_purchase
 Mã Hộ: {hoursehold_id}
-Mã Điểm Thu: {cp_id_str}
+Điểm Thu Mua: {cp_id_str}
 Ngày: {today_str}
-Tuần: 
-Trợ Giá: 0
+Trợ Giá: {tro_gia}
 Khối Lượng: 
 Trừ Bì: 0
-KL Thực Tế: 
 Số Độ: 
-Mủ Khô: 
 Đơn Giá: 
-Giá Hỗ Trợ: 0
-Thành Tiền: 
-Đã Thanh Toán: 0
-Lưu Sổ: 0
-Tạm Ứng: 0</pre>
+Có Lưu Sổ: yes</pre>
 
-<i>Ghi chú: Số tiền ví dụ 424.080 hoặc 5.898.728,5</i>"""
+<i>Ghi chú: Số tiền ví dụ 424.080 hoặc 5.898.728,5
+Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
             await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         except Exception as e:
             LogError(f"Error fetching customer for daily purchase: {e}", LogType.SYSTEM_STATUS)
@@ -950,7 +1074,7 @@ Tạm Ứng: 0</pre>
         await message.reply_text("⚠️ <b>Mã Hộ</b> là bắt buộc.", parse_mode=ParseMode.HTML)
         return
 
-    cp_id = data.get("Mã Điểm Thu", "").strip()
+    cp_id = data.get("Điểm Thu Mua", "").strip()
     ngay_str = data.get("Ngày", "").strip()
     
     if not ngay_str:
@@ -966,34 +1090,43 @@ Tạm Ứng: 0</pre>
         )
         return
     
-    week = data.get("Tuần", "").strip()
-    week_val = int(week) if week.isdigit() else ngay.isocalendar()[1]
+    # Tuần tự động từ ngày
+    week_val = ngay.isocalendar()[1]
     
     is_subsidized = int(parse_float_vn(data.get("Trợ Giá", "0")))
     weight = parse_float_vn(data.get("Khối Lượng", "0"))
     tare_weight = parse_float_vn(data.get("Trừ Bì", "0"))
-    actual_weight = parse_float_vn(data.get("KL Thực Tế", "0"))
     degree = parse_float_vn(data.get("Số Độ", "0"))
-    dry_rubber = parse_float_vn(data.get("Mủ Khô", "0"))
     unit_price = parse_float_vn(data.get("Đơn Giá", "0"))
-    subsidy_price = parse_float_vn(data.get("Giá Hỗ Trợ", "0"))
-    total_amount = parse_float_vn(data.get("Thành Tiền", "0"))
-    paid_amount = parse_float_vn(data.get("Đã Thanh Toán", "0"))
-    saved_amount = parse_float_vn(data.get("Lưu Sổ", "0"))
-    advance_amount = parse_float_vn(data.get("Tạm Ứng", "0"))
+    co_luu_so = data.get("Có Lưu Sổ", "yes").strip().lower()
 
-    # Auto-calculate nếu không điền
-    if actual_weight == 0 and weight > 0:
-        actual_weight = weight - tare_weight
-    if dry_rubber == 0 and actual_weight > 0 and degree > 0:
-        dry_rubber = round(actual_weight * degree / 100, 2)
-    if subsidy_price == 0 and unit_price > 0:
-        subsidy_price = unit_price + is_subsidized
-    if total_amount == 0 and dry_rubber > 0 and subsidy_price > 0:
-        total_amount = round(dry_rubber * subsidy_price, 0)
+    # Validate required fields
+    if weight <= 0:
+        await message.reply_text("⚠️ <b>Khối Lượng</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+    if degree <= 0:
+        await message.reply_text("⚠️ <b>Số Độ</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+    if unit_price <= 0:
+        await message.reply_text("⚠️ <b>Đơn Giá</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
+    # Auto-calculate
+    actual_weight = weight - tare_weight
+    subsidy_price = unit_price + is_subsidized
+    dry_rubber = round(actual_weight * degree / 100, 2)
+    total_amount = round(actual_weight * degree * subsidy_price, 0)
+
+    # Phân bổ theo lưu sổ
+    if co_luu_so in ("yes", "y", "có", "co"):
+        saved_amount = total_amount
+        paid_amount = 0
+    else:
+        saved_amount = 0
+        paid_amount = total_amount
 
     from app.db.session import SessionLocal
-    from app.models.business import DailyPurchases, Customers
+    from app.models.business import DailyPurchases, Customers, CollectionPoint
     import uuid as uuid_lib
     
     db = SessionLocal()
@@ -1006,11 +1139,19 @@ Tạm Ứng: 0</pre>
                 parse_mode=ParseMode.HTML
             )
             return
+
+        # Lấy tên xưởng
+        final_cp_id = cp_id if cp_id else customer.collection_point_id
+        cp_name = ""
+        if final_cp_id:
+            cp = db.query(CollectionPoint).filter(CollectionPoint.id == str(final_cp_id)).first()
+            if cp:
+                cp_name = cp.collection_name
         
         new_purchase = DailyPurchases(
             id=uuid_lib.uuid4(),
             hoursehold_id=hoursehold_id,
-            collection_point_id=cp_id if cp_id else customer.collection_point_id,
+            collection_point_id=final_cp_id,
             week=week_val,
             day=ngay,
             is_subsidized=is_subsidized,
@@ -1024,25 +1165,20 @@ Tạm Ứng: 0</pre>
             total_amount=total_amount,
             paid_amount=paid_amount,
             saved_amount=saved_amount,
-            advance_amount=advance_amount,
+            advance_amount=0,
             is_checked=False
         )
         db.add(new_purchase)
+        
+        # Cập nhật Tổng Công Nợ cho khách hàng nếu có Lưu Sổ
+        if saved_amount > 0:
+            if customer.total_debt is None:
+                customer.total_debt = 0
+            customer.total_debt += int(saved_amount)
+            
         db.commit()
         
-        def fmt_vn(val):
-            if val is None: return "0"
-            try:
-                return f"{val:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            except:
-                return str(val)
-        
-        def fmt_money(val):
-            if val is None: return "0 đ"
-            try:
-                return f"{int(val):,} đ".replace(",", ".")
-            except:
-                return str(val)
+        luu_so_label = "Có" if saved_amount > 0 else "Không"
         
         LogInfo(f"[TienNga] Created daily purchase for '{hoursehold_id}' on {ngay_str} by user {message.from_user.id}", LogType.SYSTEM_STATUS)
         
@@ -1050,18 +1186,22 @@ Tạm Ứng: 0</pre>
             f"✅ <b>NHẬP MUA MỦ THÀNH CÔNG</b>\n\n"
             f"<b>Mã Hộ:</b> {hoursehold_id}\n"
             f"<b>Tên KH:</b> {customer.fullname}\n"
+            f"<b>Điểm Thu Mua:</b> {cp_name or '—'}\n"
             f"<b>Ngày:</b> {ngay_str}\n"
             f"<b>Tuần:</b> {week_val}\n"
+            f"<b>Trợ Giá:</b> {is_subsidized}\n"
             f"<b>Khối Lượng:</b> {fmt_vn(weight)} kg\n"
-            f"<b>Khối Lượng Thực Tế:</b> {fmt_vn(actual_weight)} kg\n"
+            f"<b>Trừ Bì:</b> {fmt_vn(tare_weight)} kg\n"
+            f"<b>KL Thực Tế:</b> {fmt_vn(actual_weight)} kg\n"
             f"<b>Số Độ:</b> {fmt_vn(degree)}%\n"
             f"<b>Mủ Khô:</b> {fmt_vn(dry_rubber)} kg\n"
-            f"<b>Trợ Giá:</b> {fmt_money(is_subsidized)}\n"
             f"<b>Đơn Giá:</b> {fmt_money(unit_price)}\n"
             f"<b>Giá Hỗ Trợ:</b> {fmt_money(subsidy_price)}\n"
             f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
-            f"<b>Đã Thanh Toán:</b> {fmt_money(paid_amount)}\n"
-            f"<b>Tạm Ứng:</b> {fmt_money(advance_amount)}",
+            f"<b>Lưu Sổ:</b> {luu_so_label} — <code>{fmt_money(saved_amount)}</code>\n"
+            f"<b>Thanh Toán:</b> <code>{fmt_money(paid_amount)}</code>\n\n"
+            f"🆔 {str(new_purchase.id)}\n"
+            f"<i>Reply /cancel để hủy giao dịch này.</i>",
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
@@ -1071,15 +1211,181 @@ Tạm Ứng: 0</pre>
     finally:
         db.close()
 
-
-# --- Xuất báo cáo (Export Info) ---
-@bot.on_message(filters.command(["tien_nga_export_info"]) | filters.regex(r"^@\w+\s+/tien_nga_export_info\b"))
+@bot.on_message(filters.command(["tien_nga_export_daily_purchase", "tien_nga_xuat_bao_cao_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_daily_purchase|tien_nga_xuat_bao_cao_thu_mua)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ncc")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_export_daily_purchase_handler(client, message: Message) -> None:
+    args = message.text.strip().split()
+
+    # Validate cú pháp
+    if len(args) < 3:
+        await message.reply_text(
+            "⚠️ <b>Cú pháp:</b>\n"
+            "<code>/tien_nga_export_daily_purchase [Mã Hộ] [dd/mm/yyyy]</code>\n"
+            "<code>/tien_nga_export_daily_purchase [Mã Hộ] [dd/mm/yyyy - dd/mm/yyyy]</code>\n\n"
+            "<i>Ví dụ:\n"
+            "<code>/tien_nga_export_daily_purchase X001 14/04/2026</code>\n"
+            "<code>/tien_nga_export_daily_purchase X001 01/04/2026 - 14/04/2026</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    hoursehold_id = args[1].upper()
+
+    # Parse date(s)
+    date_part = " ".join(args[2:])
+    try:
+        if "-" in date_part and len(args) >= 5:
+            # Range: dd/mm/yyyy - dd/mm/yyyy
+            parts = date_part.split("-")
+            start_date = datetime.strptime(parts[0].strip(), "%d/%m/%Y").date()
+            end_date = datetime.strptime(parts[1].strip(), "%d/%m/%Y").date()
+            timeframe = f"{start_date.strftime('%d/%m/%Y')} — {end_date.strftime('%d/%m/%Y')}"
+        else:
+            # Single date
+            start_date = datetime.strptime(args[2].strip(), "%d/%m/%Y").date()
+            end_date = start_date
+            timeframe = start_date.strftime("%d/%m/%Y")
+    except Exception:
+        await message.reply_text(
+            "⚠️ Định dạng ngày không hợp lệ. Vui lòng nhập <b>DD/MM/YYYY</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    loading_msg = await message.reply_text("⏳ Đang tạo báo cáo, vui lòng chờ...", parse_mode=ParseMode.HTML)
+
+    from app.models.business import DailyPurchases, Customers, CollectionPoint
+
+    db = SessionLocal()
+    try:
+        # Verify customer
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            await loading_msg.delete()
+            await message.reply_text(
+                f"⚠️ Không tìm thấy Khách hàng với mã hộ <b>{hoursehold_id}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Lấy tên xưởng
+        cp_name = "—"
+        if customer.collection_point_id:
+            cp = db.query(CollectionPoint).filter(CollectionPoint.id == customer.collection_point_id).first()
+            if cp:
+                cp_name = cp.collection_name
+
+        # Query purchases
+        purchases = (
+            db.query(DailyPurchases)
+            .filter(
+                DailyPurchases.hoursehold_id == hoursehold_id,
+                DailyPurchases.day >= start_date,
+                DailyPurchases.day <= end_date
+            )
+            .order_by(DailyPurchases.day)
+            .all()
+        )
+
+        if not purchases:
+            await loading_msg.delete()
+            await message.reply_text(
+                f"ℹ️ Không có dữ liệu mua mủ cho <b>{customer.fullname}</b> ({hoursehold_id}) trong khoảng <b>{timeframe}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Build records
+        records = []
+        tong_kl = 0
+        tong_kl_tt = 0
+        tong_mu_kho = 0
+        tong_thanh_tien = 0
+        tong_luu_so = 0
+        tong_thanh_toan = 0
+
+        for p in purchases:
+            kl = p.weight or 0
+            bi = p.tare_weight or 0
+            kl_tt = p.actual_weight or 0
+            mu_kho = p.dry_rubber or 0
+            thanh_tien = p.total_amount or 0
+            luu_so = p.saved_amount or 0
+            thanh_toan = p.paid_amount or 0
+
+            tong_kl += kl
+            tong_kl_tt += kl_tt
+            tong_mu_kho += mu_kho
+            tong_thanh_tien += thanh_tien
+            tong_luu_so += luu_so
+            tong_thanh_toan += thanh_toan
+
+            records.append({
+                "ngay": p.day.strftime("%d/%m") if p.day else "—",
+                "tuan": p.week or "—",
+                "tro_gia": p.is_subsidized or 0,
+                "kl": kl,
+                "bi": bi,
+                "kl_tt": kl_tt,
+                "so_do": p.degree or 0,
+                "mu_kho": mu_kho,
+                "don_gia": p.unit_price or 0,
+                "gia_ht": p.subsidy_price or 0,
+                "thanh_tien": thanh_tien,
+                "luu_so": luu_so,
+                "thanh_toan": thanh_toan,
+            })
+
+        report_data = {
+            "ten_kh": customer.fullname,
+            "ma_ho": hoursehold_id,
+            "diem_thu_mua": cp_name,
+            "timeframe": timeframe,
+            "records": records,
+            "tong_kl": tong_kl,
+            "tong_kl_tt": tong_kl_tt,
+            "tong_mu_kho": tong_mu_kho,
+            "tong_thanh_tien": tong_thanh_tien,
+            "tong_luu_so": tong_luu_so,
+            "tong_thanh_toan": tong_thanh_toan,
+        }
+
+        from bot.utils.daily_purchase_report_generator import generate_daily_purchase_report_image
+        img_buf = await generate_daily_purchase_report_image(report_data)
+
+        await message.reply_photo(
+            photo=img_buf,
+            caption=(
+                f"<b>BÁO CÁO MUA MỦ</b>\n"
+                f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
+                f"<b>Xưởng:</b> {cp_name}\n"
+                f"<b>Thời gian:</b> {timeframe}\n"
+                f"<b>Số lần mua:</b> {len(records)}"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+
+        await loading_msg.delete()
+        LogInfo(f"[TienNga] Exported daily purchase report for '{hoursehold_id}' ({timeframe}) by user {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        LogError(f"Error exporting daily purchase: {e}", LogType.SYSTEM_STATUS)
+        import traceback
+        traceback.print_exc()
+        await loading_msg.delete()
+        await message.reply_text("❌ Có lỗi xảy ra khi tạo báo cáo.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_export_info", "tien_nga_truy_xuat_thong_tin"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_info|tien_nga_truy_xuat_thong_tin)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MAIN_HR, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_PARTNER)
 async def tien_nga_export_info_handler(client, message: Message) -> None:
-    # Check for custom date arguments
     args = message.text.strip().split()
     time_preset = ""
     
@@ -1169,7 +1475,7 @@ async def tien_nga_export_callback(client, callback_query: CallbackQuery):
         # Menu chọn Loại Nhà cung cấp cho chu kỳ đó
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Nhà cung cấp Mủ", callback_data=f"tn_exp_ncc_mu_{time_code}")],
-            [InlineKeyboardButton("Nhà cung cấp Cũi", callback_data=f"tn_exp_dummy")],
+            [InlineKeyboardButton("Nhà cung cấp Củi", callback_data=f"tn_exp_ncc_cui_{time_code}")],
             [InlineKeyboardButton("Nhà cung cấp Acid", callback_data=f"tn_exp_dummy")],
             [InlineKeyboardButton("Quay lại", callback_data="tn_exp_ncc"),
              InlineKeyboardButton("Hủy", callback_data="tn_exp_cancel")]
@@ -1417,18 +1723,139 @@ async def tien_nga_export_callback(client, callback_query: CallbackQuery):
         finally:
             db.close()
             
+    elif data.startswith("tn_exp_ncc_cui_"):
+        time_code = data[len("tn_exp_ncc_cui_"):]
+        await callback_query.message.edit_text("⏳ <i>Đang tính toán dữ liệu củi, vui lòng chờ...</i>", parse_mode=ParseMode.HTML)
+
+        today = datetime.now().date()
+        start_date = today
+        end_date = today
+
+        if time_code == "7d":
+            start_date = today - timedelta(days=7)
+        elif time_code == "14d":
+            start_date = today - timedelta(days=14)
+        elif time_code == "21d":
+            start_date = today - timedelta(days=21)
+        elif time_code == "1m":
+            start_date = today - timedelta(days=30)
+        elif time_code == "1q":
+            start_date = today - timedelta(days=90)
+        elif time_code == "2q":
+            start_date = today - timedelta(days=180)
+        elif time_code == "1y":
+            start_date = today - timedelta(days=365)
+        elif time_code == "py":
+            last_year = today.year - 1
+            start_date = datetime(last_year, 1, 1).date()
+            end_date = datetime(last_year, 12, 31).date()
+        elif time_code.startswith("c_"):
+            parts = time_code.split("_")
+            if len(parts) == 3:
+                try:
+                    start_date = datetime.strptime(parts[1], "%d%m%y").date()
+                    end_date = datetime.strptime(parts[2], "%d%m%y").date()
+                except:
+                    pass
+
+        from app.models.business import FirewoodPurchases, Customers
+        from sqlalchemy import func
+        from app.db.session import SessionLocal
+        db = SessionLocal()
+        try:
+            def format_vn_currency(value):
+                try:
+                    return f"{int(value):,} đ".replace(",", ".")
+                except:
+                    return "0 đ"
+
+            # Tổng hợp theo KH
+            stats = db.query(
+                FirewoodPurchases.hoursehold_id,
+                func.sum(FirewoodPurchases.trip_count).label('total_trips'),
+                func.sum(FirewoodPurchases.firewood_weight).label('total_weight'),
+                func.sum(FirewoodPurchases.total_amount).label('total_amount'),
+                func.sum(FirewoodPurchases.advance_amount).label('total_advance'),
+            ).filter(
+                FirewoodPurchases.day >= start_date,
+                FirewoodPurchases.day <= end_date
+            ).group_by(
+                FirewoodPurchases.hoursehold_id
+            ).all()
+
+            # Tổng cộng
+            grand_total = db.query(
+                func.sum(FirewoodPurchases.trip_count).label('trips'),
+                func.sum(FirewoodPurchases.firewood_weight).label('weight'),
+                func.sum(FirewoodPurchases.total_amount).label('amount'),
+                func.sum(FirewoodPurchases.advance_amount).label('advance'),
+            ).filter(
+                FirewoodPurchases.day >= start_date,
+                FirewoodPurchases.day <= end_date
+            ).first()
+
+            if time_code == "py":
+                timeframe_str = f"Năm trước ({start_date.year})"
+            else:
+                timeframe_str = f"Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}"
+
+            g_trips = grand_total.trips or 0
+            g_weight = grand_total.weight or 0
+            g_amount = grand_total.amount or 0
+            g_advance = grand_total.advance or 0
+
+            report = f"<b>BÁO CÁO NHÀ CUNG CẤP CỦI</b>\n"
+            report += f"<b>{timeframe_str}</b>\n\n"
+
+            report += f"<b>TỔNG CỘNG:</b>\n"
+            report += f"  • Số chuyến: <b>{g_trips:,}</b>\n"
+            report += f"  • Khối lượng: <b>{g_weight:,.1f}</b>\n"
+            report += f"  • Thành tiền: <b>{format_vn_currency(g_amount)}</b>\n"
+            report += f"  • Tạm ứng: <b>{format_vn_currency(g_advance)}</b>\n\n"
+
+            if stats:
+                report += f"<b>CHI TIẾT THEO KHÁCH HÀNG:</b>\n"
+                for s in stats:
+                    hh_id = s.hoursehold_id or "—"
+                    cust = db.query(Customers).filter(Customers.hoursehold_id == hh_id).first()
+                    cust_name = cust.fullname if cust else hh_id
+
+                    s_trips = s.total_trips or 0
+                    s_weight = s.total_weight or 0
+                    s_amount = s.total_amount or 0
+                    s_advance = s.total_advance or 0
+
+                    report += f"\n<b>{cust_name}</b> (<code>{hh_id}</code>):\n"
+                    report += f"  • Số chuyến: {s_trips:,}\n"
+                    report += f"  • Khối lượng: {s_weight:,.1f}\n"
+                    report += f"  • Thành tiền: {format_vn_currency(s_amount)}\n"
+                    report += f"  • Tạm ứng: {format_vn_currency(s_advance)}\n"
+            else:
+                report += "<i>Không phát sinh dữ liệu mua củi trong chu kỳ này.</i>\n"
+
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Quay lại", callback_data=f"tn_exp_ncc_time_{time_code}"),
+                 InlineKeyboardButton("Hủy", callback_data="tn_exp_cancel")]
+            ])
+            await callback_query.message.edit_text(report, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+        except Exception as e:
+            import traceback
+            LogError(f"[TienNga] Error export cui: {traceback.format_exc()}", LogType.SYSTEM_STATUS)
+            await callback_query.message.edit_text("❌ Có lỗi xảy ra khi truy vấn dữ liệu củi.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+
     elif data == "tn_exp_dummy":
         await callback_query.answer("🚀 Nhánh module này sẽ được phát triển tiếp sau nhé!", show_alert=True)
 
-
-# ===================== THỐNG KÊ ĐÃ THANH TOÁN (Paid Amount) =====================
-
-@bot.on_message(filters.command(["tien_nga_paid_amount", "tien_nga_da_thanh_toan"]) | filters.regex(r"^@\w+\s+/(tien_nga_paid_amount|tien_nga_da_thanh_toan)\b"))
+### Report paid amount
+@bot.on_message(filters.command(["tien_nga_paid_amount_report", "tien_nga_bao_cao_da_thanh_toan"]) | filters.regex(r"^@\w+\s+/(tien_nga_paid_amount_report|tien_nga_bao_cao_da_thanh_toan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ncc")
-async def tien_nga_paid_amount_handler(client, message: Message) -> None:
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_paid_amount_report_handler(client, message: Message) -> None:
     """Bước 1: Hiển thị button chọn khoảng thời gian hoặc nhận ngày tùy chọn."""
     args = message.text.strip().split()
     time_preset = ""
@@ -1441,7 +1868,7 @@ async def tien_nga_paid_amount_handler(client, message: Message) -> None:
             end = datetime.strptime(args[3], "%d/%m/%Y").date()
         except Exception:
             await message.reply_text(
-                "⚠️ Định dạng không hợp lệ.\nVí dụ: <code>/tien_nga_paid_amount X001 01/05/2025 15/05/2025</code>",
+                "⚠️ Định dạng không hợp lệ.\nVí dụ: <code>/tien_nga_paid_amount_report_report X001 01/05/2025 15/05/2025</code>",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -1451,12 +1878,6 @@ async def tien_nga_paid_amount_handler(client, message: Message) -> None:
         from sqlalchemy import func
         db = SessionLocal()
         try:
-            def fmt_vn(val):
-                try:
-                    return f"{int(val):,} đ".replace(",", ".")
-                except:
-                    return "0 đ"
-
             customer = db.query(Customers).filter(Customers.hoursehold_id == hh_id).first()
             cust_name = customer.fullname if customer else "Không rõ"
             cp_name = ""
@@ -1524,7 +1945,7 @@ async def tien_nga_paid_amount_handler(client, message: Message) -> None:
             time_preset = f"c_{start.strftime('%d%m%y')}_{end.strftime('%d%m%y')}"
         except Exception:
             await message.reply_text(
-                "⚠️ Định dạng ngày không hợp lệ.\nVí dụ: <code>/tien_nga_paid_amount 01/05/2025 15/05/2025</code>",
+                "⚠️ Định dạng ngày không hợp lệ.\nVí dụ: <code>/tien_nga_paid_amount_report 01/05/2025 15/05/2025</code>",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -1558,8 +1979,8 @@ async def tien_nga_paid_amount_handler(client, message: Message) -> None:
         await message.reply_text(
             "<b>THỐNG KÊ ĐÃ THANH TOÁN</b>\n\n"
             "Vui lòng chọn khoảng thời gian: \n"
-            "Hoặc nhập: <code>/tien_nga_paid_amount DD/MM/YYYY DD/MM/YYYY</code> \n"
-            "Hoặc nhập: <code>/tien_nga_paid_amount [MÃ_HỘ] DD/MM/YYYY DD/MM/YYYY</code>",
+            "Hoặc nhập: <code>/tien_nga_paid_amount_report DD/MM/YYYY DD/MM/YYYY</code> \n"
+            "Hoặc nhập: <code>/tien_nga_paid_amount_report [MÃ_HỘ] DD/MM/YYYY DD/MM/YYYY</code>",
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML
         )
@@ -1699,12 +2120,6 @@ async def tien_nga_paid_amount_callback(client, callback_query: CallbackQuery):
         from sqlalchemy import func
         db = SessionLocal()
         try:
-            def fmt_vn(val):
-                try:
-                    return f"{int(val):,} đ".replace(",", ".")
-                except:
-                    return "0 đ"
-
             # Tổng toàn hệ thống
             total = db.query(
                 func.sum(DailyPurchases.paid_amount).label("paid")
@@ -1782,12 +2197,6 @@ async def tien_nga_paid_amount_callback(client, callback_query: CallbackQuery):
         from sqlalchemy import func, String
         db = SessionLocal()
         try:
-            def fmt_vn(val):
-                try:
-                    return f"{int(val):,} đ".replace(",", ".")
-                except:
-                    return "0 đ"
-
             def fmt_weight(val):
                 try:
                     return f"{val:,.1f} kg".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -1905,12 +2314,12 @@ async def tien_nga_paid_amount_callback(client, callback_query: CallbackQuery):
 
 # ===================== THỐNG KÊ LƯU SỔ (Save Amount) =====================
 
-@bot.on_message(filters.command(["tien_nga_save_amount", "tien_nga_luu_so"]) | filters.regex(r"^@\w+\s+/(tien_nga_save_amount|tien_nga_luu_so)\b"))
+@bot.on_message(filters.command(["tien_nga_save_amount_report", "tien_nga_bao_cao_luu_so"]) | filters.regex(r"^@\w+\s+/(tien_nga_save_amount_report|tien_nga_bao_cao_luu_so)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title("super_main", "main_ncc")
-async def tien_nga_save_amount_handler(client, message: Message) -> None:
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_save_amount_report_handler(client, message: Message) -> None:
     """Bước 1: Hiển thị button chọn khoảng thời gian hoặc nhận ngày tùy chọn."""
     args = message.text.strip().split()
     time_preset = ""
@@ -1923,7 +2332,7 @@ async def tien_nga_save_amount_handler(client, message: Message) -> None:
             end = datetime.strptime(args[3], "%d/%m/%Y").date()
         except Exception:
             await message.reply_text(
-                "⚠️ Định dạng không hợp lệ.\nVí dụ: <code>/tien_nga_save_amount X001 01/05/2025 15/05/2025</code>",
+                "⚠️ Định dạng không hợp lệ.\nVí dụ: <code>/tien_nga_save_amount_report_report X001 01/05/2025 15/05/2025</code>",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -1933,12 +2342,6 @@ async def tien_nga_save_amount_handler(client, message: Message) -> None:
         from sqlalchemy import func
         db = SessionLocal()
         try:
-            def fmt_vn(val):
-                try:
-                    return f"{int(val):,} đ".replace(",", ".")
-                except:
-                    return "0 đ"
-
             customer = db.query(Customers).filter(Customers.hoursehold_id == hh_id).first()
             cust_name = customer.fullname if customer else "Không rõ"
             cp_name = ""
@@ -1968,7 +2371,7 @@ async def tien_nga_save_amount_handler(client, message: Message) -> None:
 
             report = (
                 f"<b>THỐNG KÊ LƯU SỔ - HỘ DÂN</b>\n"
-                f"🗓 <b>{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}</b>\n\n"
+                f"<b>{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}</b>\n\n"
                 f"<b>Mã Hộ:</b> <code>{hh_id}</code>\n"
                 f"<b>Tên KH:</b> {cust_name}\n"
                 f"<b>Xưởng:</b> {cp_name or 'N/A'}\n"
@@ -1986,7 +2389,7 @@ async def tien_nga_save_amount_handler(client, message: Message) -> None:
             if cnt == 0:
                 report = (
                     f"<b>THỐNG KÊ LƯU SỔ - HỘ DÂN</b>\n"
-                    f"🗓 <b>{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}</b>\n\n"
+                    f"<b>{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}</b>\n\n"
                     f"<b>Mã Hộ:</b> <code>{hh_id}</code> | {cust_name}\n\n"
                     f"<i>Không có dữ liệu trong khoảng thời gian này.</i>"
                 )
@@ -2006,7 +2409,7 @@ async def tien_nga_save_amount_handler(client, message: Message) -> None:
             time_preset = f"c_{start.strftime('%d%m%y')}_{end.strftime('%d%m%y')}"
         except Exception:
             await message.reply_text(
-                "⚠️ Định dạng ngày không hợp lệ.\nVí dụ: <code>/tien_nga_save_amount 01/05/2025 15/05/2025</code>",
+                "⚠️ Định dạng ngày không hợp lệ.\nVí dụ: <code>/tien_nga_save_amount_report 01/05/2025 15/05/2025</code>",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -2019,7 +2422,7 @@ async def tien_nga_save_amount_handler(client, message: Message) -> None:
         ])
         await message.reply_text(
             f"<b>THỐNG KÊ LƯU SỔ</b>\n"
-            f"🗓 <b>{args[1]} - {args[2]}</b>\n\n"
+            f"<b>{args[1]} - {args[2]}</b>\n\n"
             f"Chọn phạm vi hiển thị:",
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML
@@ -2040,8 +2443,8 @@ async def tien_nga_save_amount_handler(client, message: Message) -> None:
         await message.reply_text(
             "<b>THỐNG KÊ LƯU SỔ</b>\n\n"
             "Vui lòng chọn khoảng thời gian: \n"
-            "Hoặc nhập: <code>/tien_nga_save_amount DD/MM/YYYY DD/MM/YYYY</code> \n"
-            "Hoặc nhập: <code>/tien_nga_save_amount [MÃ_HỘ] DD/MM/YYYY DD/MM/YYYY</code>",
+            "Hoặc nhập: <code>/tien_nga_save_amount_report DD/MM/YYYY DD/MM/YYYY</code> \n"
+            "Hoặc nhập: <code>/tien_nga_save_amount_report [MÃ_HỘ] DD/MM/YYYY DD/MM/YYYY</code>",
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML
         )
@@ -2181,12 +2584,6 @@ async def tien_nga_save_amount_callback(client, callback_query: CallbackQuery):
         from sqlalchemy import func
         db = SessionLocal()
         try:
-            def fmt_vn(val):
-                try:
-                    return f"{int(val):,} đ".replace(",", ".")
-                except:
-                    return "0 đ"
-
             # Tổng toàn hệ thống
             total = db.query(
                 func.sum(DailyPurchases.saved_amount).label("saved")
@@ -2264,18 +2661,6 @@ async def tien_nga_save_amount_callback(client, callback_query: CallbackQuery):
         from sqlalchemy import func, String
         db = SessionLocal()
         try:
-            def fmt_vn(val):
-                try:
-                    return f"{int(val):,} đ".replace(",", ".")
-                except:
-                    return "0 đ"
-
-            def fmt_weight(val):
-                try:
-                    return f"{val:,.1f} kg".replace(",", "X").replace(".", ",").replace("X", ".")
-                except:
-                    return "0,0 kg"
-
             # Find collection point
             cp_entity = db.query(CollectionPoint).filter(
                 CollectionPoint.id.cast(String).startswith(target_id)
@@ -2393,7 +2778,7 @@ _send_msg_state = {}
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-# @require_custom_title("super_main", "main")
+# @require_custom_title(CustomTitle.SUPER_MAIN, "main")
 async def send_message_handler(client, message: Message) -> None:
     """
     /send_message [Nội dung]
@@ -2548,7 +2933,7 @@ async def send_message_callback(client, callback_query: CallbackQuery):
         
         # Map NCC keys to custom_titles
         ncc_map = {
-            "mu": "member_ncc",
+            "mu": CustomTitle.MEMBER_SUPPLIER,
             "cui": "member_ncc_cui",
             "acid": "member_ncc_acid",
         }
@@ -2713,3 +3098,1117 @@ async def _do_send_to_groups(client, state, project_name: str, target_titles: li
         db.close()
     
     return sent, failed
+
+
+#############  Củi (Firewood) #############
+@bot.on_message(filters.command(["tien_nga_firewood_purcharse", "tien_nga_nhap_mua_cui"]) | filters.regex(r"^@\w+\s+/tien_nga_firewood_purcharse|/tien_nga_nhap_mua_cui\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_firewood_purcharse_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    # Nếu chỉ có 1 dòng (lệnh + có thể mã hộ)
+    if len(lines) < 2:
+        args = lines[0].split()
+        if len(args) < 2:
+            await message.reply_text(
+                "⚠️ Cú pháp: <code>/tien_nga_firewood_purcharse [Mã Khách Hàng]</code>\n\n"
+                "<i>Ví dụ: <code>/tien_nga_firewood_purcharse KH001</code></i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        hoursehold_id = args[1].upper()
+
+        from app.models.business import Customers
+
+        db = SessionLocal()
+        try:
+            customer = db.query(Customers).filter(
+                Customers.hoursehold_id == hoursehold_id,
+                Customers.status == "ACTIVE"
+            ).first()
+            if not customer:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy Khách hàng với mã <b>{hoursehold_id}</b>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            today_str = datetime.now().strftime("%d/%m/%Y")
+
+            form_template = f"""<b>FORM NHẬP MUA CỦI</b>
+Khách hàng: <b>{customer.fullname}</b> (<code>{hoursehold_id}</code>)
+
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/tien_nga_firewood_purcharse
+Mã Khách Hàng: {hoursehold_id}
+Ngày: {today_str}
+Kích Thước Xe: 
+Số Lượng Chuyến: 
+Khối Lượng Củi: 
+Đơn Giá: 
+Tạm Ứng: 0</pre>
+
+<i>Ghi chú:
+- Thành Tiền tự tính = Khối Lượng Củi x Đơn Giá
+- Số tiền ví dụ: 1.500.000 hoặc 500.000</i>"""
+            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error fetching customer for firewood purchase: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    # Parse form data (nhiều dòng)
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    hoursehold_id = data.get("Mã Khách Hàng", "").strip().upper()
+    ngay_str = data.get("Ngày", "").strip()
+    vehicle_size = data.get("Kích Thước Xe", "").strip()
+
+    if not hoursehold_id:
+        await message.reply_text("⚠️ <b>Mã Khách Hàng</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    if not ngay_str:
+        await message.reply_text("⚠️ <b>Ngày</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        ngay = datetime.strptime(ngay_str, "%d/%m/%Y").date()
+    except:
+        await message.reply_text(
+            "⚠️ Định dạng <b>Ngày</b> không hợp lệ. Vui lòng nhập DD/MM/YYYY.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    trip_count = int(parse_float_vn(data.get("Số Lượng Chuyến", "0")))
+    firewood_weight = parse_float_vn(data.get("Khối Lượng Củi", "0"))
+    unit_price = parse_float_vn(data.get("Đơn Giá", "0"))
+    advance_amount = parse_float_vn(data.get("Tạm Ứng", "0"))
+
+    # Validate
+    if not vehicle_size:
+        await message.reply_text("⚠️ <b>Kích Thước Xe</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+    if trip_count <= 0:
+        await message.reply_text("⚠️ <b>Số Lượng Chuyến</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+    if firewood_weight <= 0:
+        await message.reply_text("⚠️ <b>Khối Lượng Củi</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+    if unit_price <= 0:
+        await message.reply_text("⚠️ <b>Đơn Giá</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
+    # Auto-calc thành tiền
+    total_amount = round(firewood_weight * unit_price, 0)
+
+    from app.models.business import Customers, FirewoodPurchases
+    import uuid as uuid_lib
+
+    db = SessionLocal()
+    try:
+        # Verify customer exists
+        customer = db.query(Customers).filter(
+            Customers.hoursehold_id == hoursehold_id,
+            Customers.status == "ACTIVE"
+        ).first()
+        if not customer:
+            await message.reply_text(
+                f"⚠️ Mã khách hàng <b>{hoursehold_id}</b> không tồn tại hoặc đã bị xóa.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        new_purchase = FirewoodPurchases(
+            id=uuid_lib.uuid4(),
+            day=ngay,
+            hoursehold_id=hoursehold_id,
+            vehicle_size=vehicle_size,
+            trip_count=trip_count,
+            firewood_weight=firewood_weight,
+            unit_price=unit_price,
+            total_amount=total_amount,
+            advance_amount=advance_amount
+        )
+        db.add(new_purchase)
+        db.commit()
+        db.refresh(new_purchase)
+
+        def fmt_money(val):
+            if val is None: return "0 đ"
+            try:
+                return f"{int(val):,} đ".replace(",", ".")
+            except:
+                return str(val)
+
+        LogInfo(
+            f"[TienNga] Created firewood purchase for '{customer.fullname}' ({hoursehold_id}) on {ngay_str} by user {message.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+
+        await message.reply_text(
+            f"<b>NHẬP MUA CỦI THÀNH CÔNG</b>\n\n"
+            f"<b>THÔNG TIN KHÁCH HÀNG</b>\n"
+            f"<b>Mã KH:</b> <code>{hoursehold_id}</code>\n"
+            f"<b>Tên KH:</b> {customer.fullname}\n"
+            f"<b>SĐT:</b> {customer.number_phone or '—'}\n"
+            f"<b>Địa Chỉ:</b> {customer.address or '—'}\n\n"
+            f"<b>CHI TIẾT MUA CỦI</b>\n"
+            f"<code>{new_purchase.id}</code>\n"
+            f"<b>Ngày:</b> {ngay_str}\n"
+            f"<b>Kích Thước Xe:</b> {vehicle_size}\n"
+            f"<b>Số Chuyến:</b> {trip_count}\n"
+            f"<b>Khối Lượng Củi:</b> <code>{firewood_weight:,.1f}</code>\n"
+            f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
+            f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
+            f"<b>Tạm Ứng:</b> <code>{fmt_money(advance_amount)}</code>",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error creating firewood purchase: {e}", LogType.SYSTEM_STATUS)
+        db.rollback()
+        traceback.print_exc()
+        await message.reply_text("❌ Có lỗi xảy ra khi lưu vào database.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# ===================== XUẤT BÁO CÁO TỔNG HỢP (Export Summary) =====================
+
+@bot.on_message(filters.command(["tien_nga_export_summary", "tien_nga_xuat_bao_cao_tong_hop"]) | filters.regex(r"^@\w+\s+/tien_nga_export_summary|/tien_nga_xuat_bao_cao_tong_hop\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_export_summary_handler(client, message: Message) -> None:
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("1 ngày", callback_data="tn_sum_1d"),
+         InlineKeyboardButton("7 ngày", callback_data="tn_sum_7d"),
+         InlineKeyboardButton("14 ngày", callback_data="tn_sum_14d")],
+        [InlineKeyboardButton("21 ngày", callback_data="tn_sum_21d"),
+         InlineKeyboardButton("1 tháng", callback_data="tn_sum_1m"),
+         InlineKeyboardButton("3 tháng", callback_data="tn_sum_3m")],
+        [InlineKeyboardButton("6 tháng", callback_data="tn_sum_6m"),
+         InlineKeyboardButton("1 năm", callback_data="tn_sum_1y"),
+         InlineKeyboardButton("Năm trước", callback_data="tn_sum_py")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_sum_cancel")]
+    ])
+    await message.reply_text(
+        "<b>XUẤT BÁO CÁO TỔNG HỢP MUA MỦ</b>\n\n"
+        "Vui lòng chọn khoảng thời gian:",
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_sum_"))
+async def tien_nga_export_summary_callback(client, callback_query: CallbackQuery):
+    data = callback_query.data
+
+    if data == "tn_sum_cancel":
+        await callback_query.message.delete()
+        return
+
+    time_code = data[len("tn_sum_"):]
+
+    await callback_query.message.edit_text("⏳ <i>Đang tạo báo cáo tổng hợp Excel, vui lòng chờ...</i>", parse_mode=ParseMode.HTML)
+
+    today = datetime.now().date()
+    start_date = today
+    end_date = today
+
+    if time_code == "1d":
+        start_date = today
+    elif time_code == "7d":
+        start_date = today - timedelta(days=6)
+    elif time_code == "14d":
+        start_date = today - timedelta(days=13)
+    elif time_code == "21d":
+        start_date = today - timedelta(days=20)
+    elif time_code == "1m":
+        start_date = today - timedelta(days=29)
+    elif time_code == "3m":
+        start_date = today - timedelta(days=89)
+    elif time_code == "6m":
+        start_date = today - timedelta(days=179)
+    elif time_code == "1y":
+        start_date = today - timedelta(days=364)
+    elif time_code == "py":
+        last_year = today.year - 1
+        start_date = datetime(last_year, 1, 1).date()
+        end_date = datetime(last_year, 12, 31).date()
+
+    from app.db.session import SessionLocal
+    from app.models.business import DailyPurchases, CollectionPoint
+    from sqlalchemy import func
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
+    import tempfile
+    import os
+
+    db = SessionLocal()
+    try:
+        # Lấy tất cả Điểm Thu Mua
+        points = db.query(CollectionPoint).order_by(CollectionPoint.collection_name).all()
+
+        # Tất cả các điểm
+        cp_list = [("ALL", "TỔNG HỢP TẤT CẢ")]
+        # Thêm từng điểm
+        cp_list.extend([(p.id, p.collection_name) for p in points])
+        # Thêm 1 entry cho "Chưa phân xưởng"
+        cp_list.append((None, "Chưa phân xưởng"))
+
+        # ==== Styles ====
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        total_font = Font(bold=True, size=11)
+        total_fill = PatternFill("solid", fgColor="FFC000")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        right_align = Alignment(horizontal="right", vertical="center")
+        left_align = Alignment(horizontal="left", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin")
+        )
+        alt_fill = PatternFill("solid", fgColor="D9E2F3")
+        number_format_vn = '#,##0'
+        number_format_kg = '#,##0.0'
+
+        headers = [
+            "Ngày",
+            "Tổng Số Kg",
+            "Tổng Kg Trừ Bì",
+            "Tổng Mủ Khô",
+            "Tổng Thành Tiền",
+            "Tổng Đã Thanh Toán",
+            "Tổng Lưu Sổ",
+        ]
+        col_widths = [14, 16, 16, 16, 20, 20, 20]
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        sheets_with_data = 0
+
+        for cp_id, cp_name in cp_list:
+            # Query aggregated by day
+            q = db.query(
+                DailyPurchases.day,
+                func.sum(DailyPurchases.weight).label('total_weight'),
+                func.sum(DailyPurchases.actual_weight).label('total_tare'),
+                func.sum(DailyPurchases.dry_rubber).label('total_dry'),
+                func.sum(DailyPurchases.total_amount).label('total_amount'),
+                func.sum(DailyPurchases.paid_amount).label('total_paid'),
+                func.sum(DailyPurchases.saved_amount).label('total_saved'),
+            ).filter(
+                DailyPurchases.day >= start_date,
+                DailyPurchases.day <= end_date
+            )
+
+            if cp_id == "ALL":
+                pass # Không filter điểm thu mua
+            elif cp_id is not None:
+                q = q.filter(DailyPurchases.collection_point_id == cp_id)
+            else:
+                q = q.filter(DailyPurchases.collection_point_id == None)
+
+            q = q.group_by(DailyPurchases.day).order_by(DailyPurchases.day)
+            rows_data = q.all()
+
+            if not rows_data:
+                continue
+
+            sheets_with_data += 1
+            sheet_name = cp_name[:31]
+            ws = wb.create_sheet(title=sheet_name)
+
+            # Header row
+            for col_idx, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+                cell.border = thin_border
+
+            # Data rows
+            sum_weight = 0
+            sum_tare = 0
+            sum_dry = 0
+            sum_amount = 0
+            sum_paid = 0
+            sum_saved = 0
+
+            for idx, row_data in enumerate(rows_data):
+                row_num = idx + 2
+                row_fill = alt_fill if idx % 2 == 0 else None
+
+                w = row_data.total_weight or 0
+                t = row_data.total_tare or 0
+                d = row_data.total_dry or 0
+                a = row_data.total_amount or 0
+                p = row_data.total_paid or 0
+                s = row_data.total_saved or 0
+
+                sum_weight += w
+                sum_tare += t
+                sum_dry += d
+                sum_amount += a
+                sum_paid += p
+                sum_saved += s
+
+                values = [
+                    row_data.day.strftime("%d/%m/%Y"),
+                    w, t, d, a, p, s
+                ]
+
+                for col_idx, val in enumerate(values, 1):
+                    cell = ws.cell(row=row_num, column=col_idx, value=val)
+                    cell.border = thin_border
+                    if row_fill:
+                        cell.fill = row_fill
+                    if col_idx == 1:
+                        cell.alignment = center_align
+                    else:
+                        cell.alignment = right_align
+                        if col_idx in (2, 3, 4):
+                            cell.number_format = number_format_kg
+                        else:
+                            cell.number_format = number_format_vn
+
+            # Total row
+            total_row = len(rows_data) + 2
+            total_values = ["TỔNG CỘNG", sum_weight, sum_tare, sum_dry, sum_amount, sum_paid, sum_saved]
+
+            for col_idx, val in enumerate(total_values, 1):
+                cell = ws.cell(row=total_row, column=col_idx, value=val)
+                cell.font = total_font
+                cell.fill = total_fill
+                cell.border = thin_border
+                if col_idx == 1:
+                    cell.alignment = center_align
+                else:
+                    cell.alignment = right_align
+                    if col_idx in (2, 3, 4):
+                        cell.number_format = number_format_kg
+                    else:
+                        cell.number_format = number_format_vn
+
+            # Column widths + freeze
+            for col_idx, width in enumerate(col_widths, 1):
+                col_letter = openpyxl.utils.get_column_letter(col_idx)
+                ws.column_dimensions[col_letter].width = width
+            ws.freeze_panes = "A2"
+
+        if sheets_with_data == 0:
+            await callback_query.message.edit_text(
+                "⚠️ Không có dữ liệu mua mủ trong khoảng thời gian đã chọn.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Save & send
+        file_name = f"summary_{today.strftime('%Y_%m_%d')}.xlsx"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+
+        timeframe_str = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
+
+        await callback_query.message.delete()
+        await client.send_document(
+            chat_id=callback_query.message.chat.id,
+            document=tmp_path,
+            file_name=file_name,
+            caption=(
+                f"<b>BÁO CÁO TỔNG HỢP MUA MỦ</b>\n\n"
+                f"<b>Thời gian:</b> {timeframe_str}\n"
+                f"<b>Số xưởng:</b> {sheets_with_data} tab\n"
+                f"<b>File:</b> <code>{file_name}</code>"
+            ),
+            parse_mode=ParseMode.HTML
+        )
+
+        try:
+            os.unlink(tmp_path)
+        except:
+            pass
+
+    except Exception as e:
+        import traceback as tb
+        LogError(f"[TienNga] Error export summary: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text("❌ Có lỗi xảy ra khi tạo báo cáo.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# ===================== CÔNG TY / ĐƠN VỊ =====================
+
+@bot.on_message(filters.command(["tien_nga_create_company", "tien_nga_tao_don_vi"]) | filters.regex(r"^@\w+\s+/tien_nga_create_company|/tien_nga_tao_don_vi\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_create_company_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    if len(lines) < 2:
+        form_template = """<b>FORM TẠO ĐƠN VỊ (CÔNG TY)</b>
+
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/tien_nga_create_company
+Mã Đơn Vị: 
+Tên Đơn Vị: </pre>
+
+<i>Ghi chú: Mã đơn vị nên viết liền không dấu (VD: CT001).</i>"""
+        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    unit_id = data.get("Mã Đơn Vị", "").strip()
+    unit_name = data.get("Tên Đơn Vị", "").strip()
+
+    if not unit_id:
+        await message.reply_text("⚠️ <b>Mã Đơn Vị</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+    if not unit_name:
+        await message.reply_text("⚠️ <b>Tên Đơn Vị</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    from app.db.session import SessionLocal
+    from app.models.business import CompanyCustomers
+    import uuid as uuid_lib
+
+    db = SessionLocal()
+    try:
+        # Kiểm tra xem mã đã tồn tại chưa
+        existing = db.query(CompanyCustomers).filter(CompanyCustomers.unit_id == unit_id).first()
+        if existing:
+            await message.reply_text(f"⚠️ Mã đơn vị <b>{unit_id}</b> đã tồn tại trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        new_company = CompanyCustomers(
+            id=uuid_lib.uuid4(),
+            unit_id=unit_id,
+            unit_name=unit_name,
+            status="ACTIVE"
+        )
+        db.add(new_company)
+        db.commit()
+
+        await message.reply_text(
+            f"✅ <b>Tạo Đơn Vị Thành Công!</b>\n\n"
+            f"<b>Mã Đơn Vị:</b> <code>{unit_id}</code>\n"
+            f"<b>Tên Đơn Vị:</b> {unit_name}\n"
+            f"<b>Trạng Thái:</b> ACTIVE",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error creating company customer: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        db.rollback()
+        await message.reply_text("❌ Có lỗi hệ thống khi lưu thông tin đơn vị.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_company_business", "tien_nga_kinh_doanh_don_vi"]) | filters.regex(r"^@\w+\s+/tien_nga_company_business|/tien_nga_kinh_doanh_don_vi\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_company_business_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    # Nếu chỉ có 1 dòng (lệnh + mã đơn vị)
+    if len(lines) < 2:
+        args = lines[0].split()
+        if len(args) < 2:
+            await message.reply_text(
+                "⚠️ Cú pháp: <code>/tien_nga_company_business [Mã Đơn Vị]</code>\n\n"
+                "<i>Ví dụ: <code>/tien_nga_company_business CT001</code></i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        unit_id = args[1].upper()
+
+        from app.models.business import CompanyCustomers
+        from app.db.session import SessionLocal
+
+        db = SessionLocal()
+        try:
+            company = db.query(CompanyCustomers).filter(
+                CompanyCustomers.unit_id == unit_id,
+                CompanyCustomers.status == "ACTIVE"
+            ).first()
+            if not company:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy Đơn vị với mã <b>{unit_id}</b>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            today_str = datetime.now().strftime("%d/%m/%Y")
+
+            form_template = f"""<b>FORM GIAO DỊCH ĐƠN VỊ</b>
+Đơn vị: <b>{company.unit_name}</b> (<code>{unit_id}</code>)
+
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/tien_nga_company_business
+Mã Đơn Vị: {unit_id}
+Ngày: {today_str}
+Nhập: 0
+Xuất: 0
+Đơn Giá: 0
+Mã Đơn Hàng: 
+Ghi Chú: </pre>
+
+<i>Ghi chú:
+- Hệ thống sẽ tự tính Thành Tiền = (Nhập hoặc Xuất) x Đơn Giá. Nếu cả Nhập và Xuất đều bằng 0, Thành Tiền = 0.
+- Mã Đơn hàng có thể bỏ trống.</i>"""
+            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            import traceback as tb
+            LogError(f"Error fetching company for business: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    # Parse form data (nhiều dòng)
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    unit_id = data.get("Mã Đơn Vị", "").strip().upper()
+    ngay_str = data.get("Ngày", "").strip()
+    order_code = data.get("Mã Đơn Hàng", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
+
+    if not unit_id:
+        await message.reply_text("⚠️ <b>Mã Đơn Vị</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    if not ngay_str:
+        await message.reply_text("⚠️ <b>Ngày</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        ngay = datetime.strptime(ngay_str, "%d/%m/%Y").date()
+    except:
+        await message.reply_text(
+            "⚠️ Định dạng <b>Ngày</b> không hợp lệ. Vui lòng nhập DD/MM/YYYY.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    import_amt = parse_float_vn(data.get("Nhập", "0"))
+    export_amt = parse_float_vn(data.get("Xuất", "0"))
+    unit_price = parse_float_vn(data.get("Đơn Giá", "0"))
+    total_amount = parse_float_vn(data.get("Thành Tiền", "-1"))
+
+    # Auto-calc thành tiền
+    if total_amount < 0:  # Không điền Thành Tiền
+        if import_amt == 0 and export_amt == 0:
+            total_amount = 0
+        else:
+            total_amount = round((import_amt + export_amt) * unit_price, 0)
+
+    from app.models.business import CompanyCustomers, CompanyBusinesses
+    from app.db.session import SessionLocal
+    import uuid as uuid_lib
+    
+    db = SessionLocal()
+    try:
+        company = db.query(CompanyCustomers).filter(
+            CompanyCustomers.unit_id == unit_id,
+            CompanyCustomers.status == "ACTIVE"
+        ).first()
+        if not company:
+            await message.reply_text(
+                f"⚠️ Mã đơn vị <b>{unit_id}</b> không tồn tại hoặc đã bị xóa.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        new_business = CompanyBusinesses(
+            id=uuid_lib.uuid4(),
+            day=ngay,
+            unit_id=unit_id,
+            import_amount=import_amt,
+            export_amount=export_amt,
+            order_code=order_code,
+            unit_price=unit_price,
+            total_amount=total_amount,
+            notes=notes
+        )
+        db.add(new_business)
+        db.commit()
+
+        def fmt_money(val):
+            return f"{int(val):,} đ".replace(",", ".")
+
+        await message.reply_text(
+            f"✅ <b>Lưu Giao Dịch Đơn Vị Thành Công!</b>\n\n"
+            f"<b>Đơn vị:</b> {company.unit_name} (<code>{unit_id}</code>)\n"
+            f"<b>Ngày:</b> {ngay_str}\n"
+            f"<b>Nhập:</b> <code>{import_amt:,.2f}</code>\n"
+            f"<b>Xuất:</b> <code>{export_amt:,.2f}</code>\n"
+            f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
+            f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
+            f"<b>Mã Đơn Hàng:</b> {order_code}\n"
+            f"<b>Ghi Chú:</b> {notes}",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error creating company business: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        db.rollback()
+        await message.reply_text("❌ Có lỗi hệ thống khi lưu giao dịch.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+
+# =========================================================================================
+# Biểu đồ Mua Mủ (Chart Purchases)
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_chart_purcharse", "tien_nga_bieu_do_thu_mua"]) | filters.regex(r"^@\w+\s+/tien_nga_chart_purcharse|/tien_nga_bieu_do_thu_mua\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_chart_purcharse_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, "tien_nga_chart_purcharse")
+    if args is None: return
+
+    # Parse custom date range and optional household_id
+    command_text = message.text.split(maxsplit=1)
+    custom_date_range = ""
+    hhd_id = None
+    if len(command_text) > 1:
+        import re
+        m = re.match(r"(?:([A-Za-z0-9_-]+)\s+)?(\d{1,2})/(\d{4})\s*-\s*(\d{1,2})/(\d{4})", command_text[1].strip())
+        if m:
+            hhd_id = m.group(1)
+            m1, y1, m2, y2 = m.group(2), m.group(3), m.group(4), m.group(5)
+            custom_date_range = f"{int(m1):02d}{y1[2:]}_{int(m2):02d}{y2[2:]}"
+        else:
+            await message.reply_text("⚠️ Định dạng ngày không hợp lệ. Vui lòng thử:\n<code>/tien_nga_chart_purcharse 01/2026 - 05/2026</code>\nHoặc:\n<code>/tien_nga_chart_purcharse KH001 01/2026 - 05/2026</code>", parse_mode=ParseMode.HTML)
+            return
+
+    db = SessionLocal()
+    try:
+        if hhd_id:
+            status_msg = await message.reply_text("⏳ Đang tổng hợp dữ liệu cá nhân...", parse_mode=ParseMode.HTML)
+            from app.models.business import Customers, DailyPurchases
+            from sqlalchemy import func
+            import calendar
+            from datetime import datetime
+            
+            customer = db.query(Customers).filter(Customers.hoursehold_id == hhd_id).first()
+            customer_name = customer.fullname if customer else "Khách vãng lai"
+            
+            start_m, start_y = int(m1), int(y1)
+            end_m, end_y = int(m2), int(y2)
+            start_date = datetime(start_y, start_m, 1, 0, 0, 0)
+            last_day = calendar.monthrange(end_y, end_m)[1]
+            end_date = datetime(end_y, end_m, last_day, 23, 59, 59, 999999)
+            
+            query = db.query(
+                DailyPurchases.day,
+                func.sum(DailyPurchases.weight).label('t_weight'),
+                func.sum(DailyPurchases.actual_weight).label('t_actual_weight'),
+                func.sum(DailyPurchases.dry_rubber).label('t_dry_rubber')
+            ).filter(
+                DailyPurchases.is_checked == True,
+                DailyPurchases.hoursehold_id == hhd_id,
+                DailyPurchases.day >= start_date.date(),
+                DailyPurchases.day <= end_date.date()
+            )
+            group_results = query.group_by(DailyPurchases.day).order_by(DailyPurchases.day.asc()).all()
+            
+            if not group_results:
+                await status_msg.edit_text(f"❌ Không có dữ liệu thu mua nào của hộ <b>{hhd_id}</b> trong khoảng thời gian này.", parse_mode=ParseMode.HTML)
+                return
+                
+            months_dict = {}
+            for r in group_results:
+                if r.day:
+                    m_key = r.day.strftime("Tháng %m/%Y")
+                    if m_key not in months_dict:
+                        months_dict[m_key] = {"labels": [], "weight": [], "actual_weight": [], "dry_rubber": []}
+                    months_dict[m_key]["labels"].append(r.day.strftime("%d/%m"))
+                    months_dict[m_key]["weight"].append(float(r.t_weight or 0))
+                    months_dict[m_key]["actual_weight"].append(float(r.t_actual_weight or 0))
+                    months_dict[m_key]["dry_rubber"].append(float(r.t_dry_rubber or 0))
+                    
+            charts_list = []
+            for m_key, m_data in months_dict.items():
+                charts_list.append({
+                    "month_label": m_key,
+                    "labels": m_data["labels"],
+                    "weight": m_data["weight"],
+                    "actual_weight": m_data["actual_weight"],
+                    "dry_rubber": m_data["dry_rubber"]
+                })
+                    
+            from bot.utils.chart_generator import generate_chart_image
+            chart_data = {
+                "title": f"Biểu đồ thu mua: Hộ {customer_name}",
+                "subtitle": f"Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}",
+                "charts": charts_list
+            }
+            img_buf = await generate_chart_image(chart_data)
+            await message.reply_document(
+                document=img_buf,
+                caption=f"📈 <b>BIỂU ĐỒ BÁN MỦ - {customer_name.upper()}</b>\nMã hộ: <b>{hhd_id}</b>\nThời gian: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}",
+                parse_mode=ParseMode.HTML
+            )
+            await status_msg.delete()
+            return
+            
+        from app.models.business import CollectionPoint
+        cps = db.query(CollectionPoint).all()
+        
+        keyboard = []
+        if custom_date_range:
+            keyboard.append([InlineKeyboardButton("Tổng (Toàn hệ thống)", callback_data=f"cb_tnchart_c_all_{custom_date_range}")])
+            row = []
+            for cp in cps:
+                if cp.collection_name:
+                    row.append(InlineKeyboardButton(cp.collection_name, callback_data=f"cb_tnchart_c_{cp.id}_{custom_date_range}"))
+                    if len(row) == 2:
+                        keyboard.append(row)
+                        row = []
+            if len(row) > 0:
+                keyboard.append(row)
+            keyboard.append([InlineKeyboardButton("Hủy", callback_data="cb_tnchart_scope_cancel")])
+        else:
+            keyboard.append([InlineKeyboardButton("Tổng (Toàn hệ thống)", callback_data="cb_tnchart_scope_all")])
+            row = []
+            for cp in cps:
+                if cp.collection_name:
+                    row.append(InlineKeyboardButton(cp.collection_name, callback_data=f"cb_tnchart_scope_{cp.id}"))
+                    if len(row) == 2:
+                        keyboard.append(row)
+                        row = []
+            if len(row) > 0:
+                keyboard.append(row)
+            keyboard.append([InlineKeyboardButton("Hủy", callback_data="cb_tnchart_scope_cancel")])
+            
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        txt = "<b>BIỂU ĐỒ THU MUA MỦ</b>\n"
+        txt += "<i>Gợi ý tra cứu nhanh:</i>\n<code>/tien_nga_chart_purcharse [mã hộ] mm/yyyy - mm/yyyy</code>\n"
+        txt += "<i>Gợi ý tra cứu nhanh:</i>\n<code>/tien_nga_chart_purcharse mm/yyyy - mm/yyyy</code>\n"
+        
+        if custom_date_range:
+            txt += f"<i>Đã chọn thời gian: {m1}/{y1} - {m2}/{y2}</i>\n"
+        txt += "Vui lòng chọn phạm vi lên biểu đồ:"
+        
+        await message.reply_text(
+            text=txt,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in chart_purcharse_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^cb_tnchart_scope_(.*)$"))
+async def tien_nga_chart_scope_callback(client, callback_query: CallbackQuery):
+    scope_id = callback_query.matches[0].group(1)
+    
+    if scope_id == "cancel":
+        await callback_query.message.delete()
+        return
+
+    # Menu thời gian
+    keyboard = [
+        [
+            InlineKeyboardButton("1 Tháng", callback_data=f"cb_tnchart_time_{scope_id}_1m"),
+            InlineKeyboardButton("3 Tháng", callback_data=f"cb_tnchart_time_{scope_id}_3m")
+        ],
+        [
+            InlineKeyboardButton("6 Tháng", callback_data=f"cb_tnchart_time_{scope_id}_6m"),
+            InlineKeyboardButton("1 Năm", callback_data=f"cb_tnchart_time_{scope_id}_1y")
+        ],
+        [
+            InlineKeyboardButton("Năm hiện tại", callback_data=f"cb_tnchart_time_{scope_id}_ty"),
+            InlineKeyboardButton("Năm trước", callback_data=f"cb_tnchart_time_{scope_id}_ly")
+        ],
+        [
+            InlineKeyboardButton("Quay Lại", callback_data="cb_tnchart_back"),
+            InlineKeyboardButton("Hủy", callback_data="cb_tnchart_scope_cancel")
+        ]
+    ]
+    
+    await callback_query.message.edit_text(
+        "<b>Khung thời gian</b>\n\nBạn muốn vẽ biểu đồ trong khoảng thời gian nào?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode=ParseMode.HTML
+    )
+
+@bot.on_callback_query(filters.regex(r"^cb_tnchart_back$"))
+async def tien_nga_chart_back_callback(client, callback_query: CallbackQuery):
+    db = SessionLocal()
+    try:
+        from app.models.business import CollectionPoint
+        cps = db.query(CollectionPoint).all()
+        keyboard = []
+        keyboard.append([InlineKeyboardButton("Tổng (Toàn hệ thống)", callback_data="cb_tnchart_scope_all")])
+        row = []
+        for cp in cps:
+            if cp.collection_name:
+                row.append(InlineKeyboardButton(cp.collection_name, callback_data=f"cb_tnchart_scope_{cp.id}"))
+                if len(row) == 2:
+                    keyboard.append(row)
+                    row = []
+        if len(row) > 0:
+            keyboard.append(row)
+            
+        keyboard.append([InlineKeyboardButton("Hủy", callback_data="cb_tnchart_scope_cancel")])
+        
+        await callback_query.message.edit_text(
+            "<b>BIỂU ĐỒ THU MUA MỦ</b>\n\n"
+            "Vui lòng chọn phạm vi lên biểu đồ:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        await callback_query.message.edit_text("❌ Lỗi hệ thống.")
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^cb_tnchart_time_(.*)_(.*)$"))
+async def tien_nga_chart_time_callback(client, callback_query: CallbackQuery):
+    scope_id = callback_query.matches[0].group(1)
+    time_code = callback_query.matches[0].group(2)
+    
+    await callback_query.message.edit_text("⏳ Đang tổng hợp dữ liệu...\n<i>Quá trình này có thể mất vài giây.</i>", parse_mode=ParseMode.HTML)
+    
+    from datetime import datetime, timedelta
+    from sqlalchemy import func
+    from app.models.business import DailyPurchases, CollectionPoint
+    
+    today = datetime.now()
+    if time_code == "1m":
+        start_date = today - timedelta(days=30)
+    elif time_code == "3m":
+        start_date = today - timedelta(days=90)
+    elif time_code == "6m":
+        start_date = today - timedelta(days=180)
+    elif time_code == "1y":
+        start_date = today - timedelta(days=365)
+    elif time_code == "ty":
+        start_date = datetime(today.year, 1, 1)
+    elif time_code == "ly":
+        start_date = datetime(today.year - 1, 1, 1)
+        today = datetime(today.year - 1, 12, 31)
+    else:
+        start_date = today - timedelta(days=30)
+        
+    start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_date = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+    
+    db = SessionLocal()
+    try:
+        query = db.query(
+            DailyPurchases.day,
+            func.sum(DailyPurchases.weight).label('t_weight'),
+            func.sum(DailyPurchases.actual_weight).label('t_actual_weight'),
+            func.sum(DailyPurchases.dry_rubber).label('t_dry_rubber')
+        ).filter(
+            DailyPurchases.is_checked == True,
+            DailyPurchases.day >= start_date.date(),
+            DailyPurchases.day <= end_date.date()
+        )
+        
+        scope_label = "Tổng Toàn Hệ Thống"
+        if scope_id != "all":
+            cp = db.query(CollectionPoint).filter(CollectionPoint.id == scope_id).first()
+            if cp:
+                scope_label = cp.collection_name
+            query = query.filter(DailyPurchases.collection_point_id == scope_id)
+            
+        group_results = query.group_by(DailyPurchases.day).order_by(DailyPurchases.day.asc()).all()
+        
+        if not group_results:
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Quay Lại", callback_data=f"cb_tnchart_scope_{scope_id}")]])
+            await callback_query.message.edit_text(
+                "❌ Không có dữ liệu thu mua nào trong khoảng thời gian đã chọn.", 
+                reply_markup=kb
+            )
+            return
+            
+        months_dict = {}
+        for r in group_results:
+            if r.day:
+                m_key = r.day.strftime("Tháng %m/%Y")
+                if m_key not in months_dict:
+                    months_dict[m_key] = {"labels": [], "weight": [], "actual_weight": [], "dry_rubber": []}
+                
+                months_dict[m_key]["labels"].append(r.day.strftime("%d/%m"))
+                months_dict[m_key]["weight"].append(float(r.t_weight or 0))
+                months_dict[m_key]["actual_weight"].append(float(r.t_actual_weight or 0))
+                months_dict[m_key]["dry_rubber"].append(float(r.t_dry_rubber or 0))
+                
+        charts_list = []
+        for m_key, m_data in months_dict.items():
+            charts_list.append({
+                "month_label": m_key,
+                "labels": m_data["labels"],
+                "weight": m_data["weight"],
+                "actual_weight": m_data["actual_weight"],
+                "dry_rubber": m_data["dry_rubber"]
+            })
+                
+        # Gọi module vẽ đồ thị
+        from bot.utils.chart_generator import generate_chart_image
+        chart_data = {
+            "title": f"Biểu đồ thu mua: {scope_label}",
+            "subtitle": f"Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}",
+            "charts": charts_list
+        }
+        
+        img_buf = await generate_chart_image(chart_data)
+        
+        await callback_query.message.reply_document(
+            document=img_buf,
+            caption=f"<b>BIỂU ĐỒ THU MUA MỦ</b>\nXưởng: <b>{scope_label}</b>\nThời gian: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.message.delete()
+        
+    except Exception as e:
+        LogError(f"Error drawing chart: {e}", LogType.SYSTEM_STATUS)
+        try:
+            await callback_query.message.edit_text("❌ Có lỗi xảy ra trong quá trình tổng hợp dữ liệu.")
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^cb_tnchart_c_(.*)_(\d{4})_(\d{4})$"))
+async def tien_nga_chart_custom_callback(client, callback_query: CallbackQuery):
+    scope_id = callback_query.matches[0].group(1)
+    start_mmyy = callback_query.matches[0].group(2)
+    end_mmyy = callback_query.matches[0].group(3)
+    
+    await callback_query.message.edit_text("⏳ Đang tổng hợp dữ liệu (Tùy chọn)...\n<i>Quá trình này có thể mất vài giây.</i>", parse_mode=ParseMode.HTML)
+    
+    import calendar
+    from datetime import datetime
+    from sqlalchemy import func
+    from app.models.business import DailyPurchases, CollectionPoint
+    
+    # Parse mmyy
+    start_m = int(start_mmyy[:2])
+    start_y = int("20" + start_mmyy[2:])
+    end_m = int(end_mmyy[:2])
+    end_y = int("20" + end_mmyy[2:])
+    
+    start_date = datetime(start_y, start_m, 1, 0, 0, 0)
+    last_day = calendar.monthrange(end_y, end_m)[1]
+    end_date = datetime(end_y, end_m, last_day, 23, 59, 59, 999999)
+    
+    db = SessionLocal()
+    try:
+        query = db.query(
+            DailyPurchases.day,
+            func.sum(DailyPurchases.weight).label('t_weight'),
+            func.sum(DailyPurchases.actual_weight).label('t_actual_weight'),
+            func.sum(DailyPurchases.dry_rubber).label('t_dry_rubber')
+        ).filter(
+            DailyPurchases.is_checked == True,
+            DailyPurchases.day >= start_date.date(),
+            DailyPurchases.day <= end_date.date()
+        )
+        
+        scope_label = "Tổng Toàn Hệ Thống"
+        if scope_id != "all":
+            cp = db.query(CollectionPoint).filter(CollectionPoint.id == scope_id).first()
+            if cp:
+                scope_label = cp.collection_name
+            query = query.filter(DailyPurchases.collection_point_id == scope_id)
+            
+        group_results = query.group_by(DailyPurchases.day).order_by(DailyPurchases.day.asc()).all()
+        
+        if not group_results:
+            await callback_query.message.edit_text(
+                f"❌ Không có dữ liệu thu mua nào trong khoảng thời gian {start_m:02d}/{start_y} đến {end_m:02d}/{end_y}."
+            )
+            return
+            
+        months_dict = {}
+        for r in group_results:
+            if r.day:
+                m_key = r.day.strftime("Tháng %m/%Y")
+                if m_key not in months_dict:
+                    months_dict[m_key] = {"labels": [], "weight": [], "actual_weight": [], "dry_rubber": []}
+                
+                months_dict[m_key]["labels"].append(r.day.strftime("%d/%m"))
+                months_dict[m_key]["weight"].append(float(r.t_weight or 0))
+                months_dict[m_key]["actual_weight"].append(float(r.t_actual_weight or 0))
+                months_dict[m_key]["dry_rubber"].append(float(r.t_dry_rubber or 0))
+                
+        charts_list = []
+        for m_key, m_data in months_dict.items():
+            charts_list.append({
+                "month_label": m_key,
+                "labels": m_data["labels"],
+                "weight": m_data["weight"],
+                "actual_weight": m_data["actual_weight"],
+                "dry_rubber": m_data["dry_rubber"]
+            })
+                
+        # Gọi module vẽ đồ thị
+        from bot.utils.chart_generator import generate_chart_image
+        chart_data = {
+            "title": f"Biểu đồ thu mua: {scope_label}",
+            "subtitle": f"Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}",
+            "charts": charts_list
+        }
+        
+        img_buf = await generate_chart_image(chart_data)
+        
+        await callback_query.message.reply_document(
+            document=img_buf,
+            caption=f"<b>BIỂU ĐỒ THU MUA MỦ (TÙY CHỌN)</b>\nXưởng: <b>{scope_label}</b>\nThời gian: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.message.delete()
+        
+    except Exception as e:
+        LogError(f"Error drawing custom chart: {e}", LogType.SYSTEM_STATUS)
+        try:
+            await callback_query.message.edit_text("❌ Có lỗi xảy ra trong quá trình xuất dữ liệu tùy chỉnh.")
+        except Exception:
+            pass
+    finally:
+        db.close()

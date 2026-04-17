@@ -5,6 +5,7 @@ Các hàm xử lý dùng chung cho quản lý nhân sự, dùng được cho nhi
 import uuid
 import datetime
 from pyrogram.types import Message
+from bot.utils.enums import CustomTitle
 from pyrogram.enums import ParseMode
 from app.db.session import SessionLocal
 from app.models.employee import Employee
@@ -2586,7 +2587,7 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
         # Tìm nhóm member cùng project (custom_title: member_ns)
         # Need to determine which project this command belongs to, usually "Tiến Nga" in this context
         member_groups = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.custom_title == "member_ns",
+            TelegramProjectMember.custom_title == CustomTitle.MEMBER_HR,
             TelegramProjectMember.is_bot == False
         ).all()
         # Find exactly the member group where this user is present

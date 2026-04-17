@@ -85,11 +85,11 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
         if project and "tiến nga" in project.project_name.lower():
             buttons = [
                 [InlineKeyboardButton("Nhóm tổng", callback_data=f"sync_tn_{project_id}_tong")],
-                [InlineKeyboardButton("Nhà cung cấp", callback_data=f"sync_tn_{project_id}_ncc")],
-                [InlineKeyboardButton("Kinh doanh", callback_data=f"sync_tn_{project_id}_kd")],
-                [InlineKeyboardButton("Nhân sự", callback_data=f"sync_tn_{project_id}_ns")],
-                [InlineKeyboardButton("Quản lý hàng thành phẩm", callback_data=f"sync_tn_{project_id}_tp")],
-                [InlineKeyboardButton("Quản lý đối tác", callback_data=f"sync_tn_{project_id}_dt")],
+                [InlineKeyboardButton("Nhà cung cấp", callback_data=f"sync_tn_{project_id}_supplier")],
+                [InlineKeyboardButton("Kinh doanh", callback_data=f"sync_tn_{project_id}_sales")],
+                [InlineKeyboardButton("Nhân sự", callback_data=f"sync_tn_{project_id}_hr")],
+                [InlineKeyboardButton("Quản lý hàng thành phẩm", callback_data=f"sync_tn_{project_id}_product")],
+                [InlineKeyboardButton("Quản lý đối tác", callback_data=f"sync_tn_{project_id}_partner")],
                 [
                     InlineKeyboardButton("Trở lại", callback_data="sync_back_to_proj"),
                     InlineKeyboardButton("Hủy", callback_data="sync_cancel")
@@ -129,14 +129,14 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
 # --- Step 2b-TN: Tiến Nga - Select Role after department ---
 TN_DEPT_LABELS = {
     "tong": "Nhóm Tổng",
-    "ncc": "Nhà cung cấp",
-    "kd": "Kinh doanh",
-    "ns": "Nhân sự",
-    "tp": "Quản lý hàng thành phẩm",
-    "dt": "Quản lý đối tác",
+    "supplier": "Nhà cung cấp",
+    "sales": "Kinh doanh",
+    "hr": "Nhân sự",
+    "product": "Quản lý hàng thành phẩm",
+    "partner": "Quản lý đối tác",
 }
 
-@bot.on_callback_query(filters.regex(r"^sync_tn_(.+)_(tong|ncc|kd|ns|tp|dt)$"))
+@bot.on_callback_query(filters.regex(r"^sync_tn_(.+)_(tong|supplier|sales|hr|product|partner)$"))
 async def sync_tn_dept_callback(client, callback_query: CallbackQuery):
     project_id = callback_query.matches[0].group(1)
     dept = callback_query.matches[0].group(2)
@@ -217,11 +217,18 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
     # Determine custom_title for project sub-categories
     custom_title = None
     if subcategory != "none":
+        from bot.utils.enums import CustomTitle
         # Special case: "super_main" is used directly as custom_title (Tiến Nga - Nhóm Tổng)
         if subcategory == "super_main":
-            custom_title = "super_main"
+            custom_title = CustomTitle.SUPER_MAIN.value
         else:
-            custom_title = f"{group_role}_{subcategory}"  # e.g. main_device, member_vehicle, main_ncc
+            # We map it to matching Enum value if possible, else fallback to string.
+            # But the requirement says these are explicitly the values like "main_device", "member_vehicle"
+            custom_title = f"{group_role}_{subcategory}"  # e.g. CustomTitle.MAIN_DEVICE.value
+            try:
+                custom_title = CustomTitle(custom_title).value
+            except ValueError:
+                pass
 
     display_role = group_role.upper()
     extra_info = ""

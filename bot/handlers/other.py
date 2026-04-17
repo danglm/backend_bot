@@ -1,4 +1,5 @@
 from pyrogram import filters
+from bot.utils.enums import CustomTitle
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode
 from bot.utils.bot import bot
@@ -23,7 +24,7 @@ ACTIVE_SYNC_APP_SESSIONS = {}
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def create_smartphone_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_create_smartphone", "other_tao_dien_thoai"])
     if args is None: return
@@ -182,7 +183,7 @@ IMEI 1 là bắt buộc và không được trùng</i>"""
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def update_smartphone_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_update_smartphone", "other_cap_nhat_dien_thoai"])
     if args is None: return
@@ -352,7 +353,7 @@ Ghi Chú: {phone.notes or ""}
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def delete_smartphone_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_delete_smartphone", "other_xoa_dien_thoai"])
     if args is None: return
@@ -405,7 +406,7 @@ async def delete_smartphone_handler(client, message: Message) -> None:
 @bot.on_message(filters.command(["other_receive_device", "other_nhan_thiet_bi"]) | filters.regex(r"^@\w+\s+/(other_receive_device|other_nhan_thiet_bi)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Other")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def receive_device_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_receive_device", "other_nhan_thiet_bi"])
     if args is None: return
@@ -532,7 +533,7 @@ async def receive_device_handler(client, message: Message) -> None:
 @bot.on_message(filters.command(["other_return_device", "other_tra_thiet_bi"]) | filters.regex(r"^@\w+\s+/(other_return_device|other_tra_thiet_bi)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Other")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def return_device_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_return_device", "other_tra_thiet_bi"])
     if args is None: return
@@ -661,7 +662,7 @@ async def return_device_handler(client, message: Message) -> None:
 @bot.on_message(filters.command(["other_check_log_device", "other_lich_su_thiet_bi"]) | filters.regex(r"^@\w+\s+/(other_check_log_device|other_lich_su_thiet_bi)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Other")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def check_log_device_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_check_log_device", "other_lich_su_thiet_bi"])
     if args is None: return
@@ -826,7 +827,7 @@ async def check_log_device_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def create_sim_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_create_sim", "other_tao_sim"])
     if args is None: return
@@ -961,7 +962,7 @@ Mã Định Danh: mã nội bộ do bạn tự đặt (VD: SIM001)
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def update_sim_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_update_sim", "other_cap_nhat_sim"])
     if args is None: return
@@ -1107,7 +1108,7 @@ Loại SIM: {sim.sim_type or ""}
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def delete_sim_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_delete_sim", "other_xoa_sim"])
     if args is None: return
@@ -1161,7 +1162,7 @@ async def delete_sim_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def create_application_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_create_application", "other_tao_ung_dung"])
     if args is None: return
@@ -1323,7 +1324,7 @@ Trạng thái gồm: active, expired, suspended</i>"""
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def update_application_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_update_application", "other_cap_nhat_ung_dung"])
     if args is None: return
@@ -1501,7 +1502,7 @@ Trạng thái gồm: active, expired, suspended</i>"""
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def delete_application_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_delete_application", "other_xoa_ung_dung"])
     if args is None: return
@@ -1550,7 +1551,7 @@ async def delete_application_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def list_device_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_list_device", "other_danh_sach_thiet_bi"])
     if args is None: return
@@ -1712,7 +1713,7 @@ async def list_device_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def check_device_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_check_device", "other_tra_cuu_thiet_bi"])
     if args is None: return
@@ -1810,7 +1811,7 @@ async def check_device_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def sync_app_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_sync_app", "other_dong_bo_ung_dung"])
     if args is None: return
@@ -1893,7 +1894,7 @@ async def sync_app_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def sync_app_cb_handler(client, callback_query: CallbackQuery):
     action = callback_query.matches[0].group(1)
     payload = callback_query.matches[0].group(2)
@@ -1981,7 +1982,7 @@ async def sync_app_cb_handler(client, callback_query: CallbackQuery):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def create_laptop_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_create_laptop", "other_tao_laptop"])
     if args is None: return
@@ -2092,7 +2093,7 @@ Trạng Thái: available
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def update_laptop_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_update_laptop", "other_cap_nhat_laptop"])
     if args is None: return
@@ -2213,7 +2214,7 @@ Trạng Thái: {laptop.status or "available"}
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_device")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
 async def delete_laptop_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_delete_laptop", "other_xoa_laptop"])
     if args is None: return
@@ -2262,7 +2263,7 @@ async def delete_laptop_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_vehicle")
+@require_custom_title(CustomTitle.MAIN_VEHICLE)
 async def create_vehicle_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_create_vehicle", "other_tao_xe"])
     if args is None: return
@@ -2369,7 +2370,7 @@ Biển Số là bắt buộc và không được trùng</i>"""
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_vehicle")
+@require_custom_title(CustomTitle.MAIN_VEHICLE)
 async def update_vehicle_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_update_vehicle", "other_cap_nhat_xe"])
     if args is None: return
@@ -2505,7 +2506,7 @@ Trạng Thái: {vehicle.status or "inactivity"}
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_vehicle")
+@require_custom_title(CustomTitle.MAIN_VEHICLE)
 async def delete_vehicle_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_delete_vehicle", "other_xoa_xe"])
     if args is None: return
@@ -2561,7 +2562,7 @@ async def delete_vehicle_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_vehicle")
+@require_custom_title(CustomTitle.MAIN_VEHICLE)
 async def other_receive_vehicle_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_receive_vehicle", "other_nhan_xe"])
     if args is None: return
@@ -2673,7 +2674,7 @@ async def other_receive_vehicle_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_vehicle")
+@require_custom_title(CustomTitle.MAIN_VEHICLE)
 async def other_return_vehicle_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_return_vehicle", "other_tra_xe"])
     if args is None: return
@@ -2767,7 +2768,7 @@ async def other_return_vehicle_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Other")
 @require_group_role("main")
-@require_custom_title("main_vehicle")
+@require_custom_title(CustomTitle.MAIN_VEHICLE)
 async def other_check_log_vehicle_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_check_log_vehicle", "other_lich_su_xe"])
     if args is None: return
