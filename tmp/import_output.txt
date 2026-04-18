@@ -1,0 +1,36 @@
+﻿============================================================
+  IMPORT CUSTOMERS FROM List_Customer.xlsx
+============================================================
+
+≡ƒôé ─Éß╗ìc file: D:\ExtraJob\backend\List_Customer.xlsx
+   Sheet: Danh S├ích Kh├ích H├áng | Rows: 1232 | Cols: 23
+
+≡ƒôì Collection Points trong DB (5 ─æiß╗âm):
+   - GIA AN ΓåÆ afaf045b-65f8-41f1-b6ad-1305cb9fba00
+   - PHE ΓåÆ bbe93e72-a7a6-48a6-9ce1-c4aa3632232e
+   - LAC TANH ΓåÆ 3ace911d-c612-414a-8292-feef297f7362
+   - DL HAI ΓåÆ ac962c31-f6b8-4d78-8eea-76b95dd1a3c5
+   - DL TRANG ΓåÆ dba3fad3-11c2-46b0-9929-6928f17d19cc
+
+≡ƒöä Bß║»t ─æß║ºu ─æß╗ìc dß╗» liß╗çu tß╗½ Row 4...
+
+   ΓÜá∩╕Å  Row 74: M├ú hß╗Ö 'X070' bß╗ï tr├╣ng trong Excel ΓåÆ ghi ─æ├¿ bß║▒ng d├▓ng mß╗¢i
+   ΓÜá∩╕Å  Row 134: M├ú hß╗Ö 'X143' bß╗ï tr├╣ng trong Excel ΓåÆ ghi ─æ├¿ bß║▒ng d├▓ng mß╗¢i
+   ΓÜá∩╕Å  Row 137: M├ú hß╗Ö 'X145' bß╗ï tr├╣ng trong Excel ΓåÆ ghi ─æ├¿ bß║▒ng d├▓ng mß╗¢i
+   ΓÜá∩╕Å  Row 218: M├ú hß╗Ö 'P084' bß╗ï tr├╣ng trong Excel ΓåÆ ghi ─æ├¿ bß║▒ng d├▓ng mß╗¢i
+   ΓÜá∩╕Å  Row 361: M├ú hß╗Ö 'LT135' bß╗ï tr├╣ng trong Excel ΓåÆ ghi ─æ├¿ bß║▒ng d├▓ng mß╗¢i
+
+≡ƒôè ─É├ú ─æß╗ìc 354 kh├ích h├áng duy nhß║Ñt tß╗½ Excel
+
+≡ƒÆ╛ ─Éang ghi v├áo database...
+Γ£à Commit th├ánh c├┤ng!
+
+============================================================
+  Kß║╛T QUß║ó IMPORT
+============================================================
+  Γ£à Imported (mß╗¢i):  354
+  ≡ƒöä Updated (ghi ─æ├¿): 0
+  ΓÅ¡∩╕Å  Skipped:         5
+  Γ¥î Errors:           0
+  ≡ƒôè Tß╗òng xß╗¡ l├╜:      359
+============================================================

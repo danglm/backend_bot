@@ -1,0 +1,24 @@
+Total daily_purchases: 37467
+
+All Collection Points:
+  afaf045b-65f8-41f1-b6ad-1305cb9fba00 | Xưởng Gia An | A
+  bbe93e72-a7a6-48a6-9ce1-c4aa3632232e | Xưởng Phê | B
+  3ace911d-c612-414a-8292-feef297f7362 | Xưởng Lạc Tánh | C
+  ac962c31-f6b8-4d78-8eea-76b95dd1a3c5 | Xưởng DL Hải | A
+  dba3fad3-11c2-46b0-9929-6928f17d19cc | Xưởng DL Trang | A
+  f048d641-826a-4392-b17f-54c39dc837ee | ĐL Hải | 
+  0251c5de-358a-4b48-b74d-a4df056962d7 | ĐL Trang | 
+  e3c3e719-4d94-4592-af32-5e80400f519a | ĐL Vui | 
+
+By Collection Point:
+  ĐL Hải: 235
+  Xưởng Gia An: 18545
+  ĐL Vui: 175
+  Xưởng Phê: 8172
+  ĐL Trang: 11
+  Xưởng Lạc Tánh: 10329
+  Xưởng DL Trang: 0
+  Xưởng DL Hải: 0
+
+DailyPurchases without CP: 0
+DailyPurchases without household_id: 7621

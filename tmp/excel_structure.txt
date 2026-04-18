@@ -1,0 +1,374 @@
+Sheets: ['Mục lục', 'Map', 'Form Nhập Dữ Liệu', 'Danh Sách Khách Hàng', 'Danh Sách Chat ID', 'Thu Mua Hàng Ngày', 'Công Nợ', 'copydata', 'Datalink', 'Bảng Lương']
+
+=== Sheet: Mục lục ===
+  Max row: 54, Max col: 7
+  Headers (Row 1):
+    Col 1: None
+    Col 2: None
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+  Headers (Row 2):
+    Col 1: None
+    Col 2: None
+    Col 3: Tên File
+    Col 4: Tiến Nga 2025 - Danh Sách Khách Hàng
+    Col 5: Owner
+    Col 6: vinhho956789@gmail.com
+    Col 7: None
+  Sample Data (Rows 3-7):
+    Row 3: [None, None, None, None, None, None, None]
+    Row 4: [None, 'STT', 'Tên Tab', 'Ngày Tạo', 'Người Tạo', 'Ghi Chú', None]
+    Row 5: [None, 1.0, 'Mục Lục', None, None, None, None]
+    Row 6: [None, 2.0, 'Map', None, None, None, None]
+    Row 7: [None, 4.0, 'Danh Sách Khách Hàng', None, None, None, None]
+
+=== Sheet: Map ===
+  Max row: 6, Max col: 16
+  Headers (Row 1):
+    Col 1:  
+    Col 2: None
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+    Col 10: None
+    Col 11: None
+    Col 12: None
+    Col 13: None
+    Col 14: None
+    Col 15: None
+    Col 16: None
+  Headers (Row 2):
+    Col 1: None
+    Col 2: Tab
+    Col 3: Tên Tab
+    Col 4: Mô Tả Công Việc Của Nhân Viên
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: Mô Tả Công Việc Của Bot
+    Col 10: None
+    Col 11: None
+    Col 12: None
+    Col 13: None
+    Col 14: None
+    Col 15: None
+    Col 16: None
+  Sample Data (Rows 3-7):
+    Row 3: [None, 1.0, 'Thu Mua Hàng Ngày', 'Hàng ngày nhân viên thu mua nhập thông tin: khối lượng (kg), số độ (%)', None, None, None, None, 'Bot quét dữ liệu phát sinh, tổng hợp đúng thông tin của từng KH và chuyển thông tin "Thành Tiền" về tab 3.', None, None, None, None, None, None, None]
+    Row 4: [None, 2.0, 'Thanh Toán', 'Hàng ngày nhân viên thanh toán nhập mã thanh toán, ứng tiền phát sinh.', None, None, None, None, 'Bot quét dữ liệu phát sinh, tổng hợp đúng thông tin của từng KH và chuyển thông tin "Tổng Thanh Toán" về tab 3.', None, None, None, None, None, None, None]
+    Row 5: [None, 3.0, 'Công Nợ (Mẫu)', 'Hàng ngày nhân viên kế toán kiểm tra thông tin tab 1 và tab 2, xong xác nhận.', None, None, None, None, 'Bot gửi dữ liệu sau khi kế toán kiểm tra gửi đến các nhóm telegram KH có phát sinh giao dịch trong ngày.', None, None, None, None, None, None, None]
+    Row 6: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+
+=== Sheet: Form Nhập Dữ Liệu ===
+  Max row: 14, Max col: 12
+  Headers (Row 1):
+    Col 1: Dấu thời gian
+    Col 2: Điểm Thu Mua:
+    Col 3: Tên Khách Hàng
+    Col 4: Mã Hộ:
+    Col 5: Khối Lượng (Kg)
+    Col 6: Trừ Bì (Kg)
+
+    Col 7: Khối Lượng Mủ (Kg):
+    Col 8: Số Độ (%): 
+    Col 9: Đơn Giá (vnđ / kg)
+    Col 10: Địa chỉ email
+    Col 11: Người Nhập Dữ Liệu
+    Col 12: Cột 12
+  Headers (Row 2):
+    Col 1: None
+    Col 2: None
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+    Col 10: None
+    Col 11: None
+    Col 12: None
+  Sample Data (Rows 3-7):
+    Row 3: [None, None, None, None, None, None, None, None, None, None, None, None]
+    Row 4: [None, None, None, None, None, None, None, None, None, None, None, None]
+    Row 5: [None, None, None, None, None, None, None, None, None, None, None, None]
+    Row 6: [None, None, None, None, None, None, None, None, None, None, None, None]
+    Row 7: [None, None, None, None, None, None, None, None, None, None, None, None]
+
+=== Sheet: Danh Sách Khách Hàng ===
+  Max row: 1232, Max col: 23
+  Headers (Row 1):
+    Col 1: None
+    Col 2: None
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+    Col 10: None
+    Col 11: None
+    Col 12: None
+    Col 13: None
+    Col 14: None
+    Col 15: None
+    Col 16: None
+    Col 17: 598662
+    Col 18: 283500
+    Col 19: 882162
+  Headers (Row 2):
+    Col 1: None
+    Col 2: STT
+    Col 3: Điểm Thu Mua
+    Col 4: Mã Khách Hàng
+    Col 5: Chủ Nhóm
+    Col 6: Tên Khách Hàng
+    Col 7: Mã Hộ / Tên Nhóm Telegram
+    Col 8: Số Điện Thoại
+    Col 9: Nội Dung QR
+    Col 10: Link QR Code
+    Col 11: QR Code
+    Col 12: Địa Chỉ
+    Col 13: Nhóm Zalo
+    Col 14: Chủ Nhóm Zalo
+    Col 15: Thời Gian Hợp Tác
+    Col 16: Nguyên Liệu
+    Col 17: SỐ TIỀN NỢ
+    Col 18: ỨNG TIỀN CUỐI MÙA
+    Col 19: TỔNG
+ CÔNG NỢ
+  Sample Data (Rows 3-7):
+    Row 3: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+    Row 4: [None, 1.0, 'Gia An', None, '@tiennga_quanly68', '2 CẤP', 'X001', 396614465.0, None, 'https://docs.google.com/forms/d/e/1FAIpQLSdWl_ZdXWIVCfU2f2MOVacs3mVr9NL450JsESFg0MIbpdl-rQ/formResponse?usp=pp_url&entry.82868304=X001&entry.807621829=Gia%20An&entry.1633152095=2%20C%E1%BA%A4P', None, None, None, None, None, None, None, None, '-']
+    Row 5: [None, 2.0, 'Gia An', None, '@tiennga_quanly68', '2 CHÁNH', 'X002', 358487175.0, ' ', 'https://docs.google.com/forms/d/e/1FAIpQLSdWl_ZdXWIVCfU2f2MOVacs3mVr9NL450JsESFg0MIbpdl-rQ/formResponse?usp=pp_url&entry.82868304=X002&entry.807621829=Gia%20An&entry.1633152095=2%20CH%C3%81NH', None, None, None, None, None, None, None, None, '-']
+    Row 6: [None, 3.0, 'Gia An', None, '@tiennga_quanly68', '2 HOẠCH', 'X003', 834498478.0, None, 'https://docs.google.com/forms/d/e/1FAIpQLSdWl_ZdXWIVCfU2f2MOVacs3mVr9NL450JsESFg0MIbpdl-rQ/formResponse?usp=pp_url&entry.82868304=X003&entry.807621829=Gia%20An&entry.1633152095=2%20HO%E1%BA%A0CH', None, None, None, None, None, None, None, None, '-']
+    Row 7: [None, 4.0, 'Gia An', None, '@tiennga_quanly68', '2 HƯƠNG', 'X004', 945197639.0, None, 'https://docs.google.com/forms/d/e/1FAIpQLSdWl_ZdXWIVCfU2f2MOVacs3mVr9NL450JsESFg0MIbpdl-rQ/formResponse?usp=pp_url&entry.82868304=X004&entry.807621829=Gia%20An&entry.1633152095=2%20H%C6%AF%C6%A0NG', None, None, None, None, None, None, None, None, '-']
+
+=== Sheet: Danh Sách Chat ID ===
+  Max row: 584, Max col: 8
+  Headers (Row 1):
+    Col 1: None
+    Col 2: None
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+  Headers (Row 2):
+    Col 1: None
+    Col 2: STT
+    Col 3: Điểm Thu Mua
+    Col 4: Tên Khách Hàng
+    Col 5: Mã Hộ
+    Col 6: Trợ Giá
+    Col 7: Chat ID
+    Col 8: None
+  Sample Data (Rows 3-7):
+    Row 3: [None, 1.0, 'Xưởng Gia An', '2 CẤP', 'X001', 10.0, -1002484530711.0, None]
+    Row 4: [None, 2.0, 'Xưởng Gia An', '2 CHÁNH', 'X002', 10.0, -1002656577150.0, None]
+    Row 5: [None, 3.0, 'Xưởng Gia An', '2 HOẠCH', 'X003', 10.0, -1002552952178.0, None]
+    Row 6: [None, 4.0, 'Xưởng Gia An', '2 HƯƠNG', 'X004', 10.0, -1002430769179.0, None]
+    Row 7: [None, 5.0, 'Xưởng Gia An', '2 LIÊM', 'X005', 10.0, -1002681008325.0, None]
+
+=== Sheet: Thu Mua Hàng Ngày ===
+  Max row: 38270, Max col: 22
+  Headers (Row 1):
+    Col 1: None
+    Col 2: None
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+    Col 10: None
+    Col 11: None
+    Col 12: None
+    Col 13: None
+    Col 14: None
+    Col 15: None
+    Col 16: None
+    Col 17: None
+    Col 18: None
+    Col 19: None
+  Headers (Row 2):
+    Col 1: None
+    Col 2: STT
+    Col 3: Tuần
+    Col 4: Ngày
+    Col 5: Điểm Thu Mua
+    Col 6: Tên Khách Hàng
+    Col 7: Mã Hộ
+    Col 8: Chat ID
+    Col 9: Trợ Giá
+    Col 10: Khối Lượng (kg)
+    Col 11: Trừ Bì (kg)
+    Col 12: Khối Lượng Mủ Thực Tế (kg)
+    Col 13: Số độ (%)
+    Col 14: Mủ Khô
+    Col 15: Đơn Giá (vnđ / kg)
+    Col 16: Giá Hỗ Trợ (vnđ / kg)
+    Col 17: Thành Tiền Mua Mủ Ngày (vnđ)
+    Col 18: Đã Thanh Toán
+    Col 19: Lưu Sổ
+  Sample Data (Rows 3-7):
+    Row 3: [None, 1.0, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', 'NGỌC HÀ', '#N/A', '#N/A', 10.0, 17.6, 2.0, 15.6, 60.6, 9.4536, 400.0, 410, 387597.6, 387500.0, 0]
+    Row 4: [None, 2, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', 'TƯỞNG', 'LT120', -1002307597192, 10.0, 12.4, 1.0, 11.4, 55.6, 6.3384, 400.0, 410, 259874.4, 259000.0, 0]
+    Row 5: [None, 3, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', 'ÁNH ĐỊNH', '#N/A', '#N/A', 10.0, 17.0, 1.5, 15.5, 54.6, 8.463, 400.0, 410, 346983, 346900.0, 0]
+    Row 6: [None, 4, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', '2 HƯƠNG', '#N/A', '#N/A', 10.0, 38.0, 3.2, 34.8, 57.8, 20.1144, 400.0, 410, 824690.4, None, 824690.4]
+    Row 7: [None, 5, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', 'DUNG T', '#N/A', '#N/A', 10.0, 11.5, 1.3, 10.2, 58.0, 5.916, 400.0, 410, 242556, 242500.0, 0]
+
+=== Sheet: Công Nợ ===
+  Max row: 461, Max col: 23
+  Headers (Row 1):
+    Col 1: None
+    Col 2: None
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+    Col 10: None
+    Col 11: None
+    Col 12: None
+    Col 13: None
+    Col 14: None
+    Col 15: None
+    Col 16: None
+    Col 17: None
+    Col 18: None
+    Col 19: None
+  Headers (Row 2):
+    Col 1: None
+    Col 2:  VUI LÒNG NHẬP NGÀY ĐỂ GỬI BÁO CÁO 
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+    Col 10: None
+    Col 11: 2025-11-20 00:00:00
+    Col 12: None
+    Col 13: None
+    Col 14: None
+    Col 15: None
+    Col 16: None
+    Col 17: None
+    Col 18: None
+    Col 19: None
+  Sample Data (Rows 3-7):
+    Row 3: [None, 'TỔNG', None, None, None, None, 0, 208752648, 20203000, 35000000, 153549648, '#N/A', '#N/A', '#N/A', None, None, None, None, None]
+    Row 4: [None, 'STT', 'Điểm Thu Mua', 'Tên Khách Hàng', 'Mã Hộ ', 'Chat ID', 'Nợ Đầu Kỳ', 'Tiền Mua Mủ Ngày', 'Tiền Thanh Toán Ngày', 'Tiền Tạm Ứng Ngày', 'Công Nợ Cuối Kỳ', 'Tổng Mua Mủ Tháng', 'Tổng Thanh Toán Tháng', 'Tổng Tạm Ứng Tháng', None, 'Gửi chốt sổ kế toán', None, None, None]
+    Row 5: [None, 1, 'Xưởng Gia An', '2 CẤP', 'X001', -1002484530711.0, 0.0, 0, 0, 0, 0, 27196089.5, 0, 0, None, None, None, None, None]
+    Row 6: [None, 2.0, 'Xưởng Gia An', '2 CHÁNH', 'X002', -1002656577150.0, 0.0, 1670200, 0, 0, 1670200, 23127473.6, 0, 0, None, datetime.datetime(2025, 10, 1, 0, 0), None, None, None]
+    Row 7: [None, 3.0, 'Xưởng Gia An', '2 HOẠCH', 'X003', -1002552952178.0, 0.0, 0, 0, 0, 0, 20497729.5, 0, 0, None, datetime.datetime(2025, 10, 2, 0, 0), None, None, None]
+
+=== Sheet: copydata ===
+  Max row: 38203, Max col: 12
+  Headers (Row 1):
+    Col 1: STT
+    Col 2: Tuần
+    Col 3: Ngày
+    Col 4: Điểm Thu Mua
+    Col 5: Tên Khách Hàng
+    Col 6: Mã Hộ
+    Col 7: Chat ID
+    Col 8: Trợ Giá
+    Col 9: Khối Lượng (kg)
+    Col 10: Trừ Bì (kg)
+    Col 11: Khối Lượng Mủ Thực Tế (kg)
+    Col 12: Số độ (%)
+  Headers (Row 2):
+    Col 1: 1
+    Col 2: 20
+    Col 3: 2025-05-17 00:00:00
+    Col 4: Xưởng Lạc Tánh
+    Col 5: NGỌC HÀ
+    Col 6: #N/A
+    Col 7: None
+    Col 8: 10
+    Col 9: 17.6
+    Col 10: 2
+    Col 11: 15.6
+    Col 12: 60.6
+  Sample Data (Rows 3-7):
+    Row 3: [2, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', 'TƯỞNG', 'LT120', -1002307597192, 10, 12.4, 1, 11.4, 55.6]
+    Row 4: [3, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', 'ÁNH ĐỊNH', '#N/A', None, 10, 17, 1.5, 15.5, 54.6]
+    Row 5: [4, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', '2 HƯƠNG', '#N/A', None, 10, 38, 3.2, 34.8, 57.8]
+    Row 6: [5, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', 'DUNG T', '#N/A', None, 10, 11.5, 1.3, 10.2, 58]
+    Row 7: [6, 20, datetime.datetime(2025, 5, 17, 0, 0), 'Xưởng Lạc Tánh', 'CHÂU 5', '#N/A', None, 10, 13.8, 0.9, 12.9, 55.8]
+
+=== Sheet: Datalink ===
+  Max row: 336, Max col: 9
+  Headers (Row 1):
+    Col 1: None
+    Col 2: None
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+  Headers (Row 2):
+    Col 1: None
+    Col 2: STT
+    Col 3: Điểm Thu Mua
+    Col 4: Tên KH
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+  Sample Data (Rows 3-7):
+    Row 3: [None, None, None, None, None, None, None, None, None]
+    Row 4: [None, 1.0, 'Nợ Xưởng', '2 CẤP', None, None, None, None, None]
+    Row 5: [None, 2.0, 'Nợ Phê', '2 CHÁNH', None, None, None, None, None]
+    Row 6: [None, 3.0, 'Lạc Tánh', '2 HOẠCH', None, None, None, None, None]
+    Row 7: [None, 4.0, None, '2 HƯƠNG', None, None, None, None, None]
+
+=== Sheet: Bảng Lương ===
+  Max row: 28, Max col: 10
+  Headers (Row 1):
+    Col 1: None
+    Col 2: None
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+    Col 10: None
+  Headers (Row 2):
+    Col 1: None
+    Col 2: BẢNG LƯƠNG THÁNG 8
+    Col 3: None
+    Col 4: None
+    Col 5: None
+    Col 6: None
+    Col 7: None
+    Col 8: None
+    Col 9: None
+    Col 10: None
+  Sample Data (Rows 3-7):
+    Row 3: [None, None, None, None, None, None, None, None, None, None]
+    Row 4: [None, 'STT', 'Tên Nhân Viên', 'Chức Vụ/Bộ Phận', 'Mã Nhân Viên', 'Mức Lương/Ngày', 'Số Ngày Công', 'Tiền Ứng', 'Thanh Toán', None]
+    Row 5: [None, 1.0, 'Mộng', 'Đốt C', 'TN001', 5300.0, 1034.0, 0.0, 5480200, None]
+    Row 6: [None, 2.0, 'Dung', 'Đốt C', 'TN002', 5300.0, 1034.0, 0.0, 5480200, None]
+    Row 7: [None, 3.0, 'Nở', 'Thu Mua', 'TN003', 7000.0, 1034.0, 0.0, 7238000, None]

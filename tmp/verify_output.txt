@@ -1,0 +1,17 @@
+Total customers: 354
+
+By Collection Point:
+  Xưởng Gia An: 121
+  Xưởng Phê: 70
+  Xưởng Lạc Tánh: 136
+  Xưởng DL Trang: 1
+  Xưởng DL Hải: 1
+
+Sample records:
+  X001 | 2 CẤP | 0396614465 | ACTIVE
+  X002 | 2 CHÁNH | 0358487175 | ACTIVE
+  X003 | 2 HOẠCH | 0834498478 | ACTIVE
+  X004 | 2 HƯƠNG | 0945197639 | ACTIVE
+  X005 | 2 LIÊM | 0899987385 | ACTIVE
+
+Customers without collection_point: 25

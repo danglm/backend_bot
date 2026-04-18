@@ -1,0 +1,53 @@
+Total rows: 1232, Total cols: 23
+
+=== ALL HEADERS (Row 2) ===
+  Col 1: None
+  Col 2: STT
+  Col 3: Điểm Thu Mua
+  Col 4: Mã Khách Hàng
+  Col 5: Chủ Nhóm
+  Col 6: Tên Khách Hàng
+  Col 7: Mã Hộ / Tên Nhóm Telegram
+  Col 8: Số Điện Thoại
+  Col 9: Nội Dung QR
+  Col 10: Link QR Code
+  Col 11: QR Code
+  Col 12: Địa Chỉ
+  Col 13: Nhóm Zalo
+  Col 14: Chủ Nhóm Zalo
+  Col 15: Thời Gian Hợp Tác
+  Col 16: Nguyên Liệu
+  Col 17: SỐ TIỀN NỢ
+  Col 18: ỨNG TIỀN CUỐI MÙA
+  Col 19: TỔNG
+ CÔNG NỢ
+  Col 20: Chat ID 
+  Col 21: None
+  Col 22: None
+  Col 23: Đã Ghi
+
+=== ROWS 4-10 (key columns only) ===
+  Row 4: {'STT': 1.0, 'Diem_thu_mua': 'Gia An', 'Ma_KH': None, 'Chu_nhom': '@tiennga_quanly68', 'Ten_KH': '2 CẤP', 'Ma_ho': 'X001', 'SDT': 396614465.0, 'Dia_chi': None, 'Nguyen_lieu': None, 'So_tien_no': None, 'Ung_tien': None, 'Tong_cong_no': '-', 'Col20': None, 'Col21': None, 'Col22': None, 'Col23': 'Đã Ghi'}
+  Row 5: {'STT': 2.0, 'Diem_thu_mua': 'Gia An', 'Ma_KH': None, 'Chu_nhom': '@tiennga_quanly68', 'Ten_KH': '2 CHÁNH', 'Ma_ho': 'X002', 'SDT': 358487175.0, 'Dia_chi': None, 'Nguyen_lieu': None, 'So_tien_no': None, 'Ung_tien': None, 'Tong_cong_no': '-', 'Col20': None, 'Col21': None, 'Col22': None, 'Col23': 'Đã Ghi'}
+  Row 6: {'STT': 3.0, 'Diem_thu_mua': 'Gia An', 'Ma_KH': None, 'Chu_nhom': '@tiennga_quanly68', 'Ten_KH': '2 HOẠCH', 'Ma_ho': 'X003', 'SDT': 834498478.0, 'Dia_chi': None, 'Nguyen_lieu': None, 'So_tien_no': None, 'Ung_tien': None, 'Tong_cong_no': '-', 'Col20': None, 'Col21': None, 'Col22': None, 'Col23': 'Đã Ghi'}
+  Row 7: {'STT': 4.0, 'Diem_thu_mua': 'Gia An', 'Ma_KH': None, 'Chu_nhom': '@tiennga_quanly68', 'Ten_KH': '2 HƯƠNG', 'Ma_ho': 'X004', 'SDT': 945197639.0, 'Dia_chi': None, 'Nguyen_lieu': None, 'So_tien_no': None, 'Ung_tien': None, 'Tong_cong_no': '-', 'Col20': None, 'Col21': None, 'Col22': '=ArrayFormula(if(S7:S="";;"https://docs.google.com/forms/d/e/1FAIpQLSdRrDT69vQeY_YE-0WnxIsNM1475ZuiiQrQsD69wQG_3LksEA/formResponse?&entry.1348543837="&ENCODEURL(\'Mã QR quét Chấm công\'!T7)&"&entry.1495459295="&ENCODEURL(S7:S)&"&entry.971532944="&ENCODEURL(\'Mã QR quét Chấm công\'!T6)))', 'Col23': 'Đã Ghi'}
+  Row 8: {'STT': 5.0, 'Diem_thu_mua': 'Gia An', 'Ma_KH': None, 'Chu_nhom': '@tiennga_quanly68', 'Ten_KH': '2 LIÊM', 'Ma_ho': 'X005', 'SDT': 899987385.0, 'Dia_chi': None, 'Nguyen_lieu': None, 'So_tien_no': None, 'Ung_tien': None, 'Tong_cong_no': '-', 'Col20': None, 'Col21': None, 'Col22': None, 'Col23': 'Đã Ghi'}
+  Row 9: {'STT': 6.0, 'Diem_thu_mua': 'Gia An', 'Ma_KH': None, 'Chu_nhom': '@tiennga_quanly68', 'Ten_KH': '2 LIỄU', 'Ma_ho': 'X006', 'SDT': 948318564.0, 'Dia_chi': None, 'Nguyen_lieu': None, 'So_tien_no': 35000.0, 'Ung_tien': '-', 'Tong_cong_no': 35000.0, 'Col20': None, 'Col21': None, 'Col22': None, 'Col23': 'Đã Ghi'}
+  Row 10: {'STT': 7.0, 'Diem_thu_mua': 'Gia An', 'Ma_KH': None, 'Chu_nhom': '@tiennga_quanly68', 'Ten_KH': '2 XUÂN', 'Ma_ho': 'X007', 'SDT': 345757637.0, 'Dia_chi': None, 'Nguyen_lieu': None, 'So_tien_no': None, 'Ung_tien': None, 'Tong_cong_no': '-', 'Col20': None, 'Col21': None, 'Col22': None, 'Col23': 'Đã Ghi'}
+
+=== COLLECTION POINT CHANGES ===
+  Row 4: Collection point changed to 'Gia An', STT=1.0
+  Row 127: Collection point changed to 'Phê', STT=123.0
+  Row 201: Collection point changed to 'Lạc Tánh', STT=196.0
+  Row 340: Collection point changed to 'DL Trang', STT=334.0
+  Row 341: Collection point changed to 'DL Hải', STT=335.0
+
+Total data rows with STT: 724
+
+=== LAST ROWS ===
+  Row 1227: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+  Row 1228: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+  Row 1229: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+  Row 1230: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+  Row 1231: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+  Row 1232: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]

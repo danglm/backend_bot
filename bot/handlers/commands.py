@@ -798,6 +798,8 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_tao_don_vi", "Tạo đơn vị (Công ty)"),
                     BotCommand("tien_nga_company_business", "Giao dịch công ty"),
                     BotCommand("tien_nga_kinh_doanh_don_vi", "Giao dịch công ty"),
+                    BotCommand("tien_nga_payment_debt", "Thanh toán công nợ"),
+                    BotCommand("tien_nga_thanh_toan_no", "Thanh toán công nợ"),
                 ]
             elif custom_title == "member_hr":
                 label = "Tiến Nga (Nhân Viên)"

@@ -1,0 +1,5 @@
+afaf045b-65f8-41f1-b6ad-1305cb9fba00 | Xưởng Gia An | A
+bbe93e72-a7a6-48a6-9ce1-c4aa3632232e | Xưởng Phê | B
+3ace911d-c612-414a-8292-feef297f7362 | Xưởng Lạc Tánh | C
+dba3fad3-11c2-46b0-9929-6928f17d19cc | DL Trang | A
+ac962c31-f6b8-4d78-8eea-76b95dd1a3c5 | Xưởng DL Hai | A

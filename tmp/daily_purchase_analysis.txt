@@ -1,0 +1,189 @@
+Sheet: Thu Mua Hàng Ngày
+Max row: 38270, Max col: 22
+
+=== ALL HEADERS (Row 2) ===
+  Col 1: None
+  Col 2: STT
+  Col 3: Tuần
+  Col 4: Ngày
+  Col 5: Điểm Thu Mua
+  Col 6: Tên Khách Hàng
+  Col 7: Mã Hộ
+  Col 8: Chat ID
+  Col 9: Trợ Giá
+  Col 10: Khối Lượng (kg)
+  Col 11: Trừ Bì (kg)
+  Col 12: Khối Lượng Mủ Thực Tế (kg)
+  Col 13: Số độ (%)
+  Col 14: Mủ Khô
+  Col 15: Đơn Giá (vnđ / kg)
+  Col 16: Giá Hỗ Trợ (vnđ / kg)
+  Col 17: Thành Tiền Mua Mủ Ngày (vnđ)
+  Col 18: Đã Thanh Toán
+  Col 19: Lưu Sổ
+  Col 20: Tạm Ứng
+  Col 21: Đã kiểm tra
+  Col 22: None
+
+=== SAMPLE DATA (Rows 3-8) - ALL COLUMNS ===
+
+  Row 3:
+    Col 1: None
+    Col 2: 1.0
+    Col 3: 20
+    Col 4: datetime.datetime(2025, 5, 17, 0, 0)
+    Col 5: 'Xưởng Lạc Tánh'
+    Col 6: 'NGỌC HÀ'
+    Col 7: '#N/A'
+    Col 8: '#N/A'
+    Col 9: 10.0
+    Col 10: 17.6
+    Col 11: 2.0
+    Col 12: 15.6
+    Col 13: 60.6
+    Col 14: 9.4536
+    Col 15: 400.0
+    Col 16: 410
+    Col 17: 387597.6
+    Col 18: 387500.0
+    Col 19: 0
+    Col 20: None
+    Col 21: True
+    Col 22: None
+
+  Row 4:
+    Col 1: None
+    Col 2: 2
+    Col 3: 20
+    Col 4: datetime.datetime(2025, 5, 17, 0, 0)
+    Col 5: 'Xưởng Lạc Tánh'
+    Col 6: 'TƯỞNG'
+    Col 7: 'LT120'
+    Col 8: -1002307597192
+    Col 9: 10.0
+    Col 10: 12.4
+    Col 11: 1.0
+    Col 12: 11.4
+    Col 13: 55.6
+    Col 14: 6.3384
+    Col 15: 400.0
+    Col 16: 410
+    Col 17: 259874.4
+    Col 18: 259000.0
+    Col 19: 0
+    Col 20: None
+    Col 21: True
+    Col 22: None
+
+  Row 5:
+    Col 1: None
+    Col 2: 3
+    Col 3: 20
+    Col 4: datetime.datetime(2025, 5, 17, 0, 0)
+    Col 5: 'Xưởng Lạc Tánh'
+    Col 6: 'ÁNH ĐỊNH'
+    Col 7: '#N/A'
+    Col 8: '#N/A'
+    Col 9: 10.0
+    Col 10: 17.0
+    Col 11: 1.5
+    Col 12: 15.5
+    Col 13: 54.6
+    Col 14: 8.463
+    Col 15: 400.0
+    Col 16: 410
+    Col 17: 346983
+    Col 18: 346900.0
+    Col 19: 0
+    Col 20: None
+    Col 21: True
+    Col 22: None
+
+  Row 6:
+    Col 1: None
+    Col 2: 4
+    Col 3: 20
+    Col 4: datetime.datetime(2025, 5, 17, 0, 0)
+    Col 5: 'Xưởng Lạc Tánh'
+    Col 6: '2 HƯƠNG'
+    Col 7: '#N/A'
+    Col 8: '#N/A'
+    Col 9: 10.0
+    Col 10: 38.0
+    Col 11: 3.2
+    Col 12: 34.8
+    Col 13: 57.8
+    Col 14: 20.1144
+    Col 15: 400.0
+    Col 16: 410
+    Col 17: 824690.4
+    Col 18: None
+    Col 19: 824690.4
+    Col 20: None
+    Col 21: True
+    Col 22: None
+
+  Row 7:
+    Col 1: None
+    Col 2: 5
+    Col 3: 20
+    Col 4: datetime.datetime(2025, 5, 17, 0, 0)
+    Col 5: 'Xưởng Lạc Tánh'
+    Col 6: 'DUNG T'
+    Col 7: '#N/A'
+    Col 8: '#N/A'
+    Col 9: 10.0
+    Col 10: 11.5
+    Col 11: 1.3
+    Col 12: 10.2
+    Col 13: 58.0
+    Col 14: 5.916
+    Col 15: 400.0
+    Col 16: 410
+    Col 17: 242556
+    Col 18: 242500.0
+    Col 19: 0
+    Col 20: None
+    Col 21: True
+    Col 22: None
+
+  Row 8:
+    Col 1: None
+    Col 2: 6
+    Col 3: 20
+    Col 4: datetime.datetime(2025, 5, 17, 0, 0)
+    Col 5: 'Xưởng Lạc Tánh'
+    Col 6: 'CHÂU 5'
+    Col 7: '#N/A'
+    Col 8: '#N/A'
+    Col 9: 10.0
+    Col 10: 13.8
+    Col 11: 0.9
+    Col 12: 12.9
+    Col 13: 55.8
+    Col 14: 7.1982
+    Col 15: 400.0
+    Col 16: 410
+    Col 17: 295126.2
+    Col 18: 295100.0
+    Col 19: 0
+    Col 20: None
+    Col 21: True
+    Col 22: None
+
+
+=== DATA STATS ===
+Total rows with STT: 37467
+Rows with Ma Ho = None: 0
+Rows with Ma Ho = #N/A: 7621
+
+Date range: 2025-05-17 → 2026-02-04
+
+Collection points: ['XƯỞNG GIA AN', 'XƯỞNG LẠC TÁNH', 'XƯỞNG PHÊ', 'Xưởng Gia An', 'Xưởng Lạc Tánh', 'Xưởng Phê', 'Xưởng lạc Tánh', 'ĐL HẢI', 'ĐL Hải', 'ĐL Trang', 'ĐL VUI', 'ĐL Vui']
+
+=== LAST DATA ROWS ===
+Last row with data: 37469
+  Row 37466: [None, 37464, 6, datetime.datetime(2026, 2, 4, 0, 0), 'Xưởng Phê', 'THANH THỦY', '#N/A', '#N/A', 10.0, 52.7, 4.2, 48.5, 22.6, 10.961, 415.0, 425, 465842.5, 465000.0, 0, None, False, None]
+  Row 37467: [None, 37465, 6, datetime.datetime(2026, 2, 4, 0, 0), 'Xưởng Phê', 'TUYỂN', 'P069', -1002636087393, 10.0, 192.7, 11.7, 181, 33.0, 59.73, 415.0, 425, 2538525, 2538000.0, 0, None, False, None]
+  Row 37468: [None, 37466, 6, datetime.datetime(2026, 2, 4, 0, 0), 'Xưởng Phê', 'CHÚ PHỤ', 'P020', -1002507859974, 10.0, 49.0, 5.7, 43.3, 41.0, 17.753, 415.0, 425, 754502.5, 754000.0, 0, None, False, None]
+  Row 37469: [None, 37467, 6, datetime.datetime(2026, 2, 4, 0, 0), 'Xưởng Phê', 'CHỊ NGA VH', '#N/A', '#N/A', 10.0, 400.6, 5.0, 395.6, 33.2, 131.3392, 415.0, 425, 5581916, None, 5581916, None, False, None]
