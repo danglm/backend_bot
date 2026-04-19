@@ -39,6 +39,7 @@ async def syncchat_handler(client, message: Message) -> None:
         buttons = []
         for p in projects:
             buttons.append([InlineKeyboardButton(p.project_name, callback_data=f"sync_proj_{p.id}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="sync_cancel")])
         
         reply_markup = InlineKeyboardMarkup(buttons)
         await message.reply_text(
@@ -88,6 +89,7 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
                 [InlineKeyboardButton("Nhà cung cấp", callback_data=f"sync_tn_{project_id}_supplier")],
                 [InlineKeyboardButton("Kinh doanh", callback_data=f"sync_tn_{project_id}_sales")],
                 [InlineKeyboardButton("Nhân sự", callback_data=f"sync_tn_{project_id}_hr")],
+                [InlineKeyboardButton("Tài chính", callback_data=f"sync_tn_{project_id}_finance")],
                 [InlineKeyboardButton("Quản lý hàng thành phẩm", callback_data=f"sync_tn_{project_id}_product")],
                 [InlineKeyboardButton("Quản lý đối tác", callback_data=f"sync_tn_{project_id}_partner")],
                 [
@@ -132,11 +134,12 @@ TN_DEPT_LABELS = {
     "supplier": "Nhà cung cấp",
     "sales": "Kinh doanh",
     "hr": "Nhân sự",
+    "finance": "Tài chính",
     "product": "Quản lý hàng thành phẩm",
     "partner": "Quản lý đối tác",
 }
 
-@bot.on_callback_query(filters.regex(r"^sync_tn_(.+)_(tong|supplier|sales|hr|product|partner)$"))
+@bot.on_callback_query(filters.regex(r"^sync_tn_(.+)_(tong|supplier|sales|hr|finance|product|partner)$"))
 async def sync_tn_dept_callback(client, callback_query: CallbackQuery):
     project_id = callback_query.matches[0].group(1)
     dept = callback_query.matches[0].group(2)
@@ -376,6 +379,7 @@ async def sync_back_to_proj_callback(client, callback_query: CallbackQuery):
         buttons = []
         for p in projects:
             buttons.append([InlineKeyboardButton(p.project_name, callback_data=f"sync_proj_{p.id}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="sync_cancel")])
         
         reply_markup = InlineKeyboardMarkup(buttons)
         await callback_query.message.edit_text(

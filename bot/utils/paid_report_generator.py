@@ -153,7 +153,7 @@ def build_paid_report_html(
     color: #ffffff;
     font-weight: 700;
     font-size: 11px;
-    padding: 10px 8px;
+    padding: 5px 8px;
     text-align: center;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -161,8 +161,8 @@ def build_paid_report_html(
   thead th:first-child {{ border-radius: 8px 0 0 0; }}
   thead th:last-child {{ border-radius: 0 8px 0 0; }}
   tbody td {{
-    padding: 9px 8px;
-    font-size: 12px;
+    padding: 5px 8px;
+    font-size: 11px;
     color: #334155;
     font-weight: 500;
     border-bottom: 1px solid #f1f5f9;

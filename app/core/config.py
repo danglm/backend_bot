@@ -33,11 +33,15 @@ class ServiceConfig(BaseModel):
     IP_Address: str = "localhost"
     Port: int = 8000
 
+class TienNgaConfig(BaseModel):
+    Max_Daily_Payment_Auto_Approve: float = 1000000000.0
+
 class Settings(BaseSettings):
     DB_Config: DBConfig = DBConfig()
     IMP_Config: IMPConfig = IMPConfig()
     Auth: AuthConfig = AuthConfig()
     Service: ServiceConfig = ServiceConfig()
+    TienNga: TienNgaConfig = TienNgaConfig()
 
     model_config = SettingsConfigDict(
         env_file=".env",

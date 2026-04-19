@@ -376,9 +376,11 @@ async def generate_and_send_attendance_report(
             
             caption = (
                 f"<b>Admin @{admin_username} ơi!</b>\n"
-                f"Đề nghị bạn xác nhận thông tin Bảng chấm công của thành viên (<b>{emp_names_str}</b>) nhé.\n\n"
+                f"Đề nghị bạn xác nhận thông tin Bảng chấm công của thành viên (<b>{emp_names_str}</b>) nhé.\n"
+                f"Mã nhân viên: <b>{emp_info.id}</b>\n"
                 f"Tháng báo cáo: <b>{report_month:02d}/{report_year}</b>\n"
-                f"Nhóm: <code>{target_group_chat_id}</code>"
+                f"Nhóm: <code>{target_group_chat_id}</code>\n"
+                f"Sau khi xác nhận thành công, vui lòng nhập lệnh <code>/tien_nga_export_payroll {emp_info.id} {report_month:02d}/{report_year}</code>."
             )
 
             from bot.utils.bot import bot
@@ -397,7 +399,7 @@ async def generate_and_send_attendance_report(
                 chat_id=mgmt_group_chat_id,
                 document=buf,
                 file_name=filename,
-                caption=caption,
+                # caption=caption,
                 reply_to_message_id=info_msg.id
             )
             LogInfo(f"Sent Individual/Group report for group {target_group_chat_id} to Management group.", LogType.SYSTEM_STATUS)
