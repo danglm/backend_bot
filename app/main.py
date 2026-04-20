@@ -13,11 +13,6 @@ from app.api import hello
 from bot.utils.bot import bot
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Tự động cập nhật database với Alembic khi app start
-    import init_db
-    LogInfo("[DB] Running automatic database migrations...", LogType.SYSTEM_STATUS)
-    init_db.init_db()
-
     try:
         await bot.start()
         LogInfo("[Bot] Connected to Telegram (Bot API)", LogType.SYSTEM_STATUS)

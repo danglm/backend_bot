@@ -16,26 +16,14 @@ from app.models import vehicle
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-import os
-from alembic.config import Config
-from alembic import command
-
 def init_db():
     try:
-        logger.info("Bắt đầu tự động cập nhật database với Alembic...")
-        # Lấy đường dẫn tới alembic.ini ở thư mục root
-        root_dir = os.path.dirname(os.path.abspath(__file__))
-        alembic_cfg = Config(os.path.join(root_dir, "alembic.ini"))
-        
-        # Chỉ định đúng đường dẫn thư mục alembic
-        alembic_cfg.set_main_option("script_location", os.path.join(root_dir, "alembic"))
-        
-        # Chạy lệnh upgrade head
-        command.upgrade(alembic_cfg, "head")
-        
-        logger.info("Hoàn tất cập nhật database thành công!")
+        logger.info("Bắt đầu tạo các bảng trong database...")
+        # Lệnh này sẽ tạo tất cả các bảng chưa tồn tại
+        Base.metadata.create_all(bind=engine)
+        logger.info("Hoàn tất tạo bảng thành công!")
     except Exception as e:
-        logger.error(f"Đã xảy ra lỗi khi cập nhật DB: {e}")
+        logger.error(f"Đã xảy ra lỗi khi tạo bảng: {e}")
 
 if __name__ == "__main__":
     init_db()
