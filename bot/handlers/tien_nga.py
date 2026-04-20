@@ -3799,7 +3799,7 @@ Ghi Chú: </pre>
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_chart_purcharse_handler(client, message: Message) -> None:
-    args = await check_command_target(client, message.text, "tien_nga_chart_purcharse")
+    args = await check_command_target(client, message.text, ["tien_nga_chart_purcharse", "tien_nga_bieu_do_thu_mua"])
     if args is None: return
 
     # Parse custom date range and optional household_id

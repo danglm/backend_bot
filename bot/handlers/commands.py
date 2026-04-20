@@ -551,7 +551,7 @@ async def approval_reply_handler(client, message: Message) -> None:
 async def deleted_messages_handler(client, messages: list[Message]) -> None:
     """Detect when a user deletes their request message and delete the linked summary."""
     for msg in messages:
-        if not msg:
+        if not msg or not msg.chat:
             continue
         summary_id = request_tracker.get_summary_id(msg.chat.id, msg.id)
         if summary_id:
