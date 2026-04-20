@@ -19,6 +19,8 @@ class CustomTitle(str, Enum):
     MEMBER_SALES = "member_sales"           #Kinh doanh
     MAIN_HR = "main_hr"                  #Nhân sự
     MEMBER_HR = "member_hr"              #Nhân sự
+    MAIN_FINANCE = "main_finance"        #Tài chính
+    MEMBER_FINANCE = "member_finance"    #Tài chính
     MAIN_PRODUCT = "main_product"             #Thành phẩm
     MEMBER_PRODUCT = "member_product"         #Thành phẩm
     MAIN_PARTNER = "main_partner"             #Đối tác

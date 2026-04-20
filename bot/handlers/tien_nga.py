@@ -289,6 +289,21 @@ async def tien_nga_check_tasks_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_check_tasks
     await handle_check_tasks(client, message, "/tien_nga_check_tasks")
 
+@bot.on_message(filters.command(["tien_nga_list_payroll", "tien_nga_xuat_danh_sach_luong"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_payroll|tien_nga_xuat_danh_sach_luong)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+async def tien_nga_list_payroll_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_list_payroll", "tien_nga_xuat_danh_sach_luong"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_list_payroll_excel
+    import re
+    cmd = args[0] if args else "tien_nga_list_payroll"
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_list_payroll_excel(client, message, cmd)
+
 @bot.on_message(filters.command(["export_payroll", "tien_nga_xuat_luong", "tien_nga_export_payroll"]) | filters.regex(r"^@\w+\s+/(export_payroll|tien_nga_xuat_luong|tien_nga_export_payroll)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -302,8 +317,8 @@ async def tien_nga_export_payroll_handler(client, message: Message) -> None:
     # Re-construct message.text for the actual handler to parse args
     import re
     cmd = args[0] if args else "export_payroll"
-    message.text = f"/{cmd} " + " ".join(args[1:]) if len(args) > 1 else f"/{cmd}"
-    await handle_export_payroll(client, message, f"/{cmd}")
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_export_payroll(client, message, cmd)
 
 @bot.on_message(filters.command(["tien_nga_recreate_attendance_report", "tien_nga_tao_lai_bang_cham_cong"]) | filters.regex(r"^@\w+\s+/(tien_nga_recreate_attendance_report|tien_nga_tao_lai_bang_cham_cong)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -317,8 +332,8 @@ async def tien_nga_recreate_attendance_report_handler(client, message: Message) 
     from bot.utils.human_resource import handle_recreate_attendance_report
     import re
     cmd = args[0] if args else "tien_nga_recreate_attendance_report"
-    message.text = f"/{cmd} " + " ".join(args[1:]) if len(args) > 1 else f"/{cmd}"
-    await handle_recreate_attendance_report(client, message, f"/{cmd}")
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_recreate_attendance_report(client, message, cmd)
 
 
 #############  Supplier #############
@@ -4213,77 +4228,100 @@ async def tien_nga_chart_custom_callback(client, callback_query: CallbackQuery):
     finally:
         db.close()
 
-@bot.on_message(filters.command(["tien_nga_payment_debt", "tien_nga_thanh_toan_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_payment_debt|tien_nga_thanh_toan_no)\b"))
+@bot.on_message(filters.command(["tien_nga_payment_of_debt", "tien_nga_thanh_toan_cong_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_payment_of_debt|tien_nga_thanh_toan_cong_no)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-async def tien_nga_payment_debt_handler(client, message: Message) -> None:
+async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) < 3:
         await message.reply_text(
-            "⚠️ Cú pháp: <code>/tien_nga_payment_debt [Mã Hộ] [Số Tiền]</code>\n\n"
-            "<i>(Ví dụ: <code>/tien_nga_payment_debt KH001 500000</code> hoặc <code>/tien_nga_payment_debt KH001 -500000</code>)</i>",
+            "⚠️ Cú pháp: <code>/tien_nga_payment_of_debt [Mã Hộ/Mã NV] [Số Tiền]</code>\n\n"
+            "<i>(Ví dụ: <code>/tien_nga_payment_of_debt KH001 500000</code>)</i>\n"
+            "<i>Hỗ trợ cả Khách hàng (Mã Hộ) và Nhân sự (Mã NV).</i>",
             parse_mode=ParseMode.HTML
         )
         return
-        
-    hoursehold_id = args[1]
-    
+
+    target_id = args[1]
+
     try:
-        # replace . and , and convert to integer
         amount_str = args[2].replace(".", "").replace(",", "")
         amount = int(amount_str)
     except ValueError:
         await message.reply_text("⚠️ <b>Số Tiền</b> phải là một số hợp lệ.", parse_mode=ParseMode.HTML)
         return
 
-    from app.db.session import SessionLocal
+    if amount <= 0:
+        await message.reply_text("⚠️ <b>Số Tiền</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
     from app.models.business import Customers, Projects
+    from app.models.employee import Employee
     from app.models.telegram import TelegramProjectMember
-    
+
     db = SessionLocal()
     try:
-        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
-        if not customer:
-            await message.reply_text(f"⚠️ Không tìm thấy Khách hàng mã hộ <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML)
-            return
-            
-        old_debt = customer.total_debt or 0
-        customer.total_debt = old_debt - amount
-        new_debt = customer.total_debt
-        
-        db.commit()
-        
-        # Determine the action type
-        if amount > 0:
-            action_text = "KHÁCH HÀNG THANH TOÁN"
-            desc_text = "Khách hàng trả nợ cho công ty"
-            amt_display = amount
-        elif amount < 0:
-            action_text = "THANH TOÁN CHO KHÁCH"
-            desc_text = "Công ty thanh toán/ứng tiền cho khách"
-            amt_display = -amount
+        # Try to find in Customers first, then Employee
+        customer = db.query(Customers).filter(Customers.hoursehold_id == target_id).first()
+        employee = None
+        target_type = None  # "customer" or "employee"
+
+        if customer:
+            target_type = "customer"
+            old_debt = customer.total_debt or 0
+            name = customer.fullname or customer.hoursehold_id
         else:
-            action_text = "CẬP NHẬT CÔNG NỢ"
-            desc_text = "Không có thay đổi số tiền"
-            amt_display = 0
-            
+            employee = db.query(Employee).filter(Employee.id == target_id).first()
+            if employee:
+                target_type = "employee"
+                old_debt = employee.total_debt or 0
+                name = f"{employee.last_name or ''} {employee.first_name or ''}".strip() or employee.id
+            else:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy Khách hàng hoặc Nhân sự với mã <b>{target_id}</b>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        # Validate: amount must not exceed total_debt
+        if amount > old_debt:
+            await message.reply_text(
+                f"⚠️ <b>Số tiền thanh toán vượt quá công nợ!</b>\n\n"
+                f"<b>Mã:</b> <code>{target_id}</code>\n"
+                f"<b>Tên:</b> {name}\n"
+                f"<b>Công nợ hiện tại:</b> <code>{fmt_vn(old_debt)}</code>\n"
+                f"<b>Số tiền yêu cầu:</b> <code>{fmt_vn(amount)}</code>\n\n"
+                f"<i>Số tiền thanh toán không được lớn hơn công nợ hiện tại.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Update debt
+        new_debt = old_debt - amount
+        if target_type == "customer":
+            customer.total_debt = new_debt
+        else:
+            employee.total_debt = new_debt
+
+        db.commit()
+
+        type_label = "Khách hàng" if target_type == "customer" else "Nhân sự"
         success_msg = (
-            f"✅ <b>{action_text}</b>\n\n"
-            f"<b>Mã Hộ:</b> {customer.hoursehold_id}\n"
-            f"<b>Tên KH:</b> {customer.fullname or '—'}\n"
-            f"<b>Loại Giao Dịch:</b> {desc_text}\n"
-            f"<b>Số Tiền:</b> <code>{fmt_vn(amt_display)}</code>\n\n"
+            f"✅ <b>THANH TOÁN CÔNG NỢ THÀNH CÔNG</b>\n\n"
+            f"<b>Loại:</b> {type_label}\n"
+            f"<b>Mã:</b> <code>{target_id}</code>\n"
+            f"<b>Tên:</b> {name}\n"
+            f"<b>Số Tiền Thanh Toán:</b> <code>{fmt_vn(amount)}</code>\n\n"
             f"<b>Công Nợ Cũ:</b> <code>{fmt_vn(old_debt)}</code>\n"
             f"<b>Công Nợ Mới:</b> <code>{fmt_vn(new_debt)}</code>"
         )
-        # Notify the admin main group
         await message.reply_text(success_msg, parse_mode=ParseMode.HTML)
-        
-        LogInfo(f"[TienNga] /tien_nga_payment_debt executed on {hoursehold_id} with amount {amount} by {message.from_user.id}", LogType.SYSTEM_STATUS)
-        
-        # Attempt to notify the customer's member group
-        if customer.username:
+
+        LogInfo(f"[TienNga] /tien_nga_payment_of_debt {target_type} {target_id} amount={amount} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Notify the customer's member group (only for customers)
+        if target_type == "customer" and customer.username:
             username_clean = customer.username.lstrip('@')
             project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
             if project:
@@ -4292,27 +4330,1631 @@ async def tien_nga_payment_debt_handler(client, message: Message) -> None:
                     TelegramProjectMember.role == "member",
                     TelegramProjectMember.user_name == username_clean
                 ).first()
-                
+
                 if member_chat and member_chat.chat_id:
                     try:
                         await client.send_message(
                             chat_id=int(member_chat.chat_id),
                             text=(
                                 f"🔔 <b>THÔNG BÁO CẬP NHẬT CÔNG NỢ</b>\n\n"
-                                f"<b>Kính gửi:</b> {customer.fullname or customer.hoursehold_id}\n"
-                                f"<b>Loại Giao Dịch:</b> {desc_text}\n"
-                                f"<b>Số Tiền:</b> <code>{fmt_vn(amt_display)}</code>\n"
+                                f"<b>Kính gửi:</b> {name}\n"
+                                f"<b>Số Tiền Thanh Toán:</b> <code>{fmt_vn(amount)}</code>\n"
                                 f"<b>Công Nợ Hiện Tại:</b> <code>{fmt_vn(new_debt)}</code>\n\n"
                                 f"<i>Cảm ơn quý khách!</i>"
                             ),
                             parse_mode=ParseMode.HTML
                         )
                     except Exception as e:
-                        LogError(f"Error sending debt update to customer {customer.hoursehold_id}: {e}", LogType.SYSTEM_STATUS)
+                        LogError(f"Error sending debt update to {target_id}: {e}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()
-        LogError(f"Error in tien_nga_payment_debt: {e}", LogType.SYSTEM_STATUS)
+        LogError(f"Error in tien_nga_payment_of_debt: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Hệ thống gặp lỗi khi cập nhật công nợ.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# =========================================================================================
+# TẠO KHOẢN ĐẦU TƯ
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_create_investment", "tien_nga_tao_dau_tu"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_investment|tien_nga_tao_dau_tu)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_create_investment_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    if len(lines) < 2:
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        form_template = f"""<b>FORM TẠO KHOẢN ĐẦU TƯ</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/tien_nga_create_investment
+Mã Đầu Tư: 
+Tên Đầu Tư: 
+Vốn Ban Đầu: 0
+Ngày Bắt Đầu: {today_str}
+Ngày Kết Thúc: 
+Ghi Chú: </pre>
+
+<i>(*Các trường bắt buộc: <b>Mã Đầu Tư</b>, <b>Tên Đầu Tư</b>)</i>"""
+        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        return
+
+    # Parse form data
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    inv_code = data.get("Mã Đầu Tư", "").strip()
+    name = data.get("Tên Đầu Tư", "").strip()
+    capital_str = data.get("Vốn Ban Đầu", "0").strip()
+    start_str = data.get("Ngày Bắt Đầu", "").strip()
+    end_str = data.get("Ngày Kết Thúc", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
+
+    if not inv_code:
+        await message.reply_text("⚠️ <b>Mã Đầu Tư</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    if not name:
+        await message.reply_text("⚠️ <b>Tên Đầu Tư</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        capital = float(capital_str.replace(".", "").replace(",", "")) if capital_str else 0.0
+    except ValueError:
+        await message.reply_text("⚠️ <b>Vốn Ban Đầu</b> phải là một số hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    if capital < 0:
+        await message.reply_text("⚠️ <b>Vốn Ban Đầu</b> không được là số âm.", parse_mode=ParseMode.HTML)
+        return
+
+    # Parse dates
+    start_date = None
+    if start_str:
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                start_date = datetime.strptime(start_str, fmt).date()
+                break
+            except ValueError:
+                continue
+
+    end_date = None
+    if end_str:
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                end_date = datetime.strptime(end_str, fmt).date()
+                break
+            except ValueError:
+                continue
+
+    from app.models.business import Investment
+    import uuid as _uuid
+    from sqlalchemy.exc import IntegrityError
+
+    db = SessionLocal()
+    try:
+        new_inv = Investment(
+            id=_uuid.uuid4(),
+            investment_code=inv_code,
+            name=name,
+            initial_capital=capital,
+            start_date=start_date,
+            end_date=end_date,
+            total_income=capital,
+            total_expense=0.0,
+            profit=capital,
+            notes=notes or None,
+            status="ACTIVE",
+        )
+        db.add(new_inv)
+        db.commit()
+
+        LogInfo(f"[TienNga] Created investment '{name}' with code '{inv_code}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        success_msg = (
+            f"✅ <b>TẠO KHOẢN ĐẦU TƯ THÀNH CÔNG</b>\n\n"
+            f"<b>Mã Đầu Tư:</b> <code>{inv_code}</code>\n"
+            f"<b>Tên:</b> {name}\n"
+            f"<b>Vốn Ban Đầu:</b> <code>{fmt_vn(capital)}</code>\n"
+        )
+        if start_date:
+            success_msg += f"<b>Ngày Bắt Đầu:</b> {start_date.strftime('%d/%m/%Y')}\n"
+        if end_date:
+            success_msg += f"<b>Ngày Kết Thúc:</b> {end_date.strftime('%d/%m/%Y')}\n"
+        if notes:
+            success_msg += f"<b>Ghi Chú:</b> {notes}\n"
+        success_msg += f"\n<b>Mã:</b> <code>{new_inv.id}</code>"
+
+        await message.reply_text(success_msg, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error creating investment: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra khi tạo khoản đầu tư.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# =========================================================================================
+# YÊU CẦU THU / CHI HÀNG NGÀY
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_request_daily_payments", "tien_nga_yeu_cau_thu_chi"]) | filters.regex(r"^@\w+\s+/(tien_nga_request_daily_payments|tien_nga_yeu_cau_thu_chi)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_request_daily_payments_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    # If multi-line → user is submitting form data
+    if len(lines) >= 2:
+        await _process_daily_payment_form(client, message, lines)
+        return
+
+    # Otherwise → show list of active investments
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        investments = db.query(Investment).filter(Investment.status == "ACTIVE").all()
+        if not investments:
+            await message.reply_text("⚠️ Chưa có khoản đầu tư nào. Vui lòng tạo trước bằng lệnh /tien_nga_create_investment.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for inv in investments:
+            label = f"[{inv.investment_code}] {inv.name}" if inv.investment_code else inv.name
+            if not label:
+                label = str(inv.id)[:8]
+            buttons.append([InlineKeyboardButton(label, callback_data=f"rdp_sel_{inv.id}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="rdp_cancel")])
+
+        await message.reply_text(
+            "<b>YÊU CẦU THU / CHI HÀNG NGÀY</b>\n\n"
+            "Vui lòng chọn khoản đầu tư:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in tien_nga_request_daily_payments_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# --- Cancel ---
+@bot.on_callback_query(filters.regex(r"^rdp_cancel$"))
+async def rdp_cancel_callback(client, callback_query: CallbackQuery):
+    await callback_query.message.edit_text("❌ Đã hủy yêu cầu thu/chi.")
+
+
+# --- Select investment → show Thu/Chi ---
+@bot.on_callback_query(filters.regex(r"^rdp_sel_(.+)$"))
+async def rdp_sel_callback(client, callback_query: CallbackQuery):
+    inv_id = callback_query.matches[0].group(1)
+
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        inv = db.query(Investment).filter(Investment.id == inv_id).first()
+        inv_name = inv.name if inv else "N/A"
+
+        buttons = [
+            [
+                InlineKeyboardButton("Thu", callback_data=f"rdp_inv_thu_{inv_id}"),
+                InlineKeyboardButton("Chi", callback_data=f"rdp_inv_chi_{inv_id}"),
+            ],
+            [
+                InlineKeyboardButton("Quay lại", callback_data="rdp_back"),
+                InlineKeyboardButton("Hủy", callback_data="rdp_cancel"),
+            ],
+        ]
+        await callback_query.message.edit_text(
+            f"<b>KHOẢN ĐẦU TƯ: {inv_name}</b>\n\n"
+            "Vui lòng chọn loại giao dịch:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        LogError(f"Error in rdp_sel_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# --- Back to investment list ---
+@bot.on_callback_query(filters.regex(r"^rdp_back$"))
+async def rdp_back_callback(client, callback_query: CallbackQuery):
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        investments = db.query(Investment).filter(Investment.status == "ACTIVE").all()
+        buttons = []
+        for inv in investments:
+            label = f"[{inv.investment_code}] {inv.name}" if inv.investment_code else inv.name
+            if not label:
+                label = str(inv.id)[:8]
+            buttons.append([InlineKeyboardButton(label, callback_data=f"rdp_sel_{inv.id}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="rdp_cancel")])
+
+        await callback_query.message.edit_text(
+            "<b>YÊU CẦU THU / CHI HÀNG NGÀY</b>\n\n"
+            "Vui lòng chọn khoản đầu tư:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        LogError(f"Error in rdp_back_callback: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
+
+# --- Select Thu/Chi → show form ---
+@bot.on_callback_query(filters.regex(r"^rdp_inv_(thu|chi)_(.+)$"))
+async def rdp_inv_callback(client, callback_query: CallbackQuery):
+    payment_type = callback_query.matches[0].group(1)
+    inv_id = callback_query.matches[0].group(2)
+    type_label = "THU" if payment_type == "thu" else "CHI"
+
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        inv = db.query(Investment).filter(Investment.id == inv_id).first()
+        inv_name = inv.name if inv else "N/A"
+
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        form_code = inv.investment_code if inv and inv.investment_code else inv_id
+
+        form_template = f"""<b>FORM {type_label} HÀNG NGÀY</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/tien_nga_request_daily_payments
+Mã Đầu Tư: {form_code}
+Loại: {payment_type}
+Ngày: {today_str}
+Số Tiền: 
+Người Yêu Cầu: 
+Người Thực Hiện: 
+Người Nhận: 
+Mục Đích: 
+Lý Do: 
+Ghi Chú: </pre>
+
+<i>(*Đang tạo phiếu {type_label.lower()} cho: <b>{inv_name}</b>)</i>"""
+
+        await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in rdp_inv_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# --- Process submitted form ---
+async def _process_daily_payment_form(client, message: Message, lines: list):
+    # Parse key:value pairs
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    inv_id = data.get("Mã Đầu Tư", "").strip()
+    payment_type = data.get("Loại", "").strip().lower()
+    day_str = data.get("Ngày", "").strip()
+    amount_str = data.get("Số Tiền", "").strip()
+    requester = data.get("Người Yêu Cầu", "").strip()
+    executor = data.get("Người Thực Hiện", "").strip()
+    receiver = data.get("Người Nhận", "").strip()
+    purpose = data.get("Mục Đích", "").strip()
+    reason = data.get("Lý Do", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
+
+    # Validate required fields
+    if not inv_id or not payment_type or not amount_str:
+        await message.reply_text(
+            "⚠️ <b>Mã Đầu Tư</b>, <b>Loại</b> và <b>Số Tiền</b> là bắt buộc.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    if payment_type not in ("thu", "chi"):
+        await message.reply_text("⚠️ <b>Loại</b> phải là <code>thu</code> hoặc <code>chi</code>.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        amount = float(amount_str.replace(".", "").replace(",", ""))
+    except ValueError:
+        await message.reply_text("⚠️ <b>Số Tiền</b> phải là một số hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    if amount <= 0:
+        await message.reply_text("⚠️ <b>Số Tiền</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
+    # Parse date
+    day = None
+    if day_str:
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                day = datetime.strptime(day_str, fmt).date()
+                break
+            except ValueError:
+                continue
+    if not day:
+        day = datetime.now().date()
+
+    from app.models.business import Investment, DailyPayment
+    import uuid as _uuid
+
+    db = SessionLocal()
+    try:
+        import uuid as _uuid
+        try:
+            parsed_id = _uuid.UUID(inv_id)
+            inv = db.query(Investment).filter(Investment.id == parsed_id).first()
+        except ValueError:
+            # Not a UUID, search by investment_code
+            inv = db.query(Investment).filter(Investment.investment_code == inv_id).first()
+
+        if not inv:
+            await message.reply_text(f"⚠️ Không tìm thấy khoản đầu tư mã <b>{inv_id}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        # Validate expense against current balance
+        if payment_type == "chi":
+            current_balance = (inv.total_income or 0) - (inv.total_expense or 0)
+            if amount > current_balance:
+                await message.reply_text(
+                    f"⚠️ <b>SỐ TIỀN CHI VƯỢT QUÁ SỐ DƯ!</b>\n\n"
+                    f"<b>Khoản Đầu Tư:</b> {inv.name}\n"
+                    f"<b>Số dư hiện tại:</b> <code>{fmt_vn(current_balance)}</code>\n"
+                    f"<b>Số tiền yêu cầu chi:</b> <code>{fmt_vn(amount)}</code>\n\n"
+                    f"<i>Vui lòng nhập số tiền nhỏ hơn hoặc bằng số dư hiện tại.</i>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        from app.core.config import settings
+        max_amount = settings.TienNga.Max_Daily_Payment_Auto_Approve
+        requires_approval = False
+
+        if payment_type == "chi" and amount > max_amount:
+            requires_approval = True
+
+        # Create DailyPayment record
+        new_payment = DailyPayment(
+            id=_uuid.uuid4(),
+            investment_id=inv.id,
+            requester=requester or None,
+            executor=executor or None,
+            receiver=receiver or None,
+            payment_type=payment_type,
+            purpose=purpose or None,
+            reason=reason or None,
+            amount=amount,
+            day=day,
+            notes=notes or None,
+            status="PENDING" if requires_approval else "APPROVED",
+        )
+        db.add(new_payment)
+
+        # Update Investment totals only if approved
+        if not requires_approval:
+            if payment_type == "thu":
+                inv.total_income = (inv.total_income or 0) + amount
+            else:
+                inv.total_expense = (inv.total_expense or 0) + amount
+
+            inv.profit = (inv.total_income or 0) - (inv.total_expense or 0)
+
+        db.commit()
+
+        if requires_approval:
+            # Attempt to find the dynamic Owner's username
+            from app.models.business import Projects
+            from app.models.telegram import TelegramProjectMember
+            
+            owner_str = "@username (Owner)"
+            project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+            if project:
+                owner_member = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.project_id == project.id,
+                    TelegramProjectMember.member_status == "OWNER"
+                ).first()
+                if owner_member:
+                    if owner_member.user_name:
+                        owner_str = f"@{owner_member.user_name} (Owner)"
+                    elif owner_member.full_name:
+                        owner_str = f"{owner_member.full_name} (Owner)"
+
+            approval_msg = (
+                f"⚠️ <b>YÊU CẦU DUYỆT PHIẾU CHI SỐ TIỀN LỚN</b> ⚠️\n\n"
+                f"<b>Khoản Đầu Tư:</b> {inv.name}\n"
+                f"<b>Người Yêu Cầu:</b> {requester or 'N/A'}\n"
+                f"<b>Mục Đích:</b> {purpose or 'N/A'}\n"
+                f"<b>Số Tiền:</b> <code>{fmt_vn(amount)}</code>\n"
+                f"<b>Mã Phiếu:</b> <code>{new_payment.id}</code>\n\n"
+                f"📌 <i>Ghi chú: {owner_str} vui lòng <b>Reply</b> tin nhắn này với lệnh <code>/confirm_payment</code> để thông qua hoặc <code>/deny_payment</code> để huỷ báo cáo hạch toán.</i>"
+            )
+            await message.reply_text(approval_msg, parse_mode=ParseMode.HTML)
+            LogInfo(f"[TienNga] daily_payment pending approval for inv {inv.name} amount {amount} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+            return
+
+        type_label = "THU" if payment_type == "thu" else "CHI"
+        success_msg = (
+            f"✅ <b>ĐÃ GHI NHẬN PHIẾU {type_label}</b>\n\n"
+            f"<b>Khoản Đầu Tư:</b> {inv.name}\n"
+            f"<b>Loại:</b> {type_label}\n"
+            f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
+            f"<b>Số Tiền:</b> <code>{fmt_vn(amount)}</code>\n"
+        )
+        if requester:
+            success_msg += f"<b>Người Yêu Cầu:</b> {requester}\n"
+        if executor:
+            success_msg += f"<b>Người Thực Hiện:</b> {executor}\n"
+        if receiver:
+            success_msg += f"<b>Người Nhận:</b> {receiver}\n"
+        if purpose:
+            success_msg += f"<b>Mục Đích:</b> {purpose}\n"
+        if reason:
+            success_msg += f"<b>Lý Do:</b> {reason}\n"
+        if notes:
+            success_msg += f"<b>Ghi Chú:</b> {notes}\n"
+
+
+        await message.reply_text(success_msg, parse_mode=ParseMode.HTML)
+        LogInfo(f"[TienNga] daily_payment {payment_type} {amount} for inv {inv.name} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in _process_daily_payment_form: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Hệ thống gặp lỗi khi lưu phiếu thu/chi.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# =========================================================================================
+# DUYỆT PHIẾU CHI LỚN BẰNG REPLY
+# =========================================================================================
+import re
+
+@bot.on_message(filters.command(["confirm_payment"]))
+@require_user_type(UserType.OWNER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_confirm_payment_handler(client, message: Message) -> None:
+    if not message.reply_to_message:
+        await message.reply_text("⚠️ Vui lòng <b>Reply</b> một tin nhắn yêu cầu duyệt phiếu chi.", parse_mode=ParseMode.HTML)
+        return
+        
+    replied_text = message.reply_to_message.text or ""
+    # Extract Payment ID
+    match = re.search(r"Mã Phiếu:\s*([a-f0-9\-]{36})", replied_text)
+    if not match:
+        await message.reply_text("⚠️ Không tìm thấy Mã Phiếu trong tin nhắn đang reply.", parse_mode=ParseMode.HTML)
+        return
+        
+    payment_id = match.group(1)
+    
+    from app.models.business import Investment, DailyPayment
+    db = SessionLocal()
+    try:
+        payment = db.query(DailyPayment).filter(DailyPayment.id == payment_id).first()
+        if not payment:
+            await message.reply_text("⚠️ Không tìm thấy phiếu chi trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+            
+        if payment.status != "PENDING":
+            await message.reply_text(f"⚠️ Phiếu chi này đang ở trạng thái: <b>{payment.status}</b>", parse_mode=ParseMode.HTML)
+            return
+            
+        inv = db.query(Investment).filter(Investment.id == payment.investment_id).first()
+        if not inv:
+            await message.reply_text("⚠️ Không tìm thấy thông tin khoản đầu tư.", parse_mode=ParseMode.HTML)
+            return
+            
+        # Update status and totals
+        payment.status = "APPROVED"
+        inv.total_expense = (inv.total_expense or 0) + payment.amount
+        inv.profit = (inv.total_income or 0) - (inv.total_expense or 0)
+        
+        db.commit()
+        
+        success_msg = (
+            f"✅ <b>ĐÃ PHÊ DUYỆT PHIẾU CHI</b>\n\n"
+            f"<b>Mã Phiếu:</b> <code>{payment.id}</code>\n"
+            f"<b>Người duyệt:</b> {message.from_user.first_name}\n"
+            f"<b>Số Tiền:</b> <code>{fmt_vn(payment.amount)}</code>\n"
+            f"<b>Đã giải ngân hạch toán thành công!</b>"
+        )
+        await message.reply_text(success_msg, parse_mode=ParseMode.HTML)
+        LogInfo(f"[TienNga] Owner {message.from_user.id} approved payment {payment.id}", LogType.SYSTEM_STATUS)
+        
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in confirm_payment: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Hệ thống gặp lỗi khi duyệt phiếu chi.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+@bot.on_message(filters.command(["deny_payment"]))
+@require_user_type(UserType.OWNER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_deny_payment_handler(client, message: Message) -> None:
+    if not message.reply_to_message:
+        await message.reply_text("⚠️ Vui lòng <b>Reply</b> một tin nhắn yêu cầu duyệt phiếu chi.", parse_mode=ParseMode.HTML)
+        return
+        
+    replied_text = message.reply_to_message.text or ""
+    # Extract Payment ID
+    match = re.search(r"Mã Phiếu:\s*([a-f0-9\-]{36})", replied_text)
+    if not match:
+        await message.reply_text("⚠️ Không tìm thấy Mã Phiếu trong tin nhắn đang reply.", parse_mode=ParseMode.HTML)
+        return
+        
+    payment_id = match.group(1)
+    
+    from app.models.business import DailyPayment
+    db = SessionLocal()
+    try:
+        payment = db.query(DailyPayment).filter(DailyPayment.id == payment_id).first()
+        if not payment:
+            await message.reply_text("⚠️ Không tìm thấy phiếu chi trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+            
+        if payment.status != "PENDING":
+            await message.reply_text(f"⚠️ Phiếu chi này đang ở trạng thái: <b>{payment.status}</b>", parse_mode=ParseMode.HTML)
+            return
+            
+        payment.status = "REJECTED"
+        db.commit()
+        
+        await message.reply_text(f"❌ <b>ĐÃ TỪ CHỐI PHIẾU CHI</b>\n\nMã Phiếu: <code>{payment.id}</code>", parse_mode=ParseMode.HTML)
+        LogInfo(f"[TienNga] Owner {message.from_user.id} rejected payment {payment.id}", LogType.SYSTEM_STATUS)
+        
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in deny_payment: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Hệ thống gặp lỗi khi huỷ phiếu chi.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# =========================================================================================
+# XÁC NHẬN THANH TOÁN CÔNG NỢ HÀNG LOẠT
+# =========================================================================================
+
+# In-memory toggle selections keyed by message_id
+_cpd_selections: dict[int, set[str]] = {}
+_cpd_pages: dict[int, int] = {}  # current page per message_id
+CPD_PAGE_SIZE = 10
+
+
+@bot.on_message(filters.command(["tien_nga_confirm_payments_of_debts", "tien_nga_xac_nhan_thanh_toan_cong_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_confirm_payments_of_debts|tien_nga_xac_nhan_thanh_toan_cong_no)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_confirm_payments_of_debts_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_confirm_payments_of_debts", "tien_nga_xac_nhan_thanh_toan_cong_no"])
+    if args is None: return
+
+    buttons = [
+        [InlineKeyboardButton("Nhân sự", callback_data="cpd_cat_hr")],
+        [InlineKeyboardButton("Nhà cung cấp", callback_data="cpd_cat_supplier")],
+        [InlineKeyboardButton("Hủy", callback_data="cpd_cancel")],
+    ]
+    await message.reply_text(
+        "<b>XÁC NHẬN THANH TOÁN CÔNG NỢ</b>\n\nVui lòng chọn đối tượng:",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.HTML
+    )
+
+
+# --- Cancel ---
+@bot.on_callback_query(filters.regex(r"^cpd_cancel$"))
+async def cpd_cancel_callback(client, callback_query: CallbackQuery):
+    msg_id = callback_query.message.id
+    _cpd_selections.pop(msg_id, None)
+    await callback_query.message.edit_text("❌ Đã hủy xác nhận thanh toán công nợ.")
+
+
+# --- Back to main menu ---
+@bot.on_callback_query(filters.regex(r"^cpd_back$"))
+async def cpd_back_callback(client, callback_query: CallbackQuery):
+    msg_id = callback_query.message.id
+    _cpd_selections.pop(msg_id, None)
+    buttons = [
+        [InlineKeyboardButton("Nhân sự", callback_data="cpd_cat_hr")],
+        [InlineKeyboardButton("Nhà cung cấp", callback_data="cpd_cat_supplier")],
+        [InlineKeyboardButton("Hủy", callback_data="cpd_cancel")],
+    ]
+    await callback_query.message.edit_text(
+        "<b>XÁC NHẬN THANH TOÁN CÔNG NỢ</b>\n\nVui lòng chọn đối tượng:",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.HTML
+    )
+
+
+# --- Category: HR (Nhân sự) ---
+@bot.on_callback_query(filters.regex(r"^cpd_cat_hr$"))
+async def cpd_cat_hr_callback(client, callback_query: CallbackQuery):
+    from app.models.employee import Employee
+
+    db = SessionLocal()
+    try:
+        employees = db.query(Employee).filter(Employee.status == "ACTIVE").order_by(Employee.id).all()
+        if not employees:
+            await callback_query.answer("Không có nhân viên nào trong hệ thống.", show_alert=True)
+            return
+
+        msg_id = callback_query.message.id
+        _cpd_selections[msg_id] = set()
+
+        buttons = []
+        row = []
+        for emp in employees:
+            name = f"{emp.last_name or ''} {emp.first_name or ''}".strip() or emp.id
+            debt_str = f" ({fmt_vn(emp.total_debt or 0)})" if (emp.total_debt or 0) > 0 else ""
+            label = f"☐ {name}{debt_str}"
+            row.append(InlineKeyboardButton(label, callback_data=f"cpd_tgl_hr_{emp.id}"))
+            if len(row) == 2:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+
+        buttons.append([
+            InlineKeyboardButton("✅ Xác nhận thanh toán", callback_data="cpd_confirm_hr"),
+        ])
+        buttons.append([
+            InlineKeyboardButton("Quay lại", callback_data="cpd_back"),
+            InlineKeyboardButton("Hủy", callback_data="cpd_cancel"),
+        ])
+
+        await callback_query.message.edit_text(
+            "<b>CHỌN NHÂN SỰ CẦN THANH TOÁN CÔNG NỢ</b>\n\n"
+            "<i>Nhấn vào tên để chọn/bỏ chọn, sau đó nhấn Xác nhận.</i>",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        LogError(f"Error in cpd_cat_hr_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# --- Toggle HR ---
+@bot.on_callback_query(filters.regex(r"^cpd_tgl_hr_(.+)$"))
+async def cpd_tgl_hr_callback(client, callback_query: CallbackQuery):
+    emp_id = callback_query.matches[0].group(1)
+    msg_id = callback_query.message.id
+
+    if msg_id not in _cpd_selections:
+        _cpd_selections[msg_id] = set()
+
+    selected = _cpd_selections[msg_id]
+    if emp_id in selected:
+        selected.discard(emp_id)
+    else:
+        selected.add(emp_id)
+
+    # Rebuild buttons from DB
+    from app.models.employee import Employee
+    db = SessionLocal()
+    try:
+        employees = db.query(Employee).filter(Employee.status == "ACTIVE").order_by(Employee.id).all()
+        buttons = []
+        row = []
+        for emp in employees:
+            name = f"{emp.last_name or ''} {emp.first_name or ''}".strip() or emp.id
+            debt_str = f" ({fmt_vn(emp.total_debt or 0)})" if (emp.total_debt or 0) > 0 else ""
+            is_selected = emp.id in selected
+            icon = "☑" if is_selected else "☐"
+            label = f"{icon} {name}{debt_str}"
+            row.append(InlineKeyboardButton(label, callback_data=f"cpd_tgl_hr_{emp.id}"))
+            if len(row) == 2:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+
+        buttons.append([
+            InlineKeyboardButton(f"✅ Xác nhận thanh toán ({len(selected)})", callback_data="cpd_confirm_hr"),
+        ])
+        buttons.append([
+            InlineKeyboardButton("Quay lại", callback_data="cpd_back"),
+            InlineKeyboardButton("Hủy", callback_data="cpd_cancel"),
+        ])
+
+        await callback_query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    except Exception as e:
+        if "MESSAGE_NOT_MODIFIED" in str(e):
+            await callback_query.answer()
+        elif "FLOOD_WAIT" in str(e):
+            await callback_query.answer("⏳ Vui lòng chờ một chút.", show_alert=False)
+        else:
+            LogError(f"Error in cpd_tgl_hr_callback: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
+
+# --- Confirm HR ---
+@bot.on_callback_query(filters.regex(r"^cpd_confirm_hr$"))
+async def cpd_confirm_hr_callback(client, callback_query: CallbackQuery):
+    msg_id = callback_query.message.id
+    selected = _cpd_selections.pop(msg_id, set())
+
+    if not selected:
+        await callback_query.answer("⚠️ Chưa chọn nhân sự nào!", show_alert=True)
+        return
+
+    from app.models.employee import Employee
+    db = SessionLocal()
+    try:
+        success_list = []
+        skip_list = []
+
+        for emp_id in selected:
+            emp = db.query(Employee).filter(Employee.id == emp_id).first()
+            if not emp:
+                continue
+            name = f"{emp.last_name or ''} {emp.first_name or ''}".strip() or emp.id
+            old_debt = emp.total_debt or 0
+            if old_debt > 0:
+                emp.total_debt = 0
+                success_list.append(f"• <b>{name}</b> ({emp.id}): <code>{fmt_vn(old_debt)}</code> → <code>0</code>")
+            else:
+                skip_list.append(f"• <b>{name}</b> ({emp.id}): Công nợ = <code>{fmt_vn(old_debt)}</code>")
+
+        db.commit()
+
+        result = "<b>✅ KẾT QUẢ THANH TOÁN CÔNG NỢ NHÂN SỰ</b>\n\n"
+        if success_list:
+            result += "<b>Đã thanh toán:</b>\n" + "\n".join(success_list) + "\n\n"
+        if skip_list:
+            result += "<b>⚠️ Không có công nợ (bỏ qua):</b>\n" + "\n".join(skip_list) + "\n"
+
+        await callback_query.message.edit_text(result, parse_mode=ParseMode.HTML)
+        LogInfo(f"[TienNga] confirm_payments_of_debts HR: {len(success_list)} cleared, {len(skip_list)} skipped by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in cpd_confirm_hr_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text("❌ Lỗi hệ thống khi thanh toán công nợ nhân sự.")
+    finally:
+        db.close()
+
+
+# --- Category: Supplier (Nhà cung cấp) → Chọn Xưởng ---
+@bot.on_callback_query(filters.regex(r"^cpd_cat_supplier$"))
+async def cpd_cat_supplier_callback(client, callback_query: CallbackQuery):
+    from app.models.business import CollectionPoint
+
+    db = SessionLocal()
+    try:
+        cps = db.query(CollectionPoint).all()
+        if not cps:
+            await callback_query.answer("Không có xưởng/điểm thu mua nào.", show_alert=True)
+            return
+
+        buttons = []
+        for cp in cps:
+            if cp.collection_name:
+                buttons.append([InlineKeyboardButton(cp.collection_name, callback_data=f"cpd_cp_{cp.id}")])
+
+        buttons.append([
+            InlineKeyboardButton("Quay lại", callback_data="cpd_back"),
+            InlineKeyboardButton("Hủy", callback_data="cpd_cancel"),
+        ])
+
+        await callback_query.message.edit_text(
+            "<b>CHỌN XƯỞNG / ĐIỂM THU MUA</b>\n\n"
+            "Vui lòng chọn xưởng để xem danh sách hộ dân:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        LogError(f"Error in cpd_cat_supplier_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# --- Helper: build paginated customer buttons ---
+def _build_sup_buttons(customers, selected: set, cp_id: str, page: int):
+    """Build paginated inline buttons for customer list."""
+    total = len(customers)
+    total_pages = max(1, (total + CPD_PAGE_SIZE - 1) // CPD_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+
+    start = page * CPD_PAGE_SIZE
+    end = start + CPD_PAGE_SIZE
+    page_customers = customers[start:end]
+
+    buttons = []
+    for cust in page_customers:
+        name = cust.fullname or cust.hoursehold_id
+        debt_str = f" ({fmt_vn(cust.total_debt or 0)})" if (cust.total_debt or 0) > 0 else ""
+        is_selected = cust.hoursehold_id in selected
+        icon = "☑" if is_selected else "☐"
+        label = f"{icon} {cust.hoursehold_id} - {name}{debt_str}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"cpd_tgl_sup_{cp_id}_{cust.hoursehold_id}")])
+
+    # Pagination nav
+    if total_pages > 1:
+        nav_row = []
+        if page > 0:
+            nav_row.append(InlineKeyboardButton("◀️ Trước", callback_data=f"cpd_page_{cp_id}_{page - 1}"))
+        nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="cpd_noop"))
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton("Sau ▶️", callback_data=f"cpd_page_{cp_id}_{page + 1}"))
+        buttons.append(nav_row)
+
+    sel_count = len(selected)
+    confirm_label = f"✅ Xác nhận thanh toán ({sel_count})" if sel_count else "✅ Xác nhận thanh toán"
+    buttons.append([InlineKeyboardButton(confirm_label, callback_data=f"cpd_confirm_sup_{cp_id}")])
+    buttons.append([
+        InlineKeyboardButton("Quay lại", callback_data="cpd_back_sup"),
+        InlineKeyboardButton("Hủy", callback_data="cpd_cancel"),
+    ])
+    return buttons
+
+
+# --- Select Collection Point → Show customers (page 0) ---
+@bot.on_callback_query(filters.regex(r"^cpd_cp_(.+)$"))
+async def cpd_cp_callback(client, callback_query: CallbackQuery):
+    cp_id = callback_query.matches[0].group(1)
+    from app.models.business import Customers, CollectionPoint
+
+    db = SessionLocal()
+    try:
+        cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
+        cp_name = cp.collection_name if cp else "N/A"
+
+        customers = db.query(Customers).filter(
+            Customers.collection_point_id == cp_id,
+            Customers.status == "ACTIVE",
+            Customers.total_debt > 0
+        ).order_by(Customers.hoursehold_id).all()
+
+        if not customers:
+            await callback_query.answer(f"Xưởng {cp_name} không có hộ dân nào có công nợ.", show_alert=True)
+            return
+
+        msg_id = callback_query.message.id
+        _cpd_selections[msg_id] = set()
+        _cpd_pages[msg_id] = 0
+
+        buttons = _build_sup_buttons(customers, set(), cp_id, 0)
+
+        await callback_query.message.edit_text(
+            f"<b>CHỌN HỘ DÂN — {cp_name}</b>\n\n"
+            "<i>Nhấn vào tên để chọn/bỏ chọn, sau đó nhấn Xác nhận.</i>",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        LogError(f"Error in cpd_cp_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# --- Page navigation ---
+@bot.on_callback_query(filters.regex(r"^cpd_page_(.+)_(\d+)$"))
+async def cpd_page_callback(client, callback_query: CallbackQuery):
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+    msg_id = callback_query.message.id
+
+    _cpd_pages[msg_id] = page
+    selected = _cpd_selections.get(msg_id, set())
+
+    from app.models.business import Customers, CollectionPoint
+    db = SessionLocal()
+    try:
+        customers = db.query(Customers).filter(
+            Customers.collection_point_id == cp_id,
+            Customers.status == "ACTIVE",
+            Customers.total_debt > 0
+        ).order_by(Customers.hoursehold_id).all()
+
+        buttons = _build_sup_buttons(customers, selected, cp_id, page)
+        await callback_query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    except Exception as e:
+        if "MESSAGE_NOT_MODIFIED" in str(e):
+            await callback_query.answer()
+        elif "FLOOD_WAIT" in str(e):
+            await callback_query.answer("⏳ Vui lòng chờ một chút.", show_alert=False)
+        else:
+            LogError(f"Error in cpd_page_callback: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
+
+# --- Noop (page indicator button) ---
+@bot.on_callback_query(filters.regex(r"^cpd_noop$"))
+async def cpd_noop_callback(client, callback_query: CallbackQuery):
+    await callback_query.answer()
+
+
+# --- Back to supplier list ---
+@bot.on_callback_query(filters.regex(r"^cpd_back_sup$"))
+async def cpd_back_sup_callback(client, callback_query: CallbackQuery):
+    msg_id = callback_query.message.id
+    _cpd_selections.pop(msg_id, None)
+    _cpd_pages.pop(msg_id, None)
+
+    from app.models.business import CollectionPoint
+    db = SessionLocal()
+    try:
+        cps = db.query(CollectionPoint).all()
+        buttons = []
+        for cp in cps:
+            if cp.collection_name:
+                buttons.append([InlineKeyboardButton(cp.collection_name, callback_data=f"cpd_cp_{cp.id}")])
+        buttons.append([
+            InlineKeyboardButton("Quay lại", callback_data="cpd_back"),
+            InlineKeyboardButton("Hủy", callback_data="cpd_cancel"),
+        ])
+        await callback_query.message.edit_text(
+            "<b>CHỌN XƯỞNG / ĐIỂM THU MUA</b>\n\n"
+            "Vui lòng chọn xưởng để xem danh sách hộ dân:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        LogError(f"Error in cpd_back_sup_callback: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
+
+# --- Toggle Supplier (Customer) ---
+@bot.on_callback_query(filters.regex(r"^cpd_tgl_sup_(.+)_(.+)$"))
+async def cpd_tgl_sup_callback(client, callback_query: CallbackQuery):
+    cp_id = callback_query.matches[0].group(1)
+    cust_id = callback_query.matches[0].group(2)
+    msg_id = callback_query.message.id
+
+    if msg_id not in _cpd_selections:
+        _cpd_selections[msg_id] = set()
+
+    selected = _cpd_selections[msg_id]
+    if cust_id in selected:
+        selected.discard(cust_id)
+    else:
+        selected.add(cust_id)
+
+    page = _cpd_pages.get(msg_id, 0)
+
+    # Rebuild buttons
+    from app.models.business import Customers, CollectionPoint
+    db = SessionLocal()
+    try:
+        customers = db.query(Customers).filter(
+            Customers.collection_point_id == cp_id,
+            Customers.status == "ACTIVE",
+            Customers.total_debt > 0
+        ).order_by(Customers.hoursehold_id).all()
+
+        buttons = _build_sup_buttons(customers, selected, cp_id, page)
+        await callback_query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    except Exception as e:
+        if "MESSAGE_NOT_MODIFIED" in str(e):
+            await callback_query.answer()
+        elif "FLOOD_WAIT" in str(e):
+            await callback_query.answer("⏳ Vui lòng chờ một chút.", show_alert=False)
+        else:
+            LogError(f"Error in cpd_tgl_sup_callback: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
+
+# --- Confirm Supplier ---
+@bot.on_callback_query(filters.regex(r"^cpd_confirm_sup_(.+)$"))
+async def cpd_confirm_sup_callback(client, callback_query: CallbackQuery):
+    cp_id = callback_query.matches[0].group(1)
+    msg_id = callback_query.message.id
+    selected = _cpd_selections.pop(msg_id, set())
+
+    if not selected:
+        await callback_query.answer("⚠️ Chưa chọn hộ dân nào!", show_alert=True)
+        return
+
+    from app.models.business import Customers, CollectionPoint
+    db = SessionLocal()
+    try:
+        cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
+        cp_name = cp.collection_name if cp else "N/A"
+
+        success_list = []
+        skip_list = []
+
+        for cust_id in selected:
+            cust = db.query(Customers).filter(Customers.hoursehold_id == cust_id).first()
+            if not cust:
+                continue
+            name = cust.fullname or cust.hoursehold_id
+            old_debt = cust.total_debt or 0
+            if old_debt > 0:
+                cust.total_debt = 0
+                success_list.append(f"• <b>{cust.hoursehold_id}</b> — {name}: <code>{fmt_vn(old_debt)}</code> → <code>0</code>")
+            else:
+                skip_list.append(f"• <b>{cust.hoursehold_id}</b> — {name}: Công nợ = <code>{fmt_vn(old_debt)}</code>")
+
+        db.commit()
+
+        result = f"<b>✅ KẾT QUẢ THANH TOÁN CÔNG NỢ</b>\n<b>Xưởng:</b> {cp_name}\n\n"
+        if success_list:
+            result += "<b>Đã thanh toán:</b>\n" + "\n".join(success_list) + "\n\n"
+        if skip_list:
+            result += "<b>⚠️ Không có công nợ (bỏ qua):</b>\n" + "\n".join(skip_list) + "\n"
+
+        await callback_query.message.edit_text(result, parse_mode=ParseMode.HTML)
+        LogInfo(f"[TienNga] confirm_payments_of_debts Supplier ({cp_name}): {len(success_list)} cleared, {len(skip_list)} skipped by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        if "FLOOD_WAIT" in str(e):
+            import asyncio
+            await asyncio.sleep(5)
+            try:
+                await callback_query.message.edit_text(result, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+        else:
+            LogError(f"Error in cpd_confirm_sup_callback: {e}", LogType.SYSTEM_STATUS)
+            try:
+                await callback_query.message.edit_text("❌ Lỗi hệ thống khi thanh toán công nợ nhà cung cấp.")
+            except Exception:
+                pass
+    finally:
+        db.close()
+
+
+# =========================================================================================
+# XUẤT BÁO CÁO THU CHI EXCEL
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_export_daily_payment", "tien_nga_xuat_bao_cao_thu_chi"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_daily_payment|tien_nga_xuat_bao_cao_thu_chi)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_export_daily_payment_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_export_daily_payment", "tien_nga_xuat_bao_cao_thu_chi"])
+    if args is None: return
+
+    # Check for direct dates: dd/mm/yyyy - dd/mm/yyyy
+    if len(args) > 1:
+        date_str = " ".join(args[1:])
+        try:
+            parts = date_str.split("-")
+            if len(parts) != 2:
+                raise ValueError()
+            d1 = datetime.strptime(parts[0].strip(), "%d/%m/%Y").date()
+            d2 = datetime.strptime(parts[1].strip(), "%d/%m/%Y").date()
+            if d1 > d2:
+                d1, d2 = d2, d1
+            # Step 2: Show Investments
+            await _show_edp_investments(client, message, d1, d2)
+            return
+        except ValueError:
+            await message.reply_text("⚠️ Định dạng khoảng thời gian không hợp lệ. Vui lòng dùng: <code>DD/MM/YYYY - DD/MM/YYYY</code>", parse_mode=ParseMode.HTML)
+            return
+
+    # Step 1: Interactive Flow
+    buttons = [
+        [InlineKeyboardButton("1 ngày", callback_data="edp_time_1d"), InlineKeyboardButton("7 ngày", callback_data="edp_time_7d")],
+        [InlineKeyboardButton("14 ngày", callback_data="edp_time_14d"), InlineKeyboardButton("1 tháng", callback_data="edp_time_1m")],
+        [InlineKeyboardButton("2 tháng", callback_data="edp_time_2m"), InlineKeyboardButton("3 tháng", callback_data="edp_time_3m")],
+        [InlineKeyboardButton("6 tháng", callback_data="edp_time_6m"), InlineKeyboardButton("1 năm", callback_data="edp_time_1y")],
+        [InlineKeyboardButton("Năm trước", callback_data="edp_time_lasty"), InlineKeyboardButton("Tất cả", callback_data="edp_time_all")],
+        [InlineKeyboardButton("Hủy", callback_data="edp_cancel")]
+    ]
+    await message.reply_text("<b>XUẤT BÁO CÁO THU CHI</b>\n<code>tien_nga_export_daily_payment [DD/MM/YYYY - DD/MM/YYYY]</code>\nVui lòng chọn khoảng thời gian:", reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+
+@bot.on_callback_query(filters.regex(r"^edp_cancel$"))
+async def edp_cancel_cb(client, callback_query: CallbackQuery):
+    await callback_query.message.edit_text("Đã hủy thao tác xuất báo cáo.")
+
+@bot.on_callback_query(filters.regex(r"^edp_time_(.+)$"))
+async def edp_time_cb(client, callback_query: CallbackQuery):
+    period = callback_query.matches[0].group(1)
+    
+    today = datetime.now().date()
+    end_date = today
+    if period == "1d": start_date = today
+    elif period == "7d": start_date = today - timedelta(days=7)
+    elif period == "14d": start_date = today - timedelta(days=14)
+    elif period == "1m": start_date = today - timedelta(days=30)
+    elif period == "2m": start_date = today - timedelta(days=60)
+    elif period == "3m": start_date = today - timedelta(days=90)
+    elif period == "6m": start_date = today - timedelta(days=180)
+    elif period == "1y": start_date = today - timedelta(days=365)
+    elif period == "lasty":
+        start_date = datetime(today.year - 1, 1, 1).date()
+        end_date = datetime(today.year - 1, 12, 31).date()
+    elif period == "all":
+        start_date = datetime(2000, 1, 1).date()
+        end_date = datetime(2100, 1, 1).date()
+    else:
+        start_date = today
+        
+    await _show_edp_investments(client, callback_query.message, start_date, end_date, edit=True)
+
+async def _show_edp_investments(client, message, start_date, end_date, edit=False):
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        investments = db.query(Investment).all()
+        buttons = []
+        # Support ALL
+        buttons.append([InlineKeyboardButton("TỔNG HỢP TẤT CẢ", callback_data=f"edp_inv_ALL_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}")])
+        for inv in investments:
+            label = f"[{inv.investment_code}] {inv.name}" if inv.investment_code else inv.name
+            if not label: label = str(inv.id)[:8]
+            buttons.append([InlineKeyboardButton(label, callback_data=f"edp_inv_{inv.id}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}")])
+        
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="edp_cancel")])
+        
+        text = f"<b>XUẤT BÁO CÁO TỪ {start_date.strftime('%d/%m/%Y')} ĐẾN {end_date.strftime('%d/%m/%Y')}</b>\n\nVui lòng chọn Quỹ Đầu Tư:"
+        if edit:
+            await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+        else:
+            await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^edp_inv_(.+)_(.+)_(.+)$"))
+async def edp_inv_cb(client, callback_query: CallbackQuery):
+    inv_id = callback_query.matches[0].group(1)
+    d1_str = callback_query.matches[0].group(2)
+    d2_str = callback_query.matches[0].group(3)
+    
+    start_date = datetime.strptime(d1_str, "%Y%m%d").date()
+    end_date = datetime.strptime(d2_str, "%Y%m%d").date()
+    
+    await callback_query.message.edit_text("⏳ Đang tổng hợp dữ liệu, vui lòng chờ...", parse_mode=ParseMode.HTML)
+    
+    from app.models.business import DailyPayment, Investment
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    import os, tempfile
+    
+    db = SessionLocal()
+    try:
+        query = db.query(DailyPayment, Investment).outerjoin(Investment, DailyPayment.investment_id == Investment.id).filter(
+            DailyPayment.day >= start_date,
+            DailyPayment.day <= end_date
+        )
+        if inv_id != "ALL":
+            import uuid as _uuid
+            try:
+                parsed_id = _uuid.UUID(inv_id)
+                query = query.filter(DailyPayment.investment_id == parsed_id)
+            except ValueError:
+                pass # skip filtering if bad uuid
+            
+        payments = query.order_by(DailyPayment.day.asc(), DailyPayment.payment_type.asc()).all()
+        
+        if not payments:
+            await callback_query.message.edit_text("⚠️ Không có dữ liệu trong khoảng thời gian và quỹ này.", parse_mode=ParseMode.HTML)
+            return
+            
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Báo Cáo Thu Chi"
+        
+        headers = ["Ngày", "Mã Phiếu", "Tên Đầu Tư", "Loại", "Số Tiền", "Trạng thái", "Người Yêu Cầu", "Người Thực Hiện", "Người Nhận", "Mục Đích", "Lý Do", "Ghi Chú"]
+        ws.append(headers)
+        
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        for col, val in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            
+        total_thu = 0
+        total_chi = 0
+        
+        for row_idx, (p, inv) in enumerate(payments, 2):
+            inv_name = f"[{inv.investment_code}] {inv.name}" if inv and getattr(inv, "investment_code", None) else (inv.name if inv else "N/A")
+            ptype = p.payment_type.upper() if p.payment_type else ""
+            amt = p.amount or 0
+            
+            if p.status == "APPROVED":
+                if ptype == "THU": total_thu += amt
+                elif ptype == "CHI": total_chi += amt
+            
+            row_data = [
+                p.day.strftime("%d/%m/%Y") if p.day else "",
+                str(p.id)[:8],
+                inv_name,
+                ptype,
+                amt,
+                p.status or "APPROVED",
+                p.requester or "",
+                p.executor or "",
+                p.receiver or "",
+                p.purpose or "",
+                p.reason or "",
+                p.notes or ""
+            ]
+            ws.append(row_data)
+            
+            # Format currency
+            ws.cell(row=row_idx, column=5).number_format = '#,##0'
+            
+            # Add color for THU / CHI
+            if ptype == "THU":
+                ws.cell(row=row_idx, column=4).font = Font(color="00B050", bold=True)
+            elif ptype == "CHI":
+                ws.cell(row=row_idx, column=4).font = Font(color="C00000", bold=True)
+                
+            if getattr(p, "status", "APPROVED") != "APPROVED":
+                ws.cell(row=row_idx, column=6).font = Font(color="ED7D31", bold=False)
+                
+        # Append sum rows
+        r = len(payments) + 2
+        ws.cell(row=r, column=4, value="Tổng Thu (Approved):").font = Font(bold=True, color="00B050")
+        ws.cell(row=r, column=5, value=total_thu).number_format = '#,##0'
+        
+        ws.cell(row=r+1, column=4, value="Tổng Chi (Approved):").font = Font(bold=True, color="C00000")
+        ws.cell(row=r+1, column=5, value=total_chi).number_format = '#,##0'
+        
+        ws.cell(row=r+2, column=4, value="Chênh Lệch:").font = Font(bold=True)
+        ws.cell(row=r+2, column=5, value=total_thu - total_chi).number_format = '#,##0'
+        
+        # Format font bold for sum values
+        for i in range(3):
+            ws.cell(row=r+i, column=5).font = Font(bold=True)
+        
+        # Auto adjust width
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            ws.column_dimensions[column].width = max_length + 2
+
+        fd, temp_path = tempfile.mkstemp(suffix=".xlsx", prefix="export_daily_payment_")
+        os.close(fd)
+        wb.save(temp_path)
+        
+        # Send file
+        file_name = f"export_daily_payment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        await client.send_document(
+            chat_id=callback_query.message.chat.id,
+            document=temp_path,
+            file_name=file_name,
+            caption=f"<b>BÁO CÁO THU CHI</b>\nTừ: {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}",
+            parse_mode=ParseMode.HTML
+        )
+        
+        os.remove(temp_path)
+        await callback_query.message.delete()
+        LogInfo(f"[TienNga] {callback_query.from_user.id} exported daily payments.", LogType.SYSTEM_STATUS)
+        
+    except Exception as e:
+        LogError(f"Error exporting daily payments: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text("❌ Có lỗi xảy ra khi xuất báo cáo.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# =========================================================================================
+# BIỂU ĐỒ THU CHI HÀNG NGÀY
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_chart_daily_payment"]) | filters.regex(r"^@\w+\s+/tien_nga_chart_daily_payment\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_chart_daily_payment_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_chart_daily_payment"])
+    if args is None: return
+
+    # Check for direct dates: dd/mm/yyyy - dd/mm/yyyy
+    if len(args) > 1:
+        date_str = " ".join(args[1:])
+        try:
+            parts = date_str.split("-")
+            if len(parts) != 2: raise ValueError()
+            d1 = datetime.strptime(parts[0].strip(), "%d/%m/%Y").date()
+            d2 = datetime.strptime(parts[1].strip(), "%d/%m/%Y").date()
+            if d1 > d2: d1, d2 = d2, d1
+            await _show_cdp_investments(client, message, d1, d2)
+            return
+        except ValueError:
+            await message.reply_text("⚠️ Định dạng khoảng thời gian không hợp lệ. Vui lòng dùng: <code>DD/MM/YYYY - DD/MM/YYYY</code>", parse_mode=ParseMode.HTML)
+            return
+
+    # Interactive Flow
+    buttons = [
+        [InlineKeyboardButton("1 tháng", callback_data="cdp_time_1m"), InlineKeyboardButton("3 tháng", callback_data="cdp_time_3m")],
+        [InlineKeyboardButton("6 tháng", callback_data="cdp_time_6m"), InlineKeyboardButton("1 năm", callback_data="cdp_time_1y")],
+        [InlineKeyboardButton("Hủy", callback_data="cdp_cancel")]
+    ]
+    await message.reply_text("<b>BIỂU ĐỒ THU CHI HÀNG NGÀY</b>\n<code>/tien_nga_chart_daily_payment [DD/MM/YYYY - DD/MM/YYYY]</code>\nVui lòng chọn khoảng thời gian:", reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+
+@bot.on_callback_query(filters.regex(r"^cdp_cancel$"))
+async def cdp_cancel_cb(client, callback_query: CallbackQuery):
+    await callback_query.message.edit_text("Đã hủy thao tác vẽ biểu đồ.")
+
+@bot.on_callback_query(filters.regex(r"^cdp_time_(.+)$"))
+async def cdp_time_cb(client, callback_query: CallbackQuery):
+    period = callback_query.matches[0].group(1)
+    
+    today = datetime.now().date()
+    end_date = today
+    if period == "1m": start_date = today - timedelta(days=30)
+    elif period == "3m": start_date = today - timedelta(days=90)
+    elif period == "6m": start_date = today - timedelta(days=180)
+    elif period == "1y": start_date = today - timedelta(days=365)
+    else: start_date = today
+        
+    await _show_cdp_investments(client, callback_query.message, start_date, end_date, edit=True)
+
+async def _show_cdp_investments(client, message, start_date, end_date, edit=False):
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        investments = db.query(Investment).filter(Investment.status == "ACTIVE").all()
+        buttons = []
+        for inv in investments:
+            label = f"[{inv.investment_code}] {inv.name}" if inv.investment_code else inv.name
+            if not label: label = str(inv.id)[:8]
+            buttons.append([InlineKeyboardButton(label, callback_data=f"cdp_inv_{inv.id}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}")])
+        
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="cdp_cancel")])
+        
+        text = f"<b>BIỂU ĐỒ TỪ {start_date.strftime('%d/%m/%Y')} ĐẾN {end_date.strftime('%d/%m/%Y')}</b>\n\nVui lòng chọn Quỹ Đầu Tư:"
+        if edit:
+            await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+        else:
+            await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^cdp_inv_(.+)_(.+)_(.+)$"))
+async def cdp_inv_cb(client, callback_query: CallbackQuery):
+    inv_id = callback_query.matches[0].group(1)
+    d1_str = callback_query.matches[0].group(2)
+    d2_str = callback_query.matches[0].group(3)
+    
+    start_date = datetime.strptime(d1_str, "%Y%m%d").date()
+    end_date = datetime.strptime(d2_str, "%Y%m%d").date()
+    
+    await callback_query.message.edit_text("⏳ Đang vẽ biểu đồ, vui lòng chờ...", parse_mode=ParseMode.HTML)
+    
+    from app.models.business import DailyPayment, Investment
+    from sqlalchemy import func, extract
+    from collections import defaultdict
+    import calendar
+    import bot.utils.daily_payment_chart_generator as chart_gen
+    
+    db = SessionLocal()
+    try:
+        inv = db.query(Investment).filter(Investment.id == inv_id).first()
+        inv_name = f"[{inv.investment_code}] {inv.name}" if inv and getattr(inv, "investment_code", None) else (inv.name if inv else "N/A")
+        
+        # Determine all months in range
+        months = []
+        current = datetime(start_date.year, start_date.month, 1).date()
+        end_month_bound = datetime(end_date.year, end_date.month, 1).date()
+        while current <= end_month_bound:
+            months.append((current.year, current.month))
+            next_month = current.month + 1 if current.month < 12 else 1
+            next_year = current.year if current.month < 12 else current.year + 1
+            current = datetime(next_year, next_month, 1).date()
+            
+        data = {
+            "title": "BIỂU ĐỒ THU CHI HÀNG NGÀY",
+            "subtitle": f"Quỹ Đầu Tư: {inv_name}\nThời gian: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}",
+            "charts": []
+        }
+        
+        for y, m in months:
+            # Query db for this specific month
+            q_start = datetime(y, m, 1).date()
+            _, last_day = calendar.monthrange(y, m)
+            q_end = datetime(y, m, last_day).date()
+            
+            # Clip by absolute bounds
+            if q_start < start_date: q_start = start_date
+            if q_end > end_date: q_end = end_date
+            
+            records = db.query(
+                DailyPayment.day,
+                DailyPayment.payment_type,
+                func.sum(DailyPayment.amount).label("total")
+            ).filter(
+                DailyPayment.investment_id == inv_id,
+                DailyPayment.status == "APPROVED",
+                DailyPayment.day >= q_start,
+                DailyPayment.day <= q_end
+            ).group_by(DailyPayment.day, DailyPayment.payment_type).all()
+            
+            # If no data and it's not the only month, we might still draw an empty chart or skip.
+            # We'll draw anyway if it's within bounds so user sees it's zero.
+            day_dict = defaultdict(lambda: {"thu": 0, "chi": 0})
+            for r in records:
+                day_val = r.day
+                type_val = r.payment_type.upper()
+                amount_val = float(r.total)
+                if type_val == "THU": day_dict[day_val]["thu"] += amount_val
+                elif type_val == "CHI": day_dict[day_val]["chi"] += amount_val
+                
+            labels = []
+            thu_data = []
+            chi_data = []
+            
+            curr_d = q_start
+            while curr_d <= q_end:
+                labels.append(curr_d.strftime("%d/%m"))
+                thu_data.append(day_dict[curr_d]["thu"])
+                chi_data.append(day_dict[curr_d]["chi"])
+                curr_d += timedelta(days=1)
+                
+            data["charts"].append({
+                "month_label": f"Tháng {m:02d}/{y}",
+                "labels": labels,
+                "thu": thu_data,
+                "chi": chi_data
+            })
+            
+        buf = await chart_gen.generate_daily_payment_chart_image(data)
+        
+        await client.send_photo(
+            chat_id=callback_query.message.chat.id,
+            photo=buf,
+            caption=f"<b>BÁO CÁO BIỂU ĐỒ</b>\nQuỹ: {inv_name}\nTừ ngày {start_date.strftime('%d/%m/%Y')} tới {end_date.strftime('%d/%m/%Y')}",
+            parse_mode=ParseMode.HTML
+        )
+        
+        await callback_query.message.delete()
+        LogInfo(f"[TienNga] {callback_query.from_user.id} generated daily payment chart for inv {inv_id}", LogType.SYSTEM_STATUS)
+        
+    except Exception as e:
+        LogError(f"Error generating daily payment chart: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text("❌ Có lỗi hệ thống khi vẽ biểu đồ.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# =========================================================================================
+# KIỂM TRA CHI TIẾT QUỸ ĐẦU TƯ
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_check_investments"]) | filters.regex(r"^@\w+\s+/tien_nga_check_investments\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_check_investments_handler(client, message: Message) -> None:
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        investments = db.query(Investment).all() # Show all, including CLOSED
+        if not investments:
+            await message.reply_text("⚠️ Chưa có khoản đầu tư nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for inv in investments:
+            label = f"[{inv.investment_code}] {inv.name}" if getattr(inv, "investment_code", None) else inv.name
+            if not label: label = str(inv.id)[:8]
+            
+            if inv.status != "ACTIVE":
+                label = f"{label} (ĐÃ ĐÓNG)"
+                
+            buttons.append([InlineKeyboardButton(label, callback_data=f"chk_inv_id_{inv.id}")])
+            
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="chk_inv_cancel")])
+
+        await message.reply_text(
+            "<b>KIỂM TRA QUỸ ĐẦU TƯ</b>\n\nVui lòng chọn Quỹ để xem chi tiết:", 
+            reply_markup=InlineKeyboardMarkup(buttons), 
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error checking inv list: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^chk_inv_cancel$"))
+async def chk_inv_cancel_cb(client, callback_query: CallbackQuery):
+    await callback_query.message.edit_text("Đã hủy thao tác tra cứu Quỹ Đầu Tư.")
+
+
+@bot.on_callback_query(filters.regex(r"^chk_inv_id_(.+)$"))
+async def chk_inv_cb(client, callback_query: CallbackQuery):
+    inv_id = callback_query.matches[0].group(1)
+    
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        if inv_id == "cancel": return # safety check
+        
+        import uuid as _uuid
+        try:
+            parsed_id = _uuid.UUID(inv_id)
+            inv = db.query(Investment).filter(Investment.id == parsed_id).first()
+        except ValueError:
+            inv = db.query(Investment).filter(Investment.investment_code == inv_id).first()
+            
+        if not inv:
+            await callback_query.answer("⚠️ Không tìm thấy thông tin Quỹ.", show_alert=True)
+            return
+            
+        inv_code = getattr(inv, "investment_code", "") or "N/A"
+        date_start_str = inv.start_date.strftime("%d/%m/%Y") if inv.start_date else "N/A"
+        date_end_str = inv.end_date.strftime("%d/%m/%Y") if inv.end_date else "Chưa xác định"
+        
+        status_str = "ĐANG HOẠT ĐỘNG (ACTIVE)" if inv.status == "ACTIVE" else "ĐÃ ĐÓNG (CLOSED)"
+        
+        msg = (
+            f"<b>THÔNG TIN QUỸ ĐẦU TƯ</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<b>Mã Quỹ:</b> <code>{inv_code}</code>\n"
+            f"<b>Tên Quỹ:</b> {inv.name or 'N/A'}\n"
+            f"<b>Trạng thái:</b> {status_str}\n\n"
+            f"<b>Ngày Bắt Đầu:</b> {date_start_str}\n"
+            f"<b>Ngày Kết Thúc:</b> {date_end_str}\n\n"
+            f"<b>Vốn Ban Đầu:</b> <code>{fmt_vn(inv.initial_capital or 0)}</code>\n"
+            f"<b>Tổng Thu:</b> <code>{fmt_vn(inv.total_income or 0)}</code>\n"
+            f"<b>Tổng Chi:</b> <code>{fmt_vn(inv.total_expense or 0)}</code>\n"
+            f"<b>Lợi Nhuận / Số Dư:</b> <code>{fmt_vn(inv.profit or 0)}</code>\n\n"
+            f"<b>Ghi chú:</b> {inv.notes or 'Không có'}\n"
+        )
+        
+        # Add a back button
+        buttons = [[InlineKeyboardButton("Quay Lại Danh Sách", callback_data="chk_inv_back")]]
+        
+        await callback_query.message.edit_text(msg, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+    except Exception as e:
+        LogError(f"Error showing specific inv check: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi tải dữ liệu.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^chk_inv_back$"))
+async def chk_inv_back_cb(client, callback_query: CallbackQuery):
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        investments = db.query(Investment).all()
+        buttons = []
+        for inv in investments:
+            label = f"[{inv.investment_code}] {inv.name}" if getattr(inv, "investment_code", None) else inv.name
+            if not label: label = str(inv.id)[:8]
+            if inv.status != "ACTIVE": label = f"{label} (ĐÃ ĐÓNG)"
+            buttons.append([InlineKeyboardButton(label, callback_data=f"chk_inv_id_{inv.id}")])
+            
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="chk_inv_cancel")])
+        await callback_query.message.edit_text(
+            "<b>KIỂM TRA QUỸ ĐẦU TƯ</b>\n\nVui lòng chọn Quỹ để xem chi tiết:", 
+            reply_markup=InlineKeyboardMarkup(buttons), 
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error back inv check: {e}", LogType.SYSTEM_STATUS)
     finally:
         db.close()

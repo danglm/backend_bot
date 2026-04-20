@@ -214,7 +214,7 @@ def build_daily_purchase_report_html(data: dict) -> str:
     color: #ffffff;
     font-weight: 700;
     font-size: 10px;
-    padding: 10px 6px;
+    padding: 2px 8px;
     text-align: center;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -223,7 +223,7 @@ def build_daily_purchase_report_html(data: dict) -> str:
   thead th:first-child {{ border-radius: 8px 0 0 0; }}
   thead th:last-child {{ border-radius: 0 8px 0 0; }}
   tbody td {{
-    padding: 8px 6px;
+    padding: 2px 8px;
     font-size: 11px;
     color: #334155;
     font-weight: 500;
@@ -238,7 +238,7 @@ def build_daily_purchase_report_html(data: dict) -> str:
   .text-blue {{ color: #0284c7; font-weight: 700; }}
   .text-amber {{ color: #d97706; font-weight: 700; }}
   tfoot td {{
-    padding: 12px 6px;
+    padding: 5px 8px;
     font-size: 12px;
     font-weight: 800;
     border-top: 2px solid #1a365d;

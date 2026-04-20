@@ -37,11 +37,23 @@ Kinh nghiệm:
 Phòng ban: 
 Chức vụ: 
 Loại hợp đồng: 
+Ảnh nhân viên: 
 Giờ vào ca: 
 Giờ tan ca: 
+Số giờ làm việc: 
 Lương cơ bản: 
+Lương tháng: 
+Lương tuần: 
+Lương ngày: 
+Lương giờ: 
+Lương làm thêm giờ: 
+Tiền thưởng: 
+Phúc lợi: 
 Số ngày phép năm: 
 Bảo hiểm: 
+Tỷ lệ BHXH: 
+Mục tiêu nghề nghiệp: 
+Đánh giá hiệu suất: 
 Ngân hàng: 
 Số tài khoản: 
 Mã thanh toán: 
@@ -196,6 +208,19 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
             code_payment=data.get("Mã thanh toán", "").strip() or None,
             emergency_phone=data.get("SĐT khẩn cấp", "").strip() or None,
             emergency_contact=data.get("Người liên hệ khẩn cấp", "").strip() or None,
+            employee_photo=data.get("Ảnh nhân viên", "").strip() or None,
+            working_hours=float(data.get("Số giờ làm việc", "").strip() or 0) if data.get("Số giờ làm việc", "").strip().replace('.','').isdigit() else None,
+            performance_evaluation=data.get("Đánh giá hiệu suất", "").strip() or None,
+            career_goal=data.get("Mục tiêu nghề nghiệp", "").strip() or None,
+            benefits=data.get("Phúc lợi", "").strip() or None,
+            bonus=float(data.get("Tiền thưởng", "").strip().replace(',', '.').replace('.', '')) if data.get("Tiền thưởng", "").strip() else None,
+            monthly_salary=float(data.get("Lương tháng", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương tháng", "").strip() else None,
+            weekly_salary=float(data.get("Lương tuần", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương tuần", "").strip() else None,
+            daily_salary=float(data.get("Lương ngày", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương ngày", "").strip() else None,
+            hourly_salary=float(data.get("Lương giờ", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương giờ", "").strip() else None,
+            overtime_salary=float(data.get("Lương làm thêm giờ", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương làm thêm giờ", "").strip() else None,
+            rate_bhxh=float(data.get("Tỷ lệ BHXH", "").strip() or 0) if data.get("Tỷ lệ BHXH", "").strip().replace('.','').isdigit() else None,
+            total_debt=0,
             start_time=start_time,
             end_time=end_time,
             created_at=datetime.datetime.now(),
@@ -2450,7 +2475,7 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
     import os
     import calendar
     from app.models.employee import Employee
-    from app.models.finance import Attendance
+    from app.models.finance import Attendance, Payroll
     from app.models.telegram import TelegramProjectMember
     from bot.utils.payroll_generator import generate_payroll_image
 
@@ -2545,6 +2570,36 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
         penalty = 0.0
         
         total_net_salary = round(salary_earned + overtime_salary_earned + bonus - bhxh - penalty, 2)
+        
+        payroll_record = db.query(Payroll).filter(
+            Payroll.employee_id == emp_code,
+            Payroll.month == month,
+            Payroll.year == year
+        ).first()
+        
+        if not payroll_record:
+            payroll_record = Payroll(employee_id=emp_code, month=month, year=year)
+            db.add(payroll_record)
+            old_salary = 0.0
+        else:
+            old_salary = payroll_record.total_salary or 0.0
+            
+        payroll_record.leave = leave_days
+        payroll_record.unapproved_leave = unpaid_leave
+        payroll_record.base_salary_amount = salary_earned
+        payroll_record.overtime_salary_amount = overtime_salary_earned
+        payroll_record.late_penalty = penalty
+        payroll_record.total_salary = total_net_salary
+        payroll_record.note = f"Thưởng: {bonus} | BHXH: {bhxh} | Chốt: {datetime.datetime.now().strftime('%d/%m/%Y')}"
+        
+        # Cập nhật cộng dồn công nợ lương cho nhân viên
+        diff = total_net_salary - old_salary
+        if diff != 0:
+            if employee.total_debt is None:
+                employee.total_debt = 0
+            employee.total_debt += diff
+            
+        db.commit()
 
         data = {
             "standard_working_days": standard_days,
@@ -2644,6 +2699,159 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
     finally:
         db.close()
 
+
+async def handle_list_payroll_excel(client, message, command_name: str) -> None:
+    from app.models.employee import Employee
+    from app.models.finance import Payroll
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    import os
+    import tempfile
+
+    args = message.text.split()
+    if len(args) != 2:
+        await message.reply_text(
+            f"⚠️ Lệnh thiếu hoặc sai cú pháp.\nCú pháp: <code>{command_name} [MM/YYYY]</code>\n"
+            f"VD: <code>{command_name} 04/2026</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    month_year_str = args[1]
+    try:
+        month_str, year_str = month_year_str.split("/")
+        month = int(month_str)
+        year = int(year_str)
+    except:
+        await message.reply_text("⚠️ Định dạng tháng/năm phải là MM/YYYY.", parse_mode=ParseMode.HTML)
+        return
+
+    db = SessionLocal()
+    try:
+        processing_msg = await message.reply_text("⏳ Đang truy xuất thông tin DB và tạo file Excel...")
+        
+        # We fetch all payrolls for this month/year, joining with Employee to get names and department
+        # Here we only get employees belonging to the project "Tiến Nga". 
+        # For simplicity since this endpoint relies on project decorators, we trust the DB structure or check for non-None.
+        results = db.query(Payroll, Employee).join(
+            Employee, Payroll.employee_id == Employee.id
+        ).filter(
+            Payroll.month == month,
+            Payroll.year == year
+        ).all()
+
+        if not results:
+            await processing_msg.edit_text(f"⚠️ Không tìm thấy bất kỳ báo cáo lương nào trong tháng {month:02d}/{year}.")
+            return
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"Payroll_{month:02d}_{year}"
+
+        headers = [
+            "STT", "Mã NV", "Họ tên", "Phòng ban", 
+            "Ngày phép", "Nghỉ không phép", 
+            "Lương cơ bản", "Lương tăng ca", "Tiền phạt", "Lương thực nhận", "Ghi chú"
+        ]
+
+        # Formatting
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
+        center_align = Alignment(horizontal="center", vertical="center")
+        border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                        top=Side(style='thin'), bottom=Side(style='thin'))
+
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = border
+
+        def format_currency(val):
+            if val is None: return 0
+            return float(val)
+
+        row_idx = 2
+        total_salary_all = 0.0
+        for i, (payroll, employee) in enumerate(results, 1):
+            full_name = f"{employee.last_name or ''} {employee.first_name or ''}".strip()
+            
+            ws.cell(row=row_idx, column=1, value=i).border = border
+            ws.cell(row=row_idx, column=2, value=employee.id).border = border
+            ws.cell(row=row_idx, column=3, value=full_name).border = border
+            ws.cell(row=row_idx, column=4, value=employee.department or "").border = border
+            
+            ws.cell(row=row_idx, column=5, value=payroll.leave or 0).border = border
+            ws.cell(row=row_idx, column=6, value=payroll.unapproved_leave or 0).border = border
+            
+            base_cell = ws.cell(row=row_idx, column=7, value=format_currency(payroll.base_salary_amount))
+            base_cell.border = border
+            base_cell.number_format = '#,##0'
+            
+            ot_cell = ws.cell(row=row_idx, column=8, value=format_currency(payroll.overtime_salary_amount))
+            ot_cell.border = border
+            ot_cell.number_format = '#,##0'
+            
+            penalty_cell = ws.cell(row=row_idx, column=9, value=format_currency(payroll.late_penalty))
+            penalty_cell.border = border
+            penalty_cell.number_format = '#,##0'
+            
+            net = format_currency(payroll.total_salary)
+            total_salary_all += net
+            
+            total_cell = ws.cell(row=row_idx, column=10, value=net)
+            total_cell.border = border
+            total_cell.number_format = '#,##0'
+            
+            ws.cell(row=row_idx, column=11, value=payroll.note or "").border = border
+            
+            row_idx += 1
+
+        # Dòng tổng cộng
+        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=9)
+        total_label = ws.cell(row=row_idx, column=1, value="TỔNG CỘNG:")
+        total_label.font = Font(bold=True)
+        total_label.alignment = Alignment(horizontal="right", vertical="center")
+        for col_idx in range(1, 10):
+            ws.cell(row=row_idx, column=col_idx).border = border
+        
+        total_sum_cell = ws.cell(row=row_idx, column=10, value=total_salary_all)
+        total_sum_cell.font = Font(bold=True)
+        total_sum_cell.border = border
+        total_sum_cell.number_format = '#,##0'
+        ws.cell(row=row_idx, column=11, value="").border = border
+
+        # Column widths
+        widths = [5, 12, 25, 20, 15, 15, 18, 18, 18, 20, 35]
+        for col_num, width in enumerate(widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = width
+
+        # Dump
+        fd, temp_path = tempfile.mkstemp(suffix=".xlsx", prefix=f"payrolls_{month:02d}_{year}_")
+        os.close(fd)
+        wb.save(temp_path)
+
+        await client.send_document(
+            chat_id=message.chat.id,
+            document=temp_path,
+            file_name=f"Danh_sach_luong_{month:02d}_{year}.xlsx",
+            caption=f"✅ <b>Báo cáo Danh Sách Bảng Lương tháng {month:02d}/{year}</b>\n\nTổng cộng: <b>{len(results)}</b> nhân viên\nTổng chi: <b>{total_salary_all:,.0f} đ</b>".replace(",", "."),
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=message.id
+        )
+        
+        await processing_msg.delete()
+        os.remove(temp_path)
+            
+    except Exception as e:
+        LogError(f"Error in handle_list_payroll_excel: {e}", LogType.SYSTEM_STATUS)
+        try:
+             await processing_msg.edit_text("❌ Có lỗi xảy ra trong quá trình xuất bảng lương Excel.")
+        except:
+             await message.reply_text("❌ Có lỗi xảy ra trong quá trình xuất bảng lương Excel.")
+    finally:
+        db.close()
 
 # ══════════════════════════════════════════════════════════════
 # RECREATE ATTENDANCE REPORT (IMAGE)

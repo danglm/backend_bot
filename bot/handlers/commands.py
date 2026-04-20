@@ -760,6 +760,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_tao_lai_bang_cham_cong", "Tạo lại báo cáo chấm công"),
                     BotCommand("tien_nga_check_tasks", "Xem công việc của nhân viên"),      
                     BotCommand("tien_nga_xem_cong_viec", "Xem công việc của nhân viên"),      
+                    BotCommand("tien_nga_list_payroll", "Xuất bảng lương Excel"),
                 ]
             elif custom_title == "main_supplier":
                 label = "Tiến Nga (Nhà Cung Cấp)"
@@ -798,8 +799,12 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_tao_don_vi", "Tạo đơn vị (Công ty)"),
                     BotCommand("tien_nga_company_business", "Giao dịch công ty"),
                     BotCommand("tien_nga_kinh_doanh_don_vi", "Giao dịch công ty"),
-                    BotCommand("tien_nga_payment_debt", "Thanh toán công nợ"),
-                    BotCommand("tien_nga_thanh_toan_no", "Thanh toán công nợ"),
+                    BotCommand("tien_nga_export_daily_payment", "Xuất BC thu chi Excel"),
+                    BotCommand("tien_nga_xuat_bao_cao_thu_chi", "Xuất BC thu chi Excel"),
+                    BotCommand("tien_nga_chart_daily_payment", "Biểu đồ thu chi hàng ngày"),
+                    BotCommand("tien_nga_check_investments", "Kiểm tra Quỹ Đầu Tư"),
+                    BotCommand("confirm_payment", "Duyệt phiếu chi"),
+                    BotCommand("deny_payment", "Huỷ phiếu chi"),
                 ]
             elif custom_title == "member_hr":
                 label = "Tiến Nga (Nhân Viên)"
@@ -818,6 +823,24 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_xem_nghi_phep", "Xem danh sách nghỉ phép"),
                     BotCommand("tien_nga_list_tasks", "Xem công việc được giao"),
                     BotCommand("tien_nga_xem_cong_viec", "Xem công việc được giao"),
+                ]
+            elif custom_title == "main_finance":
+                label = "Tiến Nga (Tài Chính)"
+                commands_to_set = [
+                    BotCommand("tien_nga_create_investment", "Tạo khoản đầu tư"),
+                    BotCommand("tien_nga_tao_dau_tu", "Tạo khoản đầu tư"),
+                    BotCommand("tien_nga_confirm_payments_of_debts", "Xác nhận thanh toán công nợ"),
+                    BotCommand("tien_nga_xac_nhan_thanh_toan_cong_no", "Xác nhận thanh toán công nợ"),
+                    BotCommand("tien_nga_payment_of_debt", "Thanh toán công nợ"),
+                    BotCommand("tien_nga_thanh_toan_cong_no", "Thanh toán công nợ"),
+                    BotCommand("tien_nga_request_daily_payments", "Yêu cầu thu/chi"),
+                    BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
+                    BotCommand("tien_nga_export_daily_payment", "Xuất báo cáo thu chi Excel"),
+                    BotCommand("tien_nga_xuat_bao_cao_thu_chi", "Xuất báo cáo thu chi Excel"),
+                    BotCommand("tien_nga_chart_daily_payment", "Biểu đồ thu chi hàng ngày"),
+                    BotCommand("tien_nga_check_investments", "Kiểm tra Quỹ Đầu Tư"),
+                    BotCommand("confirm_payment", "Duyệt phiếu chi"),
+                    BotCommand("deny_payment", "Huỷ phiếu chi"),
                 ]
 
         if not commands_to_set:

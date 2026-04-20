@@ -88,3 +88,35 @@ class CompanyBusinesses(Base):
     unit_price = Column(Float, default=0.0)             # Đơn giá
     total_amount = Column(Float, default=0.0)           # Thành tiền
     notes = Column(String)                              # Ghi chú
+
+class Investment(Base):
+    __tablename__ = "investments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    investment_code = Column(String, unique=True, index=True)   # Mã đầu tư
+    name = Column(String)                               # Tên đầu tư
+    initial_capital = Column(Float, default=0.0)        # Vốn ban đầu
+    start_date = Column(Date)                           # Ngày bắt đầu
+    end_date = Column(Date)                             # Ngày kết thúc
+    total_income = Column(Float, default=0.0)           # Tổng số tiền thu
+    total_expense = Column(Float, default=0.0)          # Tổng số tiền chi
+    profit = Column(Float, default=0.0)                 # Lợi nhuận
+    notes = Column(String)                              # Ghi chú
+    status = Column(String, default="ACTIVE")           # Trạng thái
+
+class DailyPayment(Base):
+    __tablename__ = "daily_payments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    investment_id = Column(UUID(as_uuid=True))          # ID đầu tư
+    requester = Column(String)                          # Người yêu cầu
+    executor = Column(String)                           # Người thực hiện
+    receiver = Column(String)                           # Người nhận
+    payment_type = Column(String)                       # Loại (thu/chi)
+    purpose = Column(String)                            # Mục đích
+    reason = Column(String)                             # Lý do
+    amount = Column(Float, default=0.0)                 # Số tiền
+    day = Column(Date)                                  # Ngày giao dịch
+    status = Column(String, default="APPROVED")         # Trạng thái duyệt
+    notes = Column(String)                              # Ghi chú
+

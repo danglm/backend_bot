@@ -49,6 +49,7 @@ class Employee(Base):
     overtime_salary = Column(Float)
     rate_bhxh = Column(Float)
     leave_balance = Column(Integer)
+    total_debt = Column(Integer, default=0)   ## Công nợ nhân sự
     start_time = Column(DateTime) ## Thời gian checkin
     end_time = Column(DateTime) ## Thời gian checkout
     created_at = Column(DateTime, default=datetime.datetime.now())
