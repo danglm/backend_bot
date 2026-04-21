@@ -12,6 +12,7 @@ from app.models import rental
 from app.models import task
 from app.models import telegram
 from app.models import vehicle
+from app.models import inventory
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

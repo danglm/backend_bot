@@ -9,6 +9,7 @@ class Employee(Base):
 
     id = Column(String, primary_key=True)
     username = Column(String, unique=True, index=True)  # username Telegram
+    telegram_group = Column(String)                     # Nhóm Telegram
     last_name = Column(String)
     first_name = Column(String)
     gender = Column(String)

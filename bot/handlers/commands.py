@@ -743,105 +743,121 @@ async def register_bot_command_handler(client, message: Message) -> None:
 
         # ===================== TIẾN NGA =====================
         elif "tiến nga" in project_name or "tien nga" in project_name:
+            if custom_title == "super_main":
+                label = "Tiến Nga (Tổng Hợp)"
             if custom_title in ("super_main", "main_hr"):
-                label = "Tiến Nga (Quản Lý)"
-                commands_to_set = [
-                    BotCommand("tien_nga_create_employee", "Thêm nhân viên"),
+                if custom_title != "super_main": label = "Tiến Nga (Quản Lý)"
+                commands_to_set.extend([
                     BotCommand("tien_nga_tao_nhan_vien", "Thêm nhân viên"),
-                    BotCommand("tien_nga_update_employee", "Cập nhật nhân viên"),
                     BotCommand("tien_nga_cap_nhat_nhan_vien", "Cập nhật nhân viên"),
-                    BotCommand("tien_nga_delete_employee", "Xóa nhân viên"),
                     BotCommand("tien_nga_xoa_nhan_vien", "Xóa nhân viên"),
-                    BotCommand("tien_nga_create_task", "Giao việc"),
                     BotCommand("tien_nga_giao_viec", "Giao việc"),
-                    BotCommand("tien_nga_export_payroll", "Xuất bảng lương"),
                     BotCommand("tien_nga_xuat_luong", "Xuất bảng lương"),
-                    BotCommand("tien_nga_recreate_att_report", "Tạo lại báo cáo chấm công"),
                     BotCommand("tien_nga_tao_lai_bang_cham_cong", "Tạo lại báo cáo chấm công"),
-                    BotCommand("tien_nga_check_tasks", "Xem công việc của nhân viên"),      
                     BotCommand("tien_nga_xem_cong_viec", "Xem công việc của nhân viên"),      
-                    BotCommand("tien_nga_list_payroll", "Xuất bảng lương Excel"),
-                ]
-            elif custom_title == "main_supplier":
-                label = "Tiến Nga (Nhà Cung Cấp)"
-                commands_to_set = [
-                    BotCommand("tien_nga_daily_purchase", "Nhập mua mủ hàng ngày"),
+                    BotCommand("tien_nga_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
+                    # BotCommand("tien_nga_delete_employee", "Xóa nhân viên"),
+                    # BotCommand("tien_nga_create_employee", "Thêm nhân viên"),
+                    # BotCommand("tien_nga_update_employee", "Cập nhật nhân viên"),
+                    # BotCommand("tien_nga_create_task", "Giao việc"),
+                    # BotCommand("tien_nga_export_payroll", "Xuất bảng lương"),
+                    # BotCommand("tien_nga_recreate_att_report", "Tạo lại báo cáo chấm công"),
+                    # BotCommand("tien_nga_check_tasks", "Xem công việc của nhân viên"),      
+                    # BotCommand("tien_nga_list_payroll", "Xuất bảng lương Excel"),
+                ])
+            if custom_title in ("super_main", "main_supplier"):
+                if custom_title != "super_main": label = "Tiến Nga (Nhà Cung Cấp)"
+                commands_to_set.extend([
                     BotCommand("tien_nga_thu_mua_hang_ngay", "Nhập mua mủ hàng ngày"),
-                    BotCommand("tien_nga_export_daily_purchase", "Xuất báo cáo mua mủ KH"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_mua", "Xuất báo cáo mua mủ KH"),
-                    BotCommand("tien_nga_export_info", "Truy xuất thông tin báo cáo"),
                     BotCommand("tien_nga_truy_xuat_thong_tin", "Truy xuất thông tin báo cáo"),
-                    BotCommand("tien_nga_create_collection_point", "Tạo điểm thu mua"),
                     BotCommand("tien_nga_tao_diem_thu_mua", "Tạo điểm thu mua"),
-                    BotCommand("tien_nga_list_collection_point", "Danh sách điểm thu mua"),
                     BotCommand("tien_nga_danh_sach_diem_thu_mua", "Danh sách điểm thu mua"),
-                    BotCommand("tien_nga_create_customer", "Tạo khách hàng"),
                     BotCommand("tien_nga_tao_khach_hang", "Tạo khách hàng"),
-                    BotCommand("tien_nga_chart_purcharse", "Biểu đồ thu mua mủ"),
                     BotCommand("tien_nga_bieu_do_thu_mua", "Biểu đồ thu mua mủ"),
-                    BotCommand("tien_nga_check_customer", "Xem thông tin khách hàng"),
                     BotCommand("tien_nga_kiem_tra_khach_hang", "Xem thông tin khách hàng"),
-                    BotCommand("tien_nga_update_customer", "Cập nhật khách hàng"),
                     BotCommand("tien_nga_cap_nhat_khach_hang", "Cập nhật khách hàng"),
-                    BotCommand("tien_nga_delete_customer", "Xóa khách hàng"),
                     BotCommand("tien_nga_xoa_khach_hang", "Xóa khách hàng"),
-                    BotCommand("tien_nga_list_customers", "Xuất DS khách hàng Excel"),
                     BotCommand("tien_nga_ds_khach_hang", "Xuất DS khách hàng Excel"),
-                    BotCommand("tien_nga_paid_amount_report", "Báo cáo đã thanh toán"),
                     BotCommand("tien_nga_bao_cao_da_thanh_toan", "Báo cáo đã thanh toán"),
-                    BotCommand("tien_nga_save_amount_report", "Báo cáo lưu sổ"),
                     BotCommand("tien_nga_bao_cao_luu_so", "Báo cáo lưu sổ"),
-                    BotCommand("tien_nga_firewood_purcharse", "Nhập mua củi"),
                     BotCommand("tien_nga_nhap_mua_cui", "Nhập mua củi"),
-                    BotCommand("tien_nga_export_summary", "Báo cáo tổng hợp Excel"),
                     BotCommand("tien_nga_xuat_bao_cao_tong_hop", "Báo cáo tổng hợp Excel"),
-                    BotCommand("tien_nga_create_company", "Tạo đơn vị (Công ty)"),
                     BotCommand("tien_nga_tao_don_vi", "Tạo đơn vị (Công ty)"),
-                    BotCommand("tien_nga_company_business", "Giao dịch công ty"),
                     BotCommand("tien_nga_kinh_doanh_don_vi", "Giao dịch công ty"),
-                    BotCommand("tien_nga_export_daily_payment", "Xuất BC thu chi Excel"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_chi", "Xuất BC thu chi Excel"),
-                    BotCommand("tien_nga_chart_daily_payment", "Biểu đồ thu chi hàng ngày"),
-                    BotCommand("tien_nga_check_investments", "Kiểm tra Quỹ Đầu Tư"),
+                    BotCommand("tien_nga_bieu_do_thu_chi", "Biểu đồ thu chi hàng ngày"),
+                    BotCommand("tien_nga_kiem_tra_quy_dau_tu", "Kiểm tra Quỹ Đầu Tư"),
                     BotCommand("confirm_payment", "Duyệt phiếu chi"),
                     BotCommand("deny_payment", "Huỷ phiếu chi"),
-                ]
-            elif custom_title == "member_hr":
+                    # BotCommand("tien_nga_daily_purchase", "Nhập mua mủ hàng ngày"),
+                    # BotCommand("tien_nga_export_daily_purchase", "Xuất báo cáo mua mủ KH"),
+                    # BotCommand("tien_nga_export_info", "Truy xuất thông tin báo cáo"),
+                    # BotCommand("tien_nga_create_collection_point", "Tạo điểm thu mua"),
+                    # BotCommand("tien_nga_list_collection_point", "Danh sách điểm thu mua"),
+                    # BotCommand("tien_nga_create_customer", "Tạo khách hàng"),
+                    # BotCommand("tien_nga_chart_purcharse", "Biểu đồ thu mua mủ"),
+                    # BotCommand("tien_nga_check_customer", "Xem thông tin khách hàng"),
+                    # BotCommand("tien_nga_update_customer", "Cập nhật khách hàng"),
+                    # BotCommand("tien_nga_delete_customer", "Xóa khách hàng"),
+                    # BotCommand("tien_nga_list_customers", "Xuất DS khách hàng Excel"),
+                    # BotCommand("tien_nga_paid_amount_report", "Báo cáo đã thanh toán"),
+                    # BotCommand("tien_nga_save_amount_report", "Báo cáo lưu sổ"),
+                    # BotCommand("tien_nga_firewood_purcharse", "Nhập mua củi"),
+                    # BotCommand("tien_nga_export_summary", "Báo cáo tổng hợp Excel"),
+                    # BotCommand("tien_nga_create_company", "Tạo đơn vị (Công ty)"),
+                    # BotCommand("tien_nga_company_business", "Giao dịch công ty"),
+                    # BotCommand("tien_nga_export_daily_payment", "Xuất BC thu chi Excel"),
+                    # BotCommand("tien_nga_chart_daily_payment", "Biểu đồ thu chi hàng ngày"),
+                    # BotCommand("tien_nga_check_investments", "Kiểm tra Quỹ Đầu Tư"),
+                ])
+            if custom_title == "member_hr":
                 label = "Tiến Nga (Nhân Viên)"
-                commands_to_set = [
-                    BotCommand("tien_nga_check_in", "Chấm công vào ca"),
+                commands_to_set.extend([
                     BotCommand("tien_nga_cham_cong", "Chấm công vào ca"),
-                    BotCommand("tien_nga_check_out", "Tanner ca / Kết thúc ca"),
                     BotCommand("tien_nga_tan_ca", "Tan ca / Kết thúc ca"),
-                    BotCommand("tien_nga_request_leave", "Xin nghỉ phép"),
                     BotCommand("tien_nga_xin_nghi_phep", "Xin nghỉ phép"),
-                    BotCommand("tien_nga_request_overtime", "Đăng ký tăng ca"),
                     BotCommand("tien_nga_dang_ky_tang_ca", "Đăng ký tăng ca"),
-                    BotCommand("tien_nga_list_check_in", "Xem chấm công"),
                     BotCommand("tien_nga_xem_cham_cong", "Xem chấm công"),
-                    BotCommand("tien_nga_list_request_leave", "Xem danh sách nghỉ phép"),
                     BotCommand("tien_nga_xem_nghi_phep", "Xem danh sách nghỉ phép"),
-                    BotCommand("tien_nga_list_tasks", "Xem công việc được giao"),
                     BotCommand("tien_nga_xem_cong_viec", "Xem công việc được giao"),
-                ]
-            elif custom_title == "main_finance":
-                label = "Tiến Nga (Tài Chính)"
-                commands_to_set = [
-                    BotCommand("tien_nga_create_investment", "Tạo khoản đầu tư"),
+                    # BotCommand("tien_nga_check_in", "Chấm công vào ca"),
+                    # BotCommand("tien_nga_check_out", "Tanner ca / Kết thúc ca"),
+                    # BotCommand("tien_nga_request_leave", "Xin nghỉ phép"),
+                    # BotCommand("tien_nga_request_overtime", "Đăng ký tăng ca"),
+                    # BotCommand("tien_nga_list_check_in", "Xem chấm công"),
+                    # BotCommand("tien_nga_list_request_leave", "Xem danh sách nghỉ phép"),
+                    # BotCommand("tien_nga_list_tasks", "Xem công việc được giao"),
+                ])
+            if custom_title in ("super_main", "main_finance"):
+                if custom_title != "super_main": label = "Tiến Nga (Tài Chính)"
+                commands_to_set.extend([
                     BotCommand("tien_nga_tao_dau_tu", "Tạo khoản đầu tư"),
-                    BotCommand("tien_nga_confirm_payments_of_debts", "Xác nhận thanh toán công nợ"),
-                    BotCommand("tien_nga_xac_nhan_thanh_toan_cong_no", "Xác nhận thanh toán công nợ"),
-                    BotCommand("tien_nga_payment_of_debt", "Thanh toán công nợ"),
+                    BotCommand("tien_nga_xn_thanh_toan_cong_no", "Xác nhận thanh toán công nợ"),
                     BotCommand("tien_nga_thanh_toan_cong_no", "Thanh toán công nợ"),
-                    BotCommand("tien_nga_request_daily_payments", "Yêu cầu thu/chi"),
                     BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
-                    BotCommand("tien_nga_export_daily_payment", "Xuất báo cáo thu chi Excel"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_chi", "Xuất báo cáo thu chi Excel"),
-                    BotCommand("tien_nga_chart_daily_payment", "Biểu đồ thu chi hàng ngày"),
-                    BotCommand("tien_nga_check_investments", "Kiểm tra Quỹ Đầu Tư"),
+                    BotCommand("tien_nga_kiem_tra_quy_dau_tu", "Kiểm tra Quỹ Đầu Tư"),
                     BotCommand("confirm_payment", "Duyệt phiếu chi"),
                     BotCommand("deny_payment", "Huỷ phiếu chi"),
-                ]
+                    # BotCommand("tien_nga_create_investment", "Tạo khoản đầu tư"),
+                    # BotCommand("tien_nga_confirm_payment_debt", "Xác nhận thanh toán công nợ"),
+                    # BotCommand("tien_nga_payment_of_debt", "Thanh toán công nợ"),
+                    # BotCommand("tien_nga_request_daily_payments", "Yêu cầu thu/chi"),
+                    # BotCommand("tien_nga_export_daily_payment", "Xuất báo cáo thu chi Excel"),
+                    # BotCommand("tien_nga_chart_daily_payment", "Biểu đồ thu chi hàng ngày"),
+                    # BotCommand("tien_nga_check_investments", "Kiểm tra Quỹ Đầu Tư"),
+                ])
+
+            if custom_title in ("super_main", "main_inventory"):
+                if custom_title != "super_main": label = "Tiến Nga (Kho)"
+                commands_to_set.extend([
+                    BotCommand("tien_nga_tao_kho", "Tạo kho"),
+                    BotCommand("tien_nga_danh_sach_kho", "Danh sách kho"),
+                    BotCommand("tien_nga_cap_nhat_ton_kho", "Cập nhật tồn kho"),
+                    BotCommand("tien_nga_thu_mua_nguyen_lieu", "Thu mua nguyên liệu"),
+                    BotCommand("tien_nga_xuat_kho", "Xuất kho"),
+                ])
 
         if not commands_to_set:
             await message.reply_text(
