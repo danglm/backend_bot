@@ -483,6 +483,9 @@ async def tien_nga_create_customer_handler(client, message: Message) -> None:
     address = data.get("Địa Chỉ", "").strip()
     ingredient = data.get("Nguyên Liệu", "").strip()
     username = data.get("Username TG", "").strip()
+    telegram_group = data.get("Nhóm Telegram", "").strip()
+    bank_name = data.get("Ngân Hàng", "").strip()
+    number_bank = data.get("STK Ngân Hàng", "").strip()
     
     amount_of_debt = parse_float_vn(data.get("Số Tiền Nợ", "0"))
     cash_advance = parse_float_vn(data.get("Ứng Tiền Cuối Mùa", "0"))
@@ -511,6 +514,9 @@ async def tien_nga_create_customer_handler(client, message: Message) -> None:
             number_phone=phone,
             address=address,
             ingredient=ingredient,
+            telegram_group=telegram_group if telegram_group else None,
+            bank_name=bank_name if bank_name else None,
+            number_bank=number_bank if number_bank else None,
             amount_of_debt=int(amount_of_debt),
             cash_advance=int(cash_advance),
             total_debt=int(total_debt),
@@ -557,7 +563,10 @@ Nguyên Liệu:
 Số Tiền Nợ: 
 Ứng Tiền Cuối Mùa: 
 Tổng Công Nợ: 
-Username TG: </pre>
+Username TG: 
+Nhóm Telegram: 
+Ngân Hàng: 
+STK Ngân Hàng: </pre>
 
 <i>(*Ghi chú: Đang thêm khách hàng cho Xưởng: <b>{cp_name}</b>)</i>"""
         await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
@@ -610,7 +619,10 @@ Nguyên Liệu: {customer.ingredient or ""}
 Số Tiền Nợ: {fmt_num(customer.amount_of_debt)}
 Ứng Tiền Cuối Mùa: {fmt_num(customer.cash_advance)}
 Tổng Công Nợ: {fmt_num(customer.total_debt)}
-Username: {customer.username or ''}</pre>"""
+Username: {customer.username or ''}
+Nhóm Telegram: {customer.telegram_group or ''}
+Ngân Hàng: {customer.bank_name or ''}
+STK Ngân Hàng: {customer.number_bank or ''}</pre>"""
             await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         except Exception as e:
             LogError(f"Error fetching customer for update: {e}", LogType.SYSTEM_STATUS)
@@ -636,6 +648,9 @@ Username: {customer.username or ''}</pre>"""
     address = data.get("Địa Chỉ", "").strip()
     ingredient = data.get("Nguyên Liệu", "").strip()
     username = data.get("Username", "").strip()
+    telegram_group = data.get("Nhóm Telegram", "").strip()
+    bank_name = data.get("Ngân Hàng", "").strip()
+    number_bank = data.get("STK Ngân Hàng", "").strip()
     
     amount_of_debt = parse_float_vn(data.get("Số Tiền Nợ", "0"))
     cash_advance = parse_float_vn(data.get("Ứng Tiền Cuối Mùa", "0"))
@@ -655,6 +670,9 @@ Username: {customer.username or ''}</pre>"""
         customer.number_phone = phone
         customer.address = address
         customer.ingredient = ingredient
+        customer.telegram_group = telegram_group if telegram_group else None
+        customer.bank_name = bank_name if bank_name else None
+        customer.number_bank = number_bank if number_bank else None
         customer.amount_of_debt = int(amount_of_debt)
         customer.cash_advance = int(cash_advance)
         customer.total_debt = int(total_debt)
@@ -671,6 +689,8 @@ Username: {customer.username or ''}</pre>"""
             f"<b>SĐT:</b> {customer.number_phone or '—'}\n"
             f"<b>Địa Chỉ:</b> {customer.address or '—'}\n"
             f"<b>Nguyên Liệu:</b> {customer.ingredient or '—'}\n"
+            f"<b>Nhóm Telegram:</b> {customer.telegram_group or '—'}\n"
+            f"<b>Ngân hàng:</b> {customer.bank_name or '—'} <i>({customer.number_bank or '—'})</i>\n"
             f"<b>Số Tiền Nợ:</b> <code>{fmt_vn(customer.amount_of_debt)}</code>\n"
             f"<b>Ứng Cuối Mùa:</b> <code>{fmt_vn(customer.cash_advance)}</code>\n"
             f"<b>Tổng Nợ:</b> <code>{fmt_vn(customer.total_debt)}</code>\n"
@@ -4936,12 +4956,12 @@ _cpd_pages: dict[int, int] = {}  # current page per message_id
 CPD_PAGE_SIZE = 10
 
 
-@bot.on_message(filters.command(["tien_nga_confirm_payments_of_debts", "tien_nga_xac_nhan_thanh_toan_cong_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_confirm_payments_of_debts|tien_nga_xac_nhan_thanh_toan_cong_no)\b"))
+@bot.on_message(filters.command(["tien_nga_confirm_payment_debt", "tien_nga_xn_thanh_toan_cong_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_confirm_payment_debt|tien_nga_xn_thanh_toan_cong_no)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-async def tien_nga_confirm_payments_of_debts_handler(client, message: Message) -> None:
-    args = await check_command_target(client, message.text, ["tien_nga_confirm_payments_of_debts", "tien_nga_xac_nhan_thanh_toan_cong_no"])
+async def tien_nga_confirm_payment_debt_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_confirm_payment_debt", "tien_nga_xn_thanh_toan_cong_no"])
     if args is None: return
 
     buttons = [
@@ -5660,12 +5680,12 @@ async def edp_inv_cb(client, callback_query: CallbackQuery):
 # BIỂU ĐỒ THU CHI HÀNG NGÀY
 # =========================================================================================
 
-@bot.on_message(filters.command(["tien_nga_chart_daily_payment"]) | filters.regex(r"^@\w+\s+/tien_nga_chart_daily_payment\b"))
+@bot.on_message(filters.command(["tien_nga_chart_daily_payment", "tien_nga_bieu_do_thu_chi"]) | filters.regex(r"^@\w+\s+/(tien_nga_chart_daily_payment|tien_nga_bieu_do_thu_chi)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 async def tien_nga_chart_daily_payment_handler(client, message: Message) -> None:
-    args = await check_command_target(client, message.text, ["tien_nga_chart_daily_payment"])
+    args = await check_command_target(client, message.text, ["tien_nga_chart_daily_payment", "tien_nga_bieu_do_thu_chi"])
     if args is None: return
 
     # Check for direct dates: dd/mm/yyyy - dd/mm/yyyy
@@ -5841,7 +5861,7 @@ async def cdp_inv_cb(client, callback_query: CallbackQuery):
 # KIỂM TRA CHI TIẾT QUỸ ĐẦU TƯ
 # =========================================================================================
 
-@bot.on_message(filters.command(["tien_nga_check_investments"]) | filters.regex(r"^@\w+\s+/tien_nga_check_investments\b"))
+@bot.on_message(filters.command(["tien_nga_check_investments", "tien_nga_kiem_tra_quy_dau_tu"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_investments|tien_nga_kiem_tra_quy_dau_tu)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
@@ -5958,3 +5978,474 @@ async def chk_inv_back_cb(client, callback_query: CallbackQuery):
         LogError(f"Error back inv check: {e}", LogType.SYSTEM_STATUS)
     finally:
         db.close()
+
+
+# ==============================================================================
+# HỆ THỐNG QUẢN LÝ KHO (INVENTORY MANAGEMENT)
+# ==============================================================================
+
+# --- TẠO KHO MỚI ---
+@bot.on_message(filters.command(["tien_nga_create_inventory", "tien_nga_tao_kho"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_inventory|tien_nga_tao_kho)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY)
+async def tien_nga_create_inventory_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+    if len(lines) < 2:
+        form = (
+            "<b>FORM TẠO KHO MỚI</b>\n"
+            "Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
+            "<pre>/tien_nga_create_inventory\n"
+            "Tên Nguyên Liệu: \n"
+            "Tên Kho: \n"
+            "Số Lượng Ban Đầu: 0\n"
+            "Địa Chỉ Lưu Trữ: \n"
+            "Sức Chứa: 0</pre>"
+        )
+        await message.reply_text(form, parse_mode=ParseMode.HTML)
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            data[k.strip()] = v.strip()
+
+    material_name = data.get("Tên Nguyên Liệu", "").strip()
+    storage_name = data.get("Tên Kho", "").strip()
+    storage_loc = data.get("Địa Chỉ Lưu Trữ", "").strip()
+
+    def parse_float_val(val_str):
+        if not val_str: return 0.0
+        val_str = val_str.replace(".", "").replace(",", ".").replace(" ", "")
+        try: return float(val_str)
+        except: return 0.0
+
+    qty = parse_float_val(data.get("Số Lượng Ban Đầu", "0"))
+    cap = parse_float_val(data.get("Sức Chứa", "0"))
+
+    if not material_name:
+        await message.reply_text("⚠️ Tên Nguyên Liệu là bắt buộc.")
+        return
+
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
+    db = SessionLocal()
+    try:
+        new_inv = Inventory(material_name=material_name, quantity=qty, storage_name=storage_name, storage_location=storage_loc, capacity=cap)
+        db.add(new_inv)
+        db.commit()
+        await message.reply_text(f"✅ Đã tạo kho <b>{material_name}</b> thành công!", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        db.rollback()
+        await message.reply_text("❌ Lỗi khi thêm vào DB.")
+    finally:
+        db.close()
+
+# --- DANH SÁCH KHO ---
+@bot.on_message(filters.command(["tien_nga_list_inventory", "tien_nga_danh_sach_kho"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_inventory|tien_nga_danh_sach_kho)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY)
+async def tien_nga_list_inventory_handler(client, message: Message) -> None:
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
+    db = SessionLocal()
+    try:
+        invs = db.query(Inventory).order_by(Inventory.material_name).all()
+        if not invs:
+            await message.reply_text("⚠️ Chưa có kho chứa nào.")
+            return
+        
+        text = "<b>📦 DANH SÁCH HÀNG TỒN KHO</b>\n\n"
+        for idx, inv in enumerate(invs, 1):
+            text += f"<b>{idx}. {inv.material_name}</b>\n"
+            text += f"   Tên kho: {inv.storage_name or '—'}\n"
+            text += f"   Khối lượng hiện tại: {inv.quantity:,.0f} kg <i>(Sức chứa: {inv.capacity:,.0f} kg)</i>\n"
+            text += f"   Địa chỉ: {inv.storage_location or '—'}\n\n"
+        await message.reply_text(text, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await message.reply_text("❌ Lỗi hệ thống.")
+    finally:
+        db.close()
+
+# --- CẬP NHẬT KHO ---
+@bot.on_message(filters.command(["tien_nga_update_inventory", "tien_nga_cap_nhat_ton_kho"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_inventory|tien_nga_cap_nhat_ton_kho)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY)
+async def tien_nga_update_inventory_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+    if len(lines) < 2:
+        from app.db.session import SessionLocal
+        from app.models.inventory import Inventory
+        db = SessionLocal()
+        try:
+            invs = db.query(Inventory).all()
+            if not invs:
+                await message.reply_text("⚠️ Chưa có hàng tồn kho nào.")
+                return
+            buttons = []
+            for inv in invs:
+                btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
+                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_selinv_{inv.id}")])
+            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_selinv_cancel")])
+            await message.reply_text("<b>Vui lòng chọn Hàng Tồn Kho cần cập nhật:</b>", reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            data[k.strip()] = v.strip()
+
+    material_name = data.get("Tên Nguyên Liệu", "").strip()
+    storage_name = data.get("Tên Kho", "").strip()
+    storage_loc = data.get("Địa Chỉ Lưu Trữ", "").strip()
+
+    def parse_float_val(val_str):
+        if not val_str: return 0.0
+        val_str = val_str.replace(".", "").replace(",", ".").replace(" ", "")
+        try: return float(val_str)
+        except: return 0.0
+
+    qty = parse_float_val(data.get("Số Lượng", "0"))
+    cap = parse_float_val(data.get("Sức Chứa", "0"))
+
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
+    db = SessionLocal()
+    try:
+        inv = db.query(Inventory).filter(Inventory.material_name == material_name).first()
+        if not inv:
+            await message.reply_text("⚠️ Không tìm thấy nguyên liệu này trong hệ thống.")
+            return
+        if storage_name: inv.storage_name = storage_name
+        if storage_loc: inv.storage_location = storage_loc
+        inv.quantity = qty
+        inv.capacity = cap
+        db.commit()
+        await message.reply_text(f"✅ Đã cập nhật kho <b>{material_name}</b> thành công!", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^tn_selinv_(.+)$"))
+async def _sel_inv_cb(client, callback_query):
+    inv_id = callback_query.matches[0].group(1)
+    if inv_id == "cancel":
+        await callback_query.message.edit_text("❌ <b>Đã hủy thao tác.</b>", parse_mode=ParseMode.HTML)
+        return
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
+    import uuid
+    db = SessionLocal()
+    try:
+        inv = db.query(Inventory).filter(Inventory.id == uuid.UUID(inv_id)).first()
+        if not inv:
+            await callback_query.answer("Lỗi", show_alert=True)
+            return
+        form = (
+            "<b>FORM CẬP NHẬT KHO</b>\n\n"
+            "<pre>/tien_nga_update_inventory\n"
+            f"Tên Nguyên Liệu: {inv.material_name}\n"
+            f"Tên Kho: {inv.storage_name or ''}\n"
+            f"Số Lượng: {inv.quantity:,.0f}\n"
+            f"Địa Chỉ Lưu Trữ: {inv.storage_location or ''}\n"
+            f"Sức Chứa: {inv.capacity:,.0f}</pre>"
+        )
+        await callback_query.message.reply_text(form.replace(",", "."), parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+    finally:
+        db.close()
+
+# --- THU MUA ---
+@bot.on_message(filters.command(["tien_nga_material_purchase", "tien_nga_thu_mua_nguyen_lieu"]) | filters.regex(r"^@\w+\s+/(tien_nga_material_purchase|tien_nga_thu_mua_nguyen_lieu)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY)
+async def tien_nga_material_purchase_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+    if len(lines) < 2:
+        from app.db.session import SessionLocal
+        from app.models.inventory import Inventory
+        db = SessionLocal()
+        try:
+            invs = db.query(Inventory).all()
+            if not invs:
+                await message.reply_text("⚠️ Chưa có hàng tồn kho nào.")
+                return
+            buttons = []
+            for inv in invs:
+                btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
+                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_purmat_{inv.id}")])
+            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_purmat_cancel")])
+            await message.reply_text("<b>Vui lòng chọn Loại Nguyên Liệu cần nhập mua:</b>", reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            data[k.strip()] = v.strip()
+
+    material_type = data.get("Loại Nguyên Liệu", "").strip()
+    storage_name = data.get("Tên Kho", "").strip()
+    transaction_date_str = data.get("Ngày Giao Dịch", "").strip()
+    customer_id = data.get("Mã Khách Hàng", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
+
+    def parse_float_val(val_str):
+        if not val_str: return 0.0
+        val_str = val_str.replace(".", "").replace(",", ".").replace(" ", "")
+        try: return float(val_str)
+        except: return 0.0
+
+    trip_count = int(parse_float_val(data.get("Số Chuyến", "1")))
+    weight = parse_float_val(data.get("Khối Lượng", "0"))
+    unit_price = parse_float_val(data.get("Đơn Giá", "0"))
+    total_amount = weight * unit_price
+    advance_payment = parse_float_val(data.get("Tạm Ứng", "0"))
+    parsed_debt = parse_float_val(data.get("Công Nợ", "0"))
+    debt = parsed_debt if parsed_debt != 0 else (total_amount - advance_payment)
+
+    from datetime import datetime
+    try:
+        transaction_date = datetime.strptime(transaction_date_str, "%d/%m/%Y").date() if transaction_date_str else datetime.now().date()
+    except:
+        transaction_date = datetime.now().date()
+
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory, MaterialPurchase
+    from app.models.business import Customers
+    import uuid
+    db = SessionLocal()
+    try:
+        inv = db.query(Inventory).filter(Inventory.material_name == material_type).first()
+        if not inv:
+            await message.reply_text("⚠️ Không tìm thấy nguyên liệu này.")
+            return
+
+        purchase = MaterialPurchase(
+            id=uuid.uuid4(), transaction_date=transaction_date, customer_id=customer_id,
+            material_type=material_type, storage_name=storage_name, trip_count=trip_count,
+            weight=weight, unit_price=unit_price, total_amount=total_amount,
+            advance_payment=advance_payment, debt=debt, notes=notes
+        )
+        db.add(purchase)
+        
+        old_quantity = inv.quantity
+        inv.quantity = old_quantity + weight
+
+        customer_display = customer_id or "—"
+        new_customer_debt = None
+        if customer_id:
+            customer = db.query(Customers).filter(Customers.hoursehold_id == customer_id).first()
+            if customer:
+                if customer.total_debt is None: customer.total_debt = 0
+                customer.total_debt += int(debt)
+                new_customer_debt = customer.total_debt
+                customer_display = f"{customer.hoursehold_id} - {customer.fullname}"
+            else:
+                customer_display = f"{customer_id} (Khách mới/Không có trên HT)"
+
+        db.commit()
+
+        def fmt_vn(val): return f"{val:,.0f}".replace(",", ".")
+        msg = (
+            f"<b>✅ NHẬP THU MUA THÀNH CÔNG</b>\n\n"
+            f"<b>Nguyên Liệu:</b> {material_type}\n"
+            f"<b>Tên Kho:</b> {storage_name or '—'}\n"
+            f"<b>Ngày GD:</b> {transaction_date.strftime('%d/%m/%Y')}\n"
+            f"<b>Khách Hàng:</b> {customer_display}\n"
+            f"<b>Khối Lượng Nhập:</b> {weight:,.0f} kg\n"
+            f"<b>Thành Tiền:</b> {fmt_vn(total_amount)} đ\n"
+            f"<b>Công Nợ Đợt Này:</b> {fmt_vn(debt)} đ\n"
+        )
+        if new_customer_debt is not None:
+            msg += f"<b>Tổng Công Nợ KH:</b> {fmt_vn(new_customer_debt)} đ\n\n"
+        else:
+            msg += "\n"
+            
+        msg += f"📦 <b>Số dư kho hiện tại:</b> {inv.quantity:,.0f} kg <i>(+{weight:,.0f} kg)</i>"
+        await message.reply_text(msg, parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^tn_purmat_(.+)$"))
+async def _purmat_cb(client, callback_query):
+    inv_id = callback_query.matches[0].group(1)
+    if inv_id == "cancel":
+        await callback_query.message.edit_text("❌ <b>Đã hủy.</b>", parse_mode=ParseMode.HTML)
+        return
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
+    import uuid
+    from datetime import datetime
+    db = SessionLocal()
+    try:
+        inv = db.query(Inventory).filter(Inventory.id == uuid.UUID(inv_id)).first()
+        if not inv: return
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        form = (
+            "<b>FORM NHẬP THU MUA</b>\n\n"
+            "<pre>/tien_nga_material_purchase\n"
+            f"Loại Nguyên Liệu: {inv.material_name}\n"
+            f"Tên Kho: {inv.storage_name or ''}\n"
+            f"Ngày Giao Dịch: {today_str}\n"
+            "Mã Khách Hàng: \n"
+            "Số Chuyến: 1\n"
+            "Khối Lượng: 0\n"
+            "Đơn Giá: 0\n"
+            "Thành Tiền: 0\n"
+            "Tạm Ứng: 0\n"
+            "Công Nợ: 0\n"
+            "Ghi Chú: </pre>"
+        )
+        await callback_query.message.reply_text(form, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+    finally:
+        db.close()
+
+# --- XUẤT KHO ---
+@bot.on_message(filters.command(["tien_nga_export_inventory", "tien_nga_xuat_kho"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_inventory|tien_nga_xuat_kho)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY)
+async def tien_nga_export_inventory_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+    if len(lines) < 2:
+        from app.db.session import SessionLocal
+        from app.models.inventory import Inventory
+        db = SessionLocal()
+        try:
+            invs = db.query(Inventory).all()
+            if not invs:
+                await message.reply_text("⚠️ Chưa có hàng tồn kho nào.")
+                return
+            buttons = []
+            for inv in invs:
+                btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
+                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_expinv_{inv.id}")])
+            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_expinv_cancel")])
+            await message.reply_text("<b>Vui lòng chọn Hàng Tồn Kho cần xuất đi:</b>", reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            data[k.strip()] = v.strip()
+
+    material_type = data.get("Loại Nguyên Liệu", "").strip()
+    storage_name = data.get("Tên Kho", "").strip()
+    export_date_str = data.get("Ngày Xuất Kho", "").strip()
+    performer_name = data.get("Người Thực Hiện", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
+
+    def parse_float_val(val_str):
+        if not val_str: return 0.0
+        val_str = val_str.replace(".", "").replace(",", ".").replace(" ", "")
+        try: return float(val_str)
+        except: return 0.0
+
+    export_weight = parse_float_val(data.get("Khối Lượng Xuất", "0"))
+
+    from datetime import datetime
+    try:
+        export_date = datetime.strptime(export_date_str, "%d/%m/%Y").date() if export_date_str else datetime.now().date()
+    except:
+        export_date = datetime.now().date()
+
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory, InventoryExport
+    import uuid
+    db = SessionLocal()
+    try:
+        inv = db.query(Inventory).filter(Inventory.material_name == material_type).first()
+        if not inv:
+            await message.reply_text("⚠️ Không tìm thấy nguyên liệu này.")
+            return
+
+        if inv.quantity < export_weight:
+            await message.reply_text(f"⚠️ Lỗi: Xuất ({export_weight} kg) quá tồn kho ({inv.quantity} kg).")
+            return
+
+        rem_w = inv.quantity - export_weight
+        export_rec = InventoryExport(
+            id=uuid.uuid4(), export_date=export_date, performer_name=performer_name,
+            material_type=material_type, storage_name=storage_name, export_weight=export_weight,
+            remaining_weight=rem_w, notes=notes
+        )
+        db.add(export_rec)
+        inv.quantity = rem_w
+        db.commit()
+
+        await message.reply_text(
+            f"<b>✅ XUẤT KHO THÀNH CÔNG</b>\n\n"
+            f"<b>Nguyên Liệu:</b> {material_type}\n"
+            f"<b>Khối Lượng Xuất:</b> {export_weight:,.0f} kg\n"
+            f"<b>Tồn Kho Còn Lại:</b> {rem_w:,.0f} kg\n",
+            parse_mode=ParseMode.HTML
+        )
+
+        from app.core.config import settings
+        config_key_map = {"Củi": "Firewood"}
+        config_key = config_key_map.get(material_type, material_type)
+        threshold_pct = settings.TienNga.Inventory_Warning_Thresholds.get(config_key)
+        
+        if threshold_pct and inv.capacity > 0:
+            threshold_w = (threshold_pct / 100.0) * inv.capacity
+            if rem_w < threshold_w:
+                msg = (
+                    f"⚠️ <b>CẢNH BÁO TỒN KHO: {material_type.upper()}</b> ⚠️\n\n"
+                    f"Kho <b>{inv.storage_name or '—'}</b> hiện tại còn <b>{rem_w:,.0f} kg</b>.\n"
+                    f"<i>(Đã xuống dưới ngưỡng an toàn {threshold_pct}% sức chứa: {threshold_w:,.0f} kg)</i>.\n"
+                    f"👉 Đề nghị lên kế hoạch nhập thêm nguyên liệu!"
+                )
+                await client.send_message(chat_id=message.chat.id, text=msg, parse_mode=ParseMode.HTML)
+
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^tn_expinv_(.+)$"))
+async def _expinv_cb(client, callback_query):
+    inv_id = callback_query.matches[0].group(1)
+    if inv_id == "cancel":
+        await callback_query.message.edit_text("❌ <b>Đã hủy.</b>", parse_mode=ParseMode.HTML)
+        return
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
+    import uuid
+    from datetime import datetime
+    db = SessionLocal()
+    try:
+        inv = db.query(Inventory).filter(Inventory.id == uuid.UUID(inv_id)).first()
+        if not inv: return
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        name = (callback_query.from_user.first_name or '') + ' ' + (callback_query.from_user.last_name or '')
+        form = (
+            "<b>FORM XUẤT KHO</b>\n\n"
+            "<pre>/tien_nga_export_inventory\n"
+            f"Loại Nguyên Liệu: {inv.material_name}\n"
+            f"Tên Kho: {inv.storage_name or ''}\n"
+            f"Ngày Xuất Kho: {today_str}\n"
+            f"Người Thực Hiện: {name.strip()}\n"
+            "Khối Lượng Xuất: 0\n"
+            "Ghi Chú: </pre>"
+        )
+        await callback_query.message.reply_text(form, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+    finally:
+        db.close()
+

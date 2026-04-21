@@ -25,6 +25,8 @@ class CustomTitle(str, Enum):
     MEMBER_PRODUCT = "member_product"         #Thành phẩm
     MAIN_PARTNER = "main_partner"             #Đối tác
     MEMBER_PARTNER = "member_partner"         #Đối tác
+    MAIN_INVENTORY = "main_inventory"         #Kho
+    MEMBER_INVENTORY = "member_inventory"     #Kho
     
     # Other Projects
     MAIN_DEVICE = "main_device"       #Thiết bị

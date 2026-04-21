@@ -30,6 +30,7 @@ from app.models import rental
 from app.models import task
 from app.models import telegram
 from app.models import vehicle
+from app.models import inventory
 from app.core.config import settings
 
 config.set_main_option("sqlalchemy.url", settings.DB_Config.SQLALCHEMY_DATABASE_URI.replace('%', '%%'))

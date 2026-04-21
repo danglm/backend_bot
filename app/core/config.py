@@ -35,6 +35,11 @@ class ServiceConfig(BaseModel):
 
 class TienNgaConfig(BaseModel):
     Max_Daily_Payment_Auto_Approve: float = 1000000000.0
+    Inventory_Warning_Thresholds: Dict[str, float] = {
+        "Firewood": 10.0,
+        "Acid": 20.0,
+        "Amoniac": 20.0
+    }
 
 class Settings(BaseSettings):
     DB_Config: DBConfig = DBConfig()

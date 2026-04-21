@@ -25,6 +25,9 @@ class Customers(Base):
     total_debt = Column(Integer)
     status = Column(String, default="ACTIVE")
     username = Column(String)    ## Tài Khoản Telegram
+    telegram_group = Column(String)                     # Nhóm Telegram
+    number_bank = Column(String)                        # Số tài khoản ngân hàng
+    bank_name = Column(String)                          # Tên ngân hàng
     is_subsidized = Column(Integer) ## Trợ giá
 
 class CollectionPoint(Base):

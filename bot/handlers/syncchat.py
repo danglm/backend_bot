@@ -92,6 +92,7 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
                 [InlineKeyboardButton("Tài chính", callback_data=f"sync_tn_{project_id}_finance")],
                 [InlineKeyboardButton("Quản lý hàng thành phẩm", callback_data=f"sync_tn_{project_id}_product")],
                 [InlineKeyboardButton("Quản lý đối tác", callback_data=f"sync_tn_{project_id}_partner")],
+                [InlineKeyboardButton("Quản lý kho", callback_data=f"sync_tn_{project_id}_inventory")],
                 [
                     InlineKeyboardButton("Trở lại", callback_data="sync_back_to_proj"),
                     InlineKeyboardButton("Hủy", callback_data="sync_cancel")
@@ -136,10 +137,11 @@ TN_DEPT_LABELS = {
     "hr": "Nhân sự",
     "finance": "Tài chính",
     "product": "Quản lý hàng thành phẩm",
+    "inventory": "Quản lý kho",
     "partner": "Quản lý đối tác",
 }
 
-@bot.on_callback_query(filters.regex(r"^sync_tn_(.+)_(tong|supplier|sales|hr|finance|product|partner)$"))
+@bot.on_callback_query(filters.regex(r"^sync_tn_(.+)_(tong|supplier|sales|hr|finance|product|inventory|partner)$"))
 async def sync_tn_dept_callback(client, callback_query: CallbackQuery):
     project_id = callback_query.matches[0].group(1)
     dept = callback_query.matches[0].group(2)

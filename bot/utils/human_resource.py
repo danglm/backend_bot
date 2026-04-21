@@ -21,6 +21,7 @@ Mã NV:
 Họ: 
 Tên: 
 Username: 
+Nhóm Telegram: 
 Giới tính: 
 Ngày sinh: 
 SĐT: 
@@ -62,6 +63,32 @@ Người liên hệ khẩn cấp: </pre>
 
 <i>Các trường không bắt buộc có thể để trống.
 Bắt buộc: <b>Mã NV</b>, <b>Họ</b>, <b>Tên</b>, <b>Username</b> (Telegram)</i>"""
+
+async def _parse_float_or_reply(message: Message, field_name: str, value: str):
+    if not value: return None
+    try:
+        return float(value.replace(".", "").replace(",", "."))
+    except ValueError:
+        await message.reply_text(f"⚠️ <b>{field_name}</b> nhập sai kiểu dữ liệu. Vui lòng nhập đúng kiểu số (VD: 10000000).", parse_mode=ParseMode.HTML)
+        raise ValueError()
+
+async def _parse_int_or_reply(message: Message, field_name: str, value: str):
+    if not value: return None
+    try:
+        return int(value)
+    except ValueError:
+        await message.reply_text(f"⚠️ <b>{field_name}</b> nhập sai kiểu dữ liệu. Vui lòng nhập nguyên (VD: 12).", parse_mode=ParseMode.HTML)
+        raise ValueError()
+
+async def _parse_time_or_reply(message: Message, field_name: str, value: str):
+    if not value: return None
+    try:
+        parts = value.split(":")
+        return datetime.datetime(2000, 1, 1, int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+    except (ValueError, IndexError):
+        await message.reply_text(f"⚠️ <b>{field_name}</b> nhập sai kiểu dữ liệu. Vui lòng nhập đúng định dạng giờ (VD: 08:00).", parse_mode=ParseMode.HTML)
+        raise ValueError()
+
 
 
 async def handle_create_employee(client, message: Message, command_name: str) -> None:
@@ -112,33 +139,22 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
             except ValueError:
                 continue
 
-    # Parse lương
-    base_salary = None
-    salary_str = data.get("Lương cơ bản", "").strip()
-    if salary_str:
-        try:
-            base_salary = float(salary_str.replace(".", "").replace(",", "."))
-        except ValueError:
-            pass
-
-    # Parse giờ vào ca / tan ca (VD: "08:00", "17:00")
-    start_time = None
-    start_time_str = data.get("Giờ vào ca", "").strip()
-    if start_time_str:
-        try:
-            parts = start_time_str.split(":")
-            start_time = datetime.datetime(2000, 1, 1, int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
-        except (ValueError, IndexError):
-            pass
-
-    end_time = None
-    end_time_str = data.get("Giờ tan ca", "").strip()
-    if end_time_str:
-        try:
-            parts = end_time_str.split(":")
-            end_time = datetime.datetime(2000, 1, 1, int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
-        except (ValueError, IndexError):
-            pass
+    try:
+        base_salary = await _parse_float_or_reply(message, "Lương cơ bản", data.get("Lương cơ bản", "").strip())
+        bonus = await _parse_float_or_reply(message, "Tiền thưởng", data.get("Tiền thưởng", "").strip())
+        monthly_salary = await _parse_float_or_reply(message, "Lương tháng", data.get("Lương tháng", "").strip())
+        weekly_salary = await _parse_float_or_reply(message, "Lương tuần", data.get("Lương tuần", "").strip())
+        daily_salary = await _parse_float_or_reply(message, "Lương ngày", data.get("Lương ngày", "").strip())
+        hourly_salary = await _parse_float_or_reply(message, "Lương giờ", data.get("Lương giờ", "").strip())
+        overtime_salary = await _parse_float_or_reply(message, "Lương làm thêm giờ", data.get("Lương làm thêm giờ", "").strip())
+        rate_bhxh = await _parse_float_or_reply(message, "Tỷ lệ BHXH", data.get("Tỷ lệ BHXH", "").strip())
+        working_hours = await _parse_float_or_reply(message, "Số giờ làm việc", data.get("Số giờ làm việc", "").strip())
+        leave_balance = await _parse_int_or_reply(message, "Số ngày phép năm", data.get("Số ngày phép năm", "").strip())
+        
+        start_time = await _parse_time_or_reply(message, "Giờ vào ca", data.get("Giờ vào ca", "").strip())
+        end_time = await _parse_time_or_reply(message, "Giờ tan ca", data.get("Giờ tan ca", "").strip())
+    except ValueError:
+        return
 
     db = SessionLocal()
     try:
@@ -176,10 +192,10 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
             )
             return
 
-        # Tạo nhân viên mới
         new_employee = Employee(
             id=emp_id,
             username=username,
+            telegram_group=data.get("Nhóm Telegram", "").strip() or None,
             last_name=last_name,
             first_name=first_name,
             gender=data.get("Giới tính", "").strip() or None,
@@ -201,7 +217,7 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
             department=data.get("Phòng ban", "").strip() or None,
             contract_type=data.get("Loại hợp đồng", "").strip() or None,
             base_salary=base_salary,
-            leave_balance=int(data.get("Số ngày phép năm", "").strip()) if data.get("Số ngày phép năm", "").strip().isdigit() else None,
+            leave_balance=leave_balance,
             insurance=data.get("Bảo hiểm", "").strip() or None,
             bank_name=data.get("Ngân hàng", "").strip() or None,
             bank_account_number=data.get("Số tài khoản", "").strip() or None,
@@ -209,17 +225,17 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
             emergency_phone=data.get("SĐT khẩn cấp", "").strip() or None,
             emergency_contact=data.get("Người liên hệ khẩn cấp", "").strip() or None,
             employee_photo=data.get("Ảnh nhân viên", "").strip() or None,
-            working_hours=float(data.get("Số giờ làm việc", "").strip() or 0) if data.get("Số giờ làm việc", "").strip().replace('.','').isdigit() else None,
+            working_hours=working_hours,
             performance_evaluation=data.get("Đánh giá hiệu suất", "").strip() or None,
             career_goal=data.get("Mục tiêu nghề nghiệp", "").strip() or None,
             benefits=data.get("Phúc lợi", "").strip() or None,
-            bonus=float(data.get("Tiền thưởng", "").strip().replace(',', '.').replace('.', '')) if data.get("Tiền thưởng", "").strip() else None,
-            monthly_salary=float(data.get("Lương tháng", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương tháng", "").strip() else None,
-            weekly_salary=float(data.get("Lương tuần", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương tuần", "").strip() else None,
-            daily_salary=float(data.get("Lương ngày", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương ngày", "").strip() else None,
-            hourly_salary=float(data.get("Lương giờ", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương giờ", "").strip() else None,
-            overtime_salary=float(data.get("Lương làm thêm giờ", "").strip().replace(',', '.').replace('.', '')) if data.get("Lương làm thêm giờ", "").strip() else None,
-            rate_bhxh=float(data.get("Tỷ lệ BHXH", "").strip() or 0) if data.get("Tỷ lệ BHXH", "").strip().replace('.','').isdigit() else None,
+            bonus=bonus,
+            monthly_salary=monthly_salary,
+            weekly_salary=weekly_salary,
+            daily_salary=daily_salary,
+            hourly_salary=hourly_salary,
+            overtime_salary=overtime_salary,
+            rate_bhxh=rate_bhxh,
             total_debt=0,
             start_time=start_time,
             end_time=end_time,
@@ -272,6 +288,7 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
 FIELD_MAP = {
     "Họ": "last_name",
     "Tên": "first_name",
+    "Nhóm Telegram": "telegram_group",
     "Giới tính": "gender",
     "SĐT": "number_phone",
     "Email": "email",
@@ -315,6 +332,7 @@ Dữ liệu hiện tại đã được điền sẵn. Chỉ sửa các trường
 Username: @{emp.username or ''}
 Họ: {emp.last_name or ''}
 Tên: {emp.first_name or ''}
+Nhóm Telegram: {emp.telegram_group or ''}
 Giới tính: {emp.gender or ''}
 Ngày sinh: {birthday_str}
 SĐT: {emp.number_phone or ''}
@@ -438,43 +456,32 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
                 except ValueError:
                     continue
 
-        # Xử lý riêng: Lương cơ bản
-        salary_str = data.get("Lương cơ bản", "").strip()
-        if salary_str:
-            try:
-                employee.base_salary = float(salary_str.replace(".", "").replace(",", "."))
+        try:
+            # Xử lý riêng: Lương cơ bản
+            salary_str = data.get("Lương cơ bản", "").strip()
+            if salary_str:
+                employee.base_salary = await _parse_float_or_reply(message, "Lương cơ bản", salary_str)
                 updated_fields.append("Lương cơ bản")
-            except ValueError:
-                pass
 
-        # Xử lý riêng: Giờ vào ca
-        start_str = data.get("Giờ vào ca", "").strip()
-        if start_str:
-            try:
-                parts = start_str.split(":")
-                employee.start_time = datetime.datetime(2000, 1, 1, int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+            # Xử lý riêng: Giờ vào ca
+            start_str = data.get("Giờ vào ca", "").strip()
+            if start_str:
+                employee.start_time = await _parse_time_or_reply(message, "Giờ vào ca", start_str)
                 updated_fields.append("Giờ vào ca")
-            except (ValueError, IndexError):
-                pass
 
-        # Xử lý riêng: Giờ tan ca
-        end_str = data.get("Giờ tan ca", "").strip()
-        if end_str:
-            try:
-                parts = end_str.split(":")
-                employee.end_time = datetime.datetime(2000, 1, 1, int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+            # Xử lý riêng: Giờ tan ca
+            end_str = data.get("Giờ tan ca", "").strip()
+            if end_str:
+                employee.end_time = await _parse_time_or_reply(message, "Giờ tan ca", end_str)
                 updated_fields.append("Giờ tan ca")
-            except (ValueError, IndexError):
-                pass
 
-        # Xử lý riêng: Số ngày phép năm
-        leave_str = data.get("Số ngày phép năm", "").strip()
-        if leave_str:
-            try:
-                employee.leave_balance = int(leave_str)
+            # Xử lý riêng: Số ngày phép năm
+            leave_str = data.get("Số ngày phép năm", "").strip()
+            if leave_str:
+                employee.leave_balance = await _parse_int_or_reply(message, "Số ngày phép năm", leave_str)
                 updated_fields.append("Số ngày phép năm")
-            except ValueError:
-                pass
+        except ValueError:
+            return
 
         if not updated_fields:
             await message.reply_text(
