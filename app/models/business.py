@@ -123,3 +123,16 @@ class DailyPayment(Base):
     status = Column(String, default="APPROVED")         # Trạng thái duyệt
     notes = Column(String)                              # Ghi chú
 
+class Shareholder(Base):
+    __tablename__ = "shareholders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    shareholder_code = Column(String, unique=True, index=True)  # Mã cổ đông
+    fullname = Column(String)                                   # Tên cổ đông
+    investment_id = Column(UUID(as_uuid=True))                  # Mã đầu tư (FK to investments.id)
+    investment_amount = Column(Float, default=0.0)              # Số tiền đầu tư
+    start_date = Column(Date)                                   # Ngày bắt đầu
+    username = Column(String)                                   # Username Telegram
+    telegram_group = Column(String)                             # Nhóm Telegram
+    notes = Column(String)                                      # Ghi chú
+    created_at = Column(DateTime, default=lambda: __import__('datetime').datetime.now())

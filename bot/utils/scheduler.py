@@ -488,7 +488,7 @@ async def monthly_attendance_report_worker():
 async def checkin_reminder_worker():
     """
     Background worker that sends reminders to staff who haven't checked in.
-    Reminders are sent every 5 minutes during the 30-minute window after their start time.
+    Reminders are sent every 15 minutes during the 30-minute window after their start time.
     """
     LogInfo("Check-in reminder worker started.", LogType.SYSTEM_STATUS)
     while True:
@@ -503,42 +503,44 @@ async def checkin_reminder_worker():
             
             db = SessionLocal()
             try:
-                # Get all tracked groups
-                # Get all tracked "member" groups (where employees check in)
-                from app.models.telegram import TelegramProjectMember
                 from app.models.employee import Employee
 
-                member_groups = db.query(TelegramProjectMember).filter(
-                    TelegramProjectMember.role == "member"
+                # Fetch all employees who have a configured telegram_group
+                employees = db.query(Employee).filter(
+                    Employee.telegram_group != None,
+                    Employee.telegram_group != ""
                 ).all()
-                member_chat_ids = list(set(m.chat_id for m in member_groups))
-                
-                if not member_chat_ids:
+
+                if not employees:
                     db.close()
                     await asyncio.sleep(60)
                     continue
 
-                for chat_id in member_chat_ids:
-                    
+                # Group employees by their configured telegram_group
+                groups = {}
+                for emp in employees:
+                    if not emp.username:
+                        continue
+                    gn = emp.telegram_group.strip()
+                    if not gn:
+                        continue
+                    if gn not in groups:
+                        groups[gn] = []
+                    groups[gn].append(emp)
+
+                for chat_id_str, group_emps in groups.items():
+                    chat_id = chat_id_str
+                    try:
+                        chat_id = int(chat_id_str)
+                    except ValueError:
+                        pass
+                        
                     late_checkin_mentions = []
                     late_checkout_mentions = []
                     
                     try:
-                        # Get all members of the group from Telegram
-                        client = bot
-                        async for member in client.get_chat_members(chat_id):
-                            if not member.user or member.user.is_bot or member.user.is_deleted:
-                                continue
-                            
-                            username = member.user.username
-                            if not username:
-                                continue
-                                
-                            # Check if this user is an employee in our system
-                            emp = db.query(Employee).filter(Employee.username == username).first()
-                            if not emp:
-                                continue
-                            
+                        for emp in group_emps:
+                            username = emp.username
                             employee_id = emp.id
                             
                             # Get their scheduled times
@@ -554,7 +556,7 @@ async def checkin_reminder_worker():
                             start_total_min = work_start.hour * 60 + work_start.minute
                             diff_in = now_total_min - start_total_min
                             
-                            if diff_in > 0 and diff_in <= 30 and diff_in % 5 == 0:
+                            if diff_in > 0 and diff_in <= 30 and diff_in % 15 == 0:
                                 # Check if they already checked in today
                                 att = db.query(Attendance).filter(
                                     Attendance.employee_id == employee_id,

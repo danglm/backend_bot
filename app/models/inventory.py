@@ -40,3 +40,20 @@ class InventoryExport(Base):
     export_weight = Column(Float, default=0.0)          # Khối lượng
     remaining_weight = Column(Float, default=0.0)       # Khối lượng tồn kho còn lại
     notes = Column(String)                              # Ghi chú
+
+class ProductTransaction(Base):
+    __tablename__ = "product_transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    transaction_date = Column(Date)                     # Ngày giao dịch
+    customer_id = Column(String)                        # Mã khách hàng
+    transaction_type = Column(String)                   # Loại giao dịch (Xuất / Nhập)
+    material_type = Column(String)                      # Loại nguyên liệu
+    storage_id = Column(UUID(as_uuid=True))             # id kho (Inventory.id)
+    storage_name = Column(String)                       # Tên kho
+    quantity = Column(Float, default=0.0)               # Khối lượng
+    unit_price = Column(Float, default=0.0)             # Đơn giá
+    total_amount = Column(Float, default=0.0)           # Thành tiền
+    debt = Column(Float, default=0.0)                   # Công nợ
+    note = Column(String)                               # Ghi chú
+

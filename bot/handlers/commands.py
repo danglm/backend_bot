@@ -756,6 +756,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_tao_lai_bang_cham_cong", "Tạo lại báo cáo chấm công"),
                     BotCommand("tien_nga_xem_cong_viec", "Xem công việc của nhân viên"),      
                     BotCommand("tien_nga_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
+                    BotCommand("tien_nga_danh_sach_nhan_vien", "Xuất DS nhân viên Excel"),
                     # BotCommand("tien_nga_delete_employee", "Xóa nhân viên"),
                     # BotCommand("tien_nga_create_employee", "Thêm nhân viên"),
                     # BotCommand("tien_nga_update_employee", "Cập nhật nhân viên"),
@@ -833,6 +834,9 @@ async def register_bot_command_handler(client, message: Message) -> None:
                 if custom_title != "super_main": label = "Tiến Nga (Tài Chính)"
                 commands_to_set.extend([
                     BotCommand("tien_nga_tao_dau_tu", "Tạo khoản đầu tư"),
+                    BotCommand("tien_nga_tao_co_dong", "Tạo cổ đông quỹ"),
+                    BotCommand("tien_nga_chia_co_tuc", "Chia cổ tức quỹ"),
+                    BotCommand("tien_nga_thanh_toan_quy_co_dong", "Thanh toán quỹ cổ đông"),
                     BotCommand("tien_nga_xn_thanh_toan_cong_no", "Xác nhận thanh toán công nợ"),
                     BotCommand("tien_nga_thanh_toan_cong_no", "Thanh toán công nợ"),
                     BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
@@ -857,6 +861,15 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_cap_nhat_ton_kho", "Cập nhật tồn kho"),
                     BotCommand("tien_nga_thu_mua_nguyen_lieu", "Thu mua nguyên liệu"),
                     BotCommand("tien_nga_xuat_kho", "Xuất kho"),
+                ])
+
+            if custom_title in ("super_main", "main_product"):
+                if custom_title != "super_main": label = "Tiến Nga (Sản Phẩm)"
+                commands_to_set.extend([
+                    BotCommand("tien_nga_tao_kho", "Tạo kho"),
+                    BotCommand("tien_nga_danh_sach_kho", "Danh sách kho"),
+                    BotCommand("tien_nga_cap_nhat_ton_kho", "Cập nhật tồn kho"),
+                    BotCommand("tien_nga_giao_dich_san_pham", "Giao dịch sản phẩm"),
                 ])
 
         if not commands_to_set:
