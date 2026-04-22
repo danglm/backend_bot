@@ -8,7 +8,7 @@ class DBConfig(BaseModel):
     Project_Name: str = "Backend Project"
     Postgres_Server: str = "localhost"
     Postgres_User: str = "postgres"
-    Postgres_Password: str = "16032002"
+    Postgres_Password: str = "admin123"
     Postgres_DB: str = "server_01"
     SQLALCHEMY_DATABASE_URI: Optional[str] = None
 
