@@ -754,7 +754,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_giao_viec", "Giao việc"),
                     BotCommand("tien_nga_xuat_luong", "Xuất bảng lương"),
                     BotCommand("tien_nga_tao_lai_bang_cham_cong", "Tạo lại báo cáo chấm công"),
-                    BotCommand("tien_nga_xem_cong_viec", "Xem công việc của nhân viên"),      
+                    BotCommand("tien_nga_danh_sach_cong_viec", "Xem công việc của nhân viên"),      
                     BotCommand("tien_nga_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
                     BotCommand("tien_nga_danh_sach_nhan_vien", "Xuất DS nhân viên Excel"),
                 ])

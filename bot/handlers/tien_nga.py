@@ -140,17 +140,32 @@ async def tien_nga_create_task_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_create_task
     await handle_create_task(client, message, "/tien_nga_create_task")
 
-@bot.on_message(filters.command(["tien_nga_list_tasks", "tien_nga_xem_cong_viec"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_tasks|tien_nga_xem_cong_viec)\b"))
+@bot.on_message(filters.command(["tien_nga_list_tasks", "tien_nga_danh_sach_cong_viec"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_tasks|tien_nga_danh_sach_cong_viec)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+async def tien_nga_list_tasks_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_list_tasks", "tien_nga_danh_sach_cong_viec"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_check_tasks
+    cmd = args[0] if args else "tien_nga_danh_sach_cong_viec"
+    clean_cmd = cmd.split('@')[0]
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_check_tasks(client, message, clean_cmd)
+
+# --- Nhân viên xem công việc của mình ---
+@bot.on_message(filters.command(["tien_nga_xem_cong_viec"]) | filters.regex(r"^@\w+\s+/tien_nga_xem_cong_viec\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
 @require_custom_title(CustomTitle.MEMBER_HR)
-async def tien_nga_list_tasks_handler(client, message: Message) -> None:
-    args = await check_command_target(client, message.text, ["tien_nga_list_tasks", "tien_nga_xem_cong_viec"])
+async def tien_nga_xem_cong_viec_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_xem_cong_viec"])
     if args is None: return
 
     from bot.utils.human_resource import handle_list_tasks
-    await handle_list_tasks(client, message, "/tien_nga_list_tasks")
-
+    await handle_list_tasks(client, message, "/tien_nga_xem_cong_viec")
 
 # --- Task callback handlers ---
 @bot.on_callback_query(filters.regex(r"^tsk_sel_(.+)$"))
