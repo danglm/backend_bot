@@ -304,117 +304,120 @@ def get_payroll_data(db: Session, employee_id: str, month: int, year: int) -> di
 
 async def generate_and_send_attendance_report(
     db, 
-    mgmt_group_chat_id: str, 
-    target_group_chat_id: str, 
-    admin_account, 
+    employee: "Employee",
     report_month: int, 
     report_year: int,
-    target_member_name: str = None
 ) -> bool:
     """
-    Core logic to generate an attendance report for a specific Member Group and Admin,
-    and send it to the Management Group.
-    If target_member_name is provided, generates for only that specific member.
+    Generate an attendance Excel report for a single employee
+    and send it to the MAIN (management) group of the employee's project.
     """
+    from app.models.finance import Attendance
     from app.models.telegram import TelegramProjectMember
-    from app.models.employee import Employee
-    from app.models.finance import Attendance 
     
     try:
-        admin_username = admin_account.user_name or "Admin"
+        if not employee.telegram_group:
+            LogInfo(f"Employee {employee.id} has no telegram_group, skipping.", LogType.SYSTEM_STATUS)
+            return False
+
+        full_name = f"{employee.last_name} {employee.first_name}".strip() or employee.username or employee.id
+
+        rows = db.query(Attendance).filter(
+            Attendance.employee_id == employee.id,
+            Attendance.year == report_year,
+            Attendance.month == report_month,
+        ).order_by(Attendance.day).all()
+
+        if not rows:
+            LogInfo(f"No attendance data for {employee.id} in {report_month:02d}/{report_year}.", LogType.SYSTEM_STATUS)
+            return False
+
+        # --- Resolve main group from employee's telegram_group ---
+        tg_group = employee.telegram_group.strip()
         
-        # Collect attendance for all non-admin employees in THIS specific MEMBER_GROUP
-        employee_records = []
-        group_members = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.chat_id == target_group_chat_id,
-            TelegramProjectMember.member_status.notin_(["OWNER", "ADMINISTRATOR", "LEFT", "KICKED"]),
-            TelegramProjectMember.is_bot == False
-        ).all()
+        # Find the member group in telegram_project_members
+        tpm = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.group_name == tg_group
+        ).first()
         
-        for gm in group_members:
-            # Find Employee by Telegram username
-            emp_info = db.query(Employee).filter(Employee.username == gm.user_name).first()
-            if not emp_info:
-                continue
+        if not tpm:
+            # Try as chat_id directly
+            tpm = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == tg_group
+            ).first()
+        
+        if not tpm or not tpm.project_id:
+            LogInfo(f"Employee {employee.id}: cannot find project for telegram_group '{tg_group}', skipping.", LogType.SYSTEM_STATUS)
+            return False
 
-            full_name = f"{emp_info.last_name} {emp_info.first_name}".strip() or gm.user_name
-            
-            # --- Filtering by specific member name if requested ---
-            if target_member_name and target_member_name not in full_name:
-                continue
-            # -----------------------------------------------------
+        # Find the MAIN group in the same project
+        main_tpm = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.project_id == tpm.project_id,
+            TelegramProjectMember.role == "main"
+        ).first()
 
-            rows = db.query(Attendance).filter(
-                Attendance.employee_id == emp_info.id,
-                Attendance.year == report_year,
-                Attendance.month == report_month,
-            ).order_by(Attendance.day).all()
+        if not main_tpm:
+            LogInfo(f"Employee {employee.id}: no main group found for project {tpm.project_id}, skipping.", LogType.SYSTEM_STATUS)
+            return False
 
-            employee_records.append({
-                "full_name": full_name,
-                "employee_id": emp_info.id,
-                "rows": rows,
-            })
+        try:
+            main_chat_id = int(main_tpm.chat_id)
+        except (ValueError, TypeError):
+            LogInfo(f"Employee {employee.id}: main group chat_id '{main_tpm.chat_id}' is invalid, skipping.", LogType.SYSTEM_STATUS)
+            return False
 
-        if employee_records:
-            LogInfo(f"Collected {len(employee_records)} employee records for @{admin_username} in group {target_group_chat_id}.", LogType.SYSTEM_STATUS)
-            emp_names_list = [s["full_name"] for s in employee_records]
-            emp_names_str = ", ".join(emp_names_list)
+        LogInfo(f"Generating attendance report for {employee.id} ({full_name}) -> main group {main_chat_id}.", LogType.SYSTEM_STATUS)
 
-            # Build Excel
-            buf = _build_attendance_excel(employee_records, report_year, report_month)
-            
-            # Use target_member_name as prefix if single member report
-            if target_member_name:
-                emp_names_for_file = target_member_name.replace(" ", "_")
-            else:
-                emp_names_for_file = "_".join(emp_names_list[:3])
-                if len(emp_names_list) > 3:
-                    emp_names_for_file += "_etc"
+        # Build report
+        employee_records = [{
+            "full_name": full_name,
+            "employee_id": employee.id,
+            "rows": rows,
+        }]
 
-            filename = f"{emp_names_for_file}_BangChamCong_{report_month:02d}_{report_year}_{admin_username}.xlsx"
-            
-            caption = (
-                f"<b>Admin @{admin_username} ơi!</b>\n"
-                f"Đề nghị bạn xác nhận thông tin Bảng chấm công của thành viên (<b>{emp_names_str}</b>) nhé.\n"
-                f"Mã nhân viên: <b>{emp_info.id}</b>\n"
-                f"Tháng báo cáo: <b>{report_month:02d}/{report_year}</b>\n"
-                f"Nhóm: <code>{target_group_chat_id}</code>\n"
-                f"Sau khi xác nhận thành công, vui lòng nhập lệnh <code>/tien_nga_export_payroll {emp_info.id} {report_month:02d}/{report_year}</code>."
-            )
+        buf = _build_attendance_excel(employee_records, report_year, report_month)
+        
+        safe_name = full_name.replace(" ", "_")
+        filename = f"{safe_name}_BangChamCong_{report_month:02d}_{report_year}.xlsx"
+        
+        caption = (
+            f"<b>BẢNG CHẤM CÔNG THÁNG {report_month:02d}/{report_year}</b>\n\n"
+            f"<b>Nhân viên:</b> {full_name}\n"
+            f"<b>Mã NV:</b> <code>{employee.id}</code>\n"
+            f"<b>Nhóm:</b> {tg_group}\n"
+            f"<b>Số ngày có dữ liệu:</b> {len(rows)} ngày\n\n"
+            f"<i>Vui lòng kiểm tra file Excel đính kèm.</i>\n"
+            f"<i>Sau khi xác nhận, nhập lệnh <code>/tien_nga_export_payroll {employee.id} {report_month:02d}/{report_year}</code> để xuất bảng lương.</i>"
+        )
 
-            from bot.utils.bot import bot
+        from bot.utils.bot import bot
+        client = bot
 
-            client = bot
-            
-            # Send text notification
-            info_msg = await client.send_message(
-                chat_id=mgmt_group_chat_id,
-                text=caption,
-                parse_mode=ParseMode.HTML
-            )
-            
-            # Send document
-            await client.send_document(
-                chat_id=mgmt_group_chat_id,
-                document=buf,
-                file_name=filename,
-                # caption=caption,
-                reply_to_message_id=info_msg.id
-            )
-            LogInfo(f"Sent Individual/Group report for group {target_group_chat_id} to Management group.", LogType.SYSTEM_STATUS)
-            return True
-        else:
-            LogInfo(f"No employee records found for filter: {target_member_name} in group {target_group_chat_id}", LogType.SYSTEM_STATUS)
+        # Send to MAIN group
+        info_msg = await client.send_message(
+            chat_id=main_chat_id,
+            text=caption,
+            parse_mode=ParseMode.HTML
+        )
+        
+        await client.send_document(
+            chat_id=main_chat_id,
+            document=buf,
+            file_name=filename,
+            reply_to_message_id=info_msg.id
+        )
+        LogInfo(f"Sent attendance report for {employee.id} to main group {main_chat_id}.", LogType.SYSTEM_STATUS)
+        return True
             
     except Exception as e:
-        LogError(f"Error in generate_and_send_attendance_report for group {target_group_chat_id}: {e}", LogType.SYSTEM_STATUS)
+        LogError(f"Error in generate_and_send_attendance_report for {employee.id}: {e}", LogType.SYSTEM_STATUS)
     return False
 
 
 async def monthly_attendance_report_worker():
     """
-    Background worker that generates monthly attendance reports for employees in tracked groups.
+    Background worker that generates monthly attendance reports.
+    Queries Employee records directly using their telegram_group field.
     """
     LogInfo("Monthly attendance report worker started.", LogType.SYSTEM_STATUS)
     
@@ -438,40 +441,21 @@ async def monthly_attendance_report_worker():
 
                 db = SessionLocal()
                 try:
-                    from app.models.telegram import TelegramProjectMember
+                    from app.models.employee import Employee
                     
-                    # Find all "main" groups (management groups)
-                    main_members = db.query(TelegramProjectMember).filter(
-                        TelegramProjectMember.role == "main",
-                        TelegramProjectMember.member_status.in_(["OWNER", "ADMINISTRATOR"])
+                    # Find all active employees with telegram_group set
+                    employees = db.query(Employee).filter(
+                        Employee.telegram_group != None,
+                        Employee.telegram_group != "",
+                        Employee.status != "inactive"
                     ).all()
                     
-                    # Group by chat_id to get unique main groups
-                    main_chat_ids = list(set(m.chat_id for m in main_members))
+                    LogInfo(f"Found {len(employees)} employees with telegram_group.", LogType.SYSTEM_STATUS)
                     
-                    for mgmt_chat_id in main_chat_ids:
-                        # Find admin in this main group
-                        admin_member = db.query(TelegramProjectMember).filter(
-                            TelegramProjectMember.chat_id == mgmt_chat_id,
-                            TelegramProjectMember.member_status.in_(["OWNER", "ADMINISTRATOR"]),
-                            TelegramProjectMember.is_bot == False
-                        ).first()
-                        
-                        if not admin_member:
-                            continue
-                        
-                        # Find "member" groups in the same project
-                        member_groups = db.query(TelegramProjectMember).filter(
-                            TelegramProjectMember.project_id == admin_member.project_id,
-                            TelegramProjectMember.role == "member"
-                        ).all()
-                        
-                        member_chat_ids = list(set(m.chat_id for m in member_groups))
-                        
-                        for member_chat_id in member_chat_ids:
-                            await generate_and_send_attendance_report(
-                                db, mgmt_chat_id, member_chat_id, admin_member, report_month, report_year
-                            )
+                    for emp in employees:
+                        await generate_and_send_attendance_report(
+                            db, emp, report_month, report_year
+                        )
 
                     last_sent_month = report_month
                 except Exception as e:
@@ -479,7 +463,7 @@ async def monthly_attendance_report_worker():
                 finally:
                     db.close()
 
-            # Wait before checking again (every 60 seconds is fine for 1st-of-month check)
+            # Wait before checking again
             await asyncio.sleep(60)
         except Exception as e:
             LogError(f"Error in monthly_attendance_report_worker loop: {e}", LogType.SYSTEM_STATUS)

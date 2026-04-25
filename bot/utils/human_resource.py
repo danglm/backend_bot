@@ -39,20 +39,20 @@ Phòng ban:
 Chức vụ: 
 Loại hợp đồng: 
 Ảnh nhân viên: 
-Giờ vào ca: 
-Giờ tan ca: 
-Số giờ làm việc: 
-Lương cơ bản: 
-Lương tháng: 
-Lương tuần: 
-Lương ngày: 
-Lương giờ: 
-Lương làm thêm giờ: 
-Tiền thưởng: 
+Giờ vào ca (hh:mm): 
+Giờ tan ca (hh:mm): 
+Số giờ làm việc (giờ/ngày): 
+Lương cơ bản (VNĐ): 
+Lương tháng (VNĐ): 
+Lương tuần (VNĐ): 
+Lương ngày (VNĐ): 
+Lương giờ (VNĐ): 
+Lương làm thêm giờ (VNĐ): 
+Tiền thưởng (VNĐ): 
 Phúc lợi: 
 Số ngày phép năm: 
 Bảo hiểm: 
-Tỷ lệ BHXH: 
+Tỷ lệ BHXH (%): 
 Mục tiêu nghề nghiệp: 
 Đánh giá hiệu suất: 
 Ngân hàng: 
@@ -140,19 +140,19 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
                 continue
 
     try:
-        base_salary = await _parse_float_or_reply(message, "Lương cơ bản", data.get("Lương cơ bản", "").strip())
-        bonus = await _parse_float_or_reply(message, "Tiền thưởng", data.get("Tiền thưởng", "").strip())
-        monthly_salary = await _parse_float_or_reply(message, "Lương tháng", data.get("Lương tháng", "").strip())
-        weekly_salary = await _parse_float_or_reply(message, "Lương tuần", data.get("Lương tuần", "").strip())
-        daily_salary = await _parse_float_or_reply(message, "Lương ngày", data.get("Lương ngày", "").strip())
-        hourly_salary = await _parse_float_or_reply(message, "Lương giờ", data.get("Lương giờ", "").strip())
-        overtime_salary = await _parse_float_or_reply(message, "Lương làm thêm giờ", data.get("Lương làm thêm giờ", "").strip())
-        rate_bhxh = await _parse_float_or_reply(message, "Tỷ lệ BHXH", data.get("Tỷ lệ BHXH", "").strip())
-        working_hours = await _parse_float_or_reply(message, "Số giờ làm việc", data.get("Số giờ làm việc", "").strip())
+        base_salary = await _parse_float_or_reply(message, "Lương cơ bản", data.get("Lương cơ bản (VNĐ)", data.get("Lương cơ bản", "")).strip())
+        bonus = await _parse_float_or_reply(message, "Tiền thưởng", data.get("Tiền thưởng (VNĐ)", data.get("Tiền thưởng", "")).strip())
+        monthly_salary = await _parse_float_or_reply(message, "Lương tháng", data.get("Lương tháng (VNĐ)", data.get("Lương tháng", "")).strip())
+        weekly_salary = await _parse_float_or_reply(message, "Lương tuần", data.get("Lương tuần (VNĐ)", data.get("Lương tuần", "")).strip())
+        daily_salary = await _parse_float_or_reply(message, "Lương ngày", data.get("Lương ngày (VNĐ)", data.get("Lương ngày", "")).strip())
+        hourly_salary = await _parse_float_or_reply(message, "Lương giờ", data.get("Lương giờ (VNĐ)", data.get("Lương giờ", "")).strip())
+        overtime_salary = await _parse_float_or_reply(message, "Lương làm thêm giờ", data.get("Lương làm thêm giờ (VNĐ)", data.get("Lương làm thêm giờ", "")).strip())
+        rate_bhxh = await _parse_float_or_reply(message, "Tỷ lệ BHXH", data.get("Tỷ lệ BHXH (%)", data.get("Tỷ lệ BHXH", "")).strip())
+        working_hours = await _parse_float_or_reply(message, "Số giờ làm việc", data.get("Số giờ làm việc (giờ/ngày)", data.get("Số giờ làm việc", "")).strip())
         leave_balance = await _parse_int_or_reply(message, "Số ngày phép năm", data.get("Số ngày phép năm", "").strip())
         
-        start_time = await _parse_time_or_reply(message, "Giờ vào ca", data.get("Giờ vào ca", "").strip())
-        end_time = await _parse_time_or_reply(message, "Giờ tan ca", data.get("Giờ tan ca", "").strip())
+        start_time = await _parse_time_or_reply(message, "Giờ vào ca", data.get("Giờ vào ca (hh:mm)", data.get("Giờ vào ca", "")).strip())
+        end_time = await _parse_time_or_reply(message, "Giờ tan ca", data.get("Giờ tan ca (hh:mm)", data.get("Giờ tan ca", "")).strip())
     except ValueError:
         return
 
@@ -349,9 +349,9 @@ Kinh nghiệm: {emp.experience or ''}
 Phòng ban: {emp.department or ''}
 Chức vụ: {emp.position or ''}
 Loại hợp đồng: {emp.contract_type or ''}
-Giờ vào ca: {start_time_str}
-Giờ tan ca: {end_time_str}
-Lương cơ bản: {salary_str}
+Giờ vào ca (hh:mm): {start_time_str}
+Giờ tan ca (hh:mm): {end_time_str}
+Lương cơ bản (VNĐ): {salary_str}
 Số ngày phép năm: {emp.leave_balance if emp.leave_balance is not None else ''}
 Bảo hiểm: {emp.insurance or ''}
 Ngân hàng: {emp.bank_name or ''}
@@ -458,19 +458,19 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
 
         try:
             # Xử lý riêng: Lương cơ bản
-            salary_str = data.get("Lương cơ bản", "").strip()
+            salary_str = data.get("Lương cơ bản (VNĐ)", data.get("Lương cơ bản", "")).strip()
             if salary_str:
                 employee.base_salary = await _parse_float_or_reply(message, "Lương cơ bản", salary_str)
                 updated_fields.append("Lương cơ bản")
 
             # Xử lý riêng: Giờ vào ca
-            start_str = data.get("Giờ vào ca", "").strip()
+            start_str = data.get("Giờ vào ca (hh:mm)", data.get("Giờ vào ca", "")).strip()
             if start_str:
                 employee.start_time = await _parse_time_or_reply(message, "Giờ vào ca", start_str)
                 updated_fields.append("Giờ vào ca")
 
             # Xử lý riêng: Giờ tan ca
-            end_str = data.get("Giờ tan ca", "").strip()
+            end_str = data.get("Giờ tan ca (hh:mm)", data.get("Giờ tan ca", "")).strip()
             if end_str:
                 employee.end_time = await _parse_time_or_reply(message, "Giờ tan ca", end_str)
                 updated_fields.append("Giờ tan ca")

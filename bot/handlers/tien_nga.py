@@ -6091,7 +6091,13 @@ async def chk_inv_cancel_cb(client, callback_query: CallbackQuery):
 
 @bot.on_callback_query(filters.regex(r"^chk_inv_id_(.+)$"))
 async def chk_inv_cb(client, callback_query: CallbackQuery):
-    inv_id = callback_query.matches[0].group(1)
+    raw_id = callback_query.matches[0].group(1)
+    show_sh = False
+    if raw_id.endswith("_showsh"):
+        show_sh = True
+        inv_id = raw_id.replace("_showsh", "")
+    else:
+        inv_id = raw_id
     
     from app.models.business import Investment, Shareholder
     from app.models.telegram import TelegramProjectMember
@@ -6161,29 +6167,31 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
 
         # Show all shareholders
         shareholders = db.query(Shareholder).filter(Shareholder.investment_id == inv.id).order_by(Shareholder.shareholder_code).all()
+        count_sh = len(shareholders)
         
-        if shareholders:
-            total_shareholder_amount = sum(sh.investment_amount or 0 for sh in shareholders)
-            msg += f"\n━━━━━━━━━━━━━━━━━━\n"
-            msg += f"<b>DANH SÁCH CỔ ĐÔNG ({len(shareholders)})</b>\n\n"
-            for idx, sh in enumerate(shareholders, 1):
-                start_str = sh.start_date.strftime('%d/%m/%Y') if sh.start_date else '—'
-                sh_amount = sh.investment_amount or 0
-                share_pct = (sh_amount / total_shareholder_amount * 100) if total_shareholder_amount > 0 else 0
-                msg += (
-                    f"<b>{idx}. {sh.fullname}</b> (<code>{sh.shareholder_code}</code>)\n"
-                    f"   Góp vốn: <code>{fmt_vn(sh_amount)}</code>\n"
-                    f"   Cổ phần: <b>{share_pct:.1f}%</b>\n"
-                    f"   Ngày BĐ: {start_str}\n"
-                )
-                if sh.username:
-                    msg += f"   TG: @{sh.username}\n"
-                if sh.notes:
-                    msg += f"   {sh.notes}\n"
-                msg += "\n"
-        else:
-            msg += f"\n━━━━━━━━━━━━━━━━━━\n"
-            msg += "<i>Chưa có cổ đông nào.</i>\n"
+        if show_sh:
+            if shareholders:
+                total_shareholder_amount = sum(sh.investment_amount or 0 for sh in shareholders)
+                msg += f"\n━━━━━━━━━━━━━━━━━━\n"
+                msg += f"<b>DANH SÁCH CỔ ĐÔNG ({count_sh})</b>\n\n"
+                for idx, sh in enumerate(shareholders, 1):
+                    start_str = sh.start_date.strftime('%d/%m/%Y') if sh.start_date else '—'
+                    sh_amount = sh.investment_amount or 0
+                    share_pct = (sh_amount / total_shareholder_amount * 100) if total_shareholder_amount > 0 else 0
+                    msg += (
+                        f"<b>{idx}. {sh.fullname}</b> (<code>{sh.shareholder_code}</code>)\n"
+                        f"   Góp vốn: <code>{fmt_vn(sh_amount)}</code>\n"
+                        f"   Cổ phần: <b>{share_pct:.1f}%</b>\n"
+                        f"   Ngày BĐ: {start_str}\n"
+                    )
+                    if sh.username:
+                        msg += f"   TG: @{sh.username}\n"
+                    if sh.notes:
+                        msg += f"   {sh.notes}\n"
+                    msg += "\n"
+            else:
+                msg += f"\n━━━━━━━━━━━━━━━━━━\n"
+                msg += "<i>Chưa có cổ đông nào.</i>\n"
 
         # In member group → also show transaction summary for the matched shareholder
         if is_member_group and matched_shareholder:
@@ -6222,8 +6230,17 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
                 f"Chênh Lệch: <code>{fmt_vn(total_thu - total_chi)}</code>\n"
             )
         
-        # Add a back button
-        buttons = [[InlineKeyboardButton("Quay Lại Danh Sách", callback_data="chk_inv_back")]]
+        # Add buttons
+        buttons = []
+        if not show_sh and count_sh > 0:
+            buttons.append([InlineKeyboardButton(f"Hiển thị Cổ đông ({count_sh})", callback_data=f"chk_inv_id_{inv.id}_showsh")])
+        elif show_sh and count_sh > 0:
+            buttons.append([InlineKeyboardButton("Ẩn Cổ đông", callback_data=f"chk_inv_id_{inv.id}")])
+            
+        buttons.append([
+            InlineKeyboardButton("Quay Lại Danh Sách", callback_data="chk_inv_back"),
+            InlineKeyboardButton("Hủy", callback_data="chk_inv_cancel")
+        ])
         
         await callback_query.message.edit_text(msg, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
@@ -7483,6 +7500,8 @@ async def tien_nga_select_investment_callback(client, callback_query):
             await callback_query.answer("⚠️ Không tìm thấy Quỹ Đầu Tư", show_alert=True)
             return
             
+        import datetime
+        today_str = datetime.datetime.now().strftime("%d/%m/%Y")
         form_template = f"""<b>FORM TẠO CỔ ĐÔNG MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
@@ -7491,7 +7510,7 @@ Mã Quỹ Đầu Tư: {inv_id}
 Mã Cổ Đông: 
 Tên Cổ Đông: 
 Số Tiền Đầu Tư: 
-Ngày Bắt Đầu: 
+Ngày Bắt Đầu: {today_str}
 Username TG: 
 Nhóm Telegram: 
 Ghi Chú: </pre>
