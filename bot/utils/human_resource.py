@@ -2717,9 +2717,10 @@ async def handle_list_payroll_excel(client, message, command_name: str) -> None:
 
     args = message.text.split()
     if len(args) != 2:
+        clean_cmd = command_name.split('@')[0]
         await message.reply_text(
-            f"⚠️ Lệnh thiếu hoặc sai cú pháp.\nCú pháp: <code>{command_name} [MM/YYYY]</code>\n"
-            f"VD: <code>{command_name} 04/2026</code>",
+            f"⚠️ Lệnh thiếu hoặc sai cú pháp.\nCú pháp: <code>{clean_cmd} [MM/YYYY]</code>\n"
+            f"VD: <code>{clean_cmd} 04/2026</code>",
             parse_mode=ParseMode.HTML
         )
         return
