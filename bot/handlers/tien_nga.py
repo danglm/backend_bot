@@ -6741,12 +6741,9 @@ async def _purmat_cb(client, callback_query):
             "Số Chuyến: 1\n"
             "Khối Lượng (Kg): 0\n"
             "Đơn Giá (VNĐ): 0\n"
-            "Thành Tiền (VNĐ): 0\n"
-            "Tạm Ứng (VNĐ): 0\n"
-            "Công Nợ (VNĐ): 0\n"
             "Ghi Chú: </pre>\n"
             "<i>Lưu ý: Thành tiền = Khối lượng x Đơn giá</i>\n"
-            "<i>Lưu ý: Thành tiền, Công nợ Bot sẽ tự động tính, không cần điền.</i>"
+            "<i>Lưu ý: Thành tiền, Tạm ứng và Công nợ sẽ được hệ thống xử lý ngầm, vui lòng không điền thêm.</i>"
         )
         await callback_query.message.reply_text(form, parse_mode=ParseMode.HTML)
         await callback_query.answer()

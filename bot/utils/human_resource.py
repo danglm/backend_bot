@@ -2877,9 +2877,10 @@ async def handle_recreate_attendance_report(client, message, command_name: str) 
 
     args = message.text.split()
     if len(args) != 3:
+        clean_cmd = command_name.split('@')[0]
         await message.reply_text(
-            f"⚠️ Lệnh không hợp lệ.\nCú pháp: <code>{command_name} [Mã nhân viên] [MM/YYYY]</code>\n"
-            f"VD: <code>{command_name} TN001 04/2026</code>",
+            f"⚠️ Lệnh không hợp lệ.\nCú pháp: <code>{clean_cmd} [Mã nhân viên] [MM/YYYY]</code>\n"
+            f"VD: <code>{clean_cmd} TN001 04/2026</code>",
             parse_mode=ParseMode.HTML
         )
         return
