@@ -7510,7 +7510,7 @@ Ghi Chú: </pre>
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE)
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
 async def tien_nga_chia_co_tuc_handler(client, message: Message) -> None:
     from app.db.session import SessionLocal
     from app.models.business import Investment
@@ -7836,7 +7836,7 @@ async def tien_nga_confirm_dividend_callback(client, callback_query):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE)
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
 async def tien_nga_payment_shareholder_handler(client, message: Message) -> None:
     from app.db.session import SessionLocal
     from app.models.business import Investment
