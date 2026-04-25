@@ -6538,6 +6538,28 @@ async def _check_inv_cb(client, callback_query):
     if inv_id == "cancel":
         await callback_query.message.edit_text("❌ <b>Đã hủy.</b>", parse_mode=ParseMode.HTML)
         return
+    if inv_id == "back":
+        from app.db.session import SessionLocal
+        from app.models.inventory import Inventory
+        db_back = SessionLocal()
+        try:
+            invs = db_back.query(Inventory).all()
+            if not invs:
+                await callback_query.message.edit_text("⚠️ Chưa có kho nào.", parse_mode=ParseMode.HTML)
+                return
+            buttons = []
+            for inv in invs:
+                btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
+                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_chkinv_{inv.id}")])
+            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_chkinv_cancel")])
+            await callback_query.message.edit_text(
+                "<b>KIỂM TRA KHO</b>\n\nVui lòng chọn kho để xem thông tin:",
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode=ParseMode.HTML
+            )
+        finally:
+            db_back.close()
+        return
 
     from app.db.session import SessionLocal
     from app.models.inventory import Inventory
@@ -6949,20 +6971,22 @@ async def tien_nga_product_transaction_handler(client, message: Message) -> None
     txn_date_str = data.get("Ngày Giao Dịch", "").strip()
     note = data.get("Ghi Chú", "").strip()
     
-    # Parse numbers
-    qty = parse_float_vn(data.get("Số Lượng", "0"))
-    price = parse_float_vn(data.get("Đơn Giá", "0"))
-    total = parse_float_vn(data.get("Thành Tiền", "0"))
-    debt = parse_float_vn(data.get("Công Nợ", "0"))
+    # Parse numbers (support both old "Số Lượng" and new "Số Lượng (Kg)" keys)
+    qty = parse_float_vn(data.get("Số Lượng (Kg)", data.get("Số Lượng", "0")))
+    price = parse_float_vn(data.get("Đơn Giá (VNĐ)", data.get("Đơn Giá", "0")))
 
-    if total == 0 and qty > 0 and price > 0:
-        total = qty * price
+    # Auto-calculate total and debt (removed from form)
+    total = qty * price if qty > 0 and price > 0 else 0
 
-    if debt == 0 and total > 0:
+    if total > 0:
         if txn_type.lower() == "xuất":
             debt = -total
         elif txn_type.lower() == "nhập":
             debt = total
+        else:
+            debt = 0
+    else:
+        debt = 0
 
     if not storage_id or not txn_type.lower() in ['nhập', 'xuất']:
         await message.reply_text("⚠️ <b>Mã Kho</b> và <b>Loại Giao Dịch</b> (Nhập/Xuất) là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -7121,10 +7145,8 @@ async def tien_nga_select_prod_ttype_callback(client, callback_query):
             f"Sản Phẩm: {inv.material_name}\n"
             "Mã Khách Hàng: \n"
             f"Ngày Giao Dịch: {today_str}\n"
-            "Số Lượng: 0\n"
-            "Đơn Giá: 0\n"
-            "Thành Tiền: 0\n"
-            "Công Nợ: 0\n"
+            "Số Lượng (Kg): 0\n"
+            "Đơn Giá (VNĐ): 0\n"
             "Ghi Chú: </pre>\n\n"
             "<i>(Mã Khách Hàng có thể để trống nếu không xác định)</i>"
         )

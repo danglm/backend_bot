@@ -2646,21 +2646,20 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
         with open(filepath, "wb") as f:
             f.write(img_buf.getvalue())
         
-        # Tìm nhóm member cùng project (custom_title: member_ns)
-        # Need to determine which project this command belongs to, usually "Tiến Nga" in this context
-        member_groups = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.custom_title == CustomTitle.MEMBER_HR,
-            TelegramProjectMember.is_bot == False
-        ).all()
-        # Find exactly the member group where this user is present
+        # Tìm nhóm member của nhân viên qua Employee.telegram_group
         target_chat_id = None
-        for mg in member_groups:
-            if mg.user_name == employee.username:
-                target_chat_id = mg.chat_id
-                break
-        
-        if not target_chat_id and member_groups:
-             target_chat_id = member_groups[0].chat_id # fallback
+        if employee.telegram_group:
+            tg_group = employee.telegram_group.strip()
+            # Try as numeric chat_id first
+            try:
+                target_chat_id = str(int(tg_group))
+            except ValueError:
+                # It's a group name, resolve from telegram_project_members
+                tpm = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.group_name == tg_group
+                ).first()
+                if tpm:
+                    target_chat_id = tpm.chat_id
 
         img_buf.seek(0)
         
