@@ -6466,6 +6466,122 @@ async def _sel_inv_cb(client, callback_query):
     finally:
         db.close()
 
+# --- KIỂM TRA KHO ---
+@bot.on_message(filters.command(["tien_nga_check_inventory", "tien_nga_kiem_tra_kho"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_inventory|tien_nga_kiem_tra_kho)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_check_inventory_handler(client, message: Message) -> None:
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
+    db = SessionLocal()
+    try:
+        invs = db.query(Inventory).all()
+        if not invs:
+            await message.reply_text("⚠️ Chưa có kho nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for inv in invs:
+            btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
+            buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_chkinv_{inv.id}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_chkinv_cancel")])
+
+        await message.reply_text(
+            "<b>📦 KIỂM TRA KHO</b>\n\nVui lòng chọn kho để xem thông tin:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        from bot.utils.logger import LogError
+        LogError(f"Error in tien_nga_check_inventory_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^tn_chkinv_(.+)$"))
+async def _check_inv_cb(client, callback_query):
+    inv_id = callback_query.matches[0].group(1)
+    if inv_id == "cancel":
+        await callback_query.message.edit_text("❌ <b>Đã hủy.</b>", parse_mode=ParseMode.HTML)
+        return
+
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
+    import uuid
+    db = SessionLocal()
+    try:
+        inv = db.query(Inventory).filter(Inventory.id == uuid.UUID(inv_id)).first()
+        if not inv:
+            await callback_query.answer("⚠️ Không tìm thấy kho.", show_alert=True)
+            return
+
+        quantity = inv.quantity or 0
+        capacity = inv.capacity or 0
+        usage_pct = (quantity / capacity * 100) if capacity > 0 else 0
+
+        # Progress bar
+        filled = int(usage_pct / 5)
+        bar = "█" * filled + "░" * (20 - filled)
+
+        msg = (
+            f"<b>THÔNG TIN KHO</b>\n\n"
+            f"<b>Tên Kho:</b> {inv.storage_name or '—'}\n"
+            f"<b>Nguyên Liệu:</b> {inv.material_name or '—'}\n"
+            f"<b>Địa Chỉ:</b> {inv.storage_location or '—'}\n\n"
+            f"<b>Tồn Kho:</b> <code>{quantity:,.0f}</code> kg\n"
+            f"<b>Sức Chứa:</b> <code>{capacity:,.0f}</code> kg\n"
+            f"<b>Sử Dụng:</b> <code>{usage_pct:.1f}%</code>\n"
+            f"<code>{bar}</code>\n\n"
+            f"🆔 <code>{inv.id}</code>"
+        )
+
+        buttons = [
+            [InlineKeyboardButton("⬅️ Quay lại", callback_data="tn_chkinv_back")],
+            [InlineKeyboardButton("Đóng", callback_data="tn_chkinv_cancel")]
+        ]
+        await callback_query.message.edit_text(
+            msg,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        from bot.utils.logger import LogError
+        LogError(f"Error in _check_inv_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^tn_chkinv_back$"))
+async def _check_inv_back_cb(client, callback_query):
+    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
+    db = SessionLocal()
+    try:
+        invs = db.query(Inventory).all()
+        if not invs:
+            await callback_query.message.edit_text("⚠️ Chưa có kho nào.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for inv in invs:
+            btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
+            buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_chkinv_{inv.id}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_chkinv_cancel")])
+
+        await callback_query.message.edit_text(
+            "<b>KIỂM TRA KHO</b>\n\nVui lòng chọn kho để xem thông tin:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        from bot.utils.logger import LogError
+        LogError(f"Error in _check_inv_back_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
 # --- THU MUA ---
 @bot.on_message(filters.command(["tien_nga_material_purchase", "tien_nga_thu_mua_nguyen_lieu"]) | filters.regex(r"^@\w+\s+/(tien_nga_material_purchase|tien_nga_thu_mua_nguyen_lieu)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)

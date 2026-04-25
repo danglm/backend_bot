@@ -790,7 +790,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
             if custom_title == "main_sales":
                 label = "Tiến Nga (Kinh Doanh)"
 
-            if custom_title == "member_shareholder":
+            if custom_title == "main_shareholder":
                 label = "Tiến Nga (Cổ Đông)"
                 commands_to_set.extend([
                     BotCommand("tien_nga_kiem_tra_quy_dau_tu", "Kiểm tra Quỹ Đầu Tư"),
@@ -825,6 +825,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                 commands_to_set.extend([
                     BotCommand("tien_nga_tao_kho", "Tạo kho"),
                     BotCommand("tien_nga_danh_sach_kho", "Danh sách kho"),
+                    BotCommand("tien_nga_kiem_tra_kho", "Kiểm tra kho"),
                     BotCommand("tien_nga_cap_nhat_ton_kho", "Cập nhật tồn kho"),
                     BotCommand("tien_nga_thu_mua_nguyen_lieu", "Thu mua nguyên liệu"),
                     BotCommand("tien_nga_xuat_kho", "Xuất kho"),
@@ -835,6 +836,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                 commands_to_set.extend([
                     BotCommand("tien_nga_tao_kho", "Tạo kho"),
                     BotCommand("tien_nga_danh_sach_kho", "Danh sách kho"),
+                    BotCommand("tien_nga_kiem_tra_kho", "Kiểm tra kho"),
                     BotCommand("tien_nga_cap_nhat_ton_kho", "Cập nhật tồn kho"),
                     BotCommand("tien_nga_giao_dich_san_pham", "Giao dịch sản phẩm"),
                     BotCommand("tien_nga_xuat_bao_cao_san_pham", "Xuất báo cáo sản phẩm"),
