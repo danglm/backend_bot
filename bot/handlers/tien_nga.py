@@ -1210,11 +1210,11 @@ Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 Mã Hộ: {hoursehold_id}
 Điểm Thu Mua: {cp_id_str}
 Ngày: {today_str}
-Trợ Giá: {tro_gia}
-Khối Lượng: 
-Trừ Bì: 0
-Số Độ: 
-Đơn Giá: 
+Trợ Giá (VNĐ): {tro_gia}
+Khối Lượng (Kg): 
+Trừ Bì (Kg): 0
+Số Độ (%): 
+Đơn Giá (VNĐ): 
 Có Lưu Sổ: yes</pre>
 
 <i>Ghi chú: Số tiền ví dụ 424.080 hoặc 5.898.728,5
@@ -1258,11 +1258,11 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
     # Tuần tự động từ ngày
     week_val = ngay.isocalendar()[1]
     
-    is_subsidized = int(parse_float_vn(data.get("Trợ Giá", "0")))
-    weight = parse_float_vn(data.get("Khối Lượng", "0"))
-    tare_weight = parse_float_vn(data.get("Trừ Bì", "0"))
-    degree = parse_float_vn(data.get("Số Độ", "0"))
-    unit_price = parse_float_vn(data.get("Đơn Giá", "0"))
+    is_subsidized = int(parse_float_vn(data.get("Trợ Giá (VNĐ)", data.get("Trợ Giá", "0"))))
+    weight = parse_float_vn(data.get("Khối Lượng (Kg)", data.get("Khối Lượng", "0")))
+    tare_weight = parse_float_vn(data.get("Trừ Bì (Kg)", data.get("Trừ Bì", "0")))
+    degree = parse_float_vn(data.get("Số Độ (%)", data.get("Số Độ", "0")))
+    unit_price = parse_float_vn(data.get("Đơn Giá (VNĐ)", data.get("Đơn Giá", "0")))
     co_luu_so = data.get("Có Lưu Sổ", "yes").strip().lower()
 
     # Validate required fields
@@ -1280,7 +1280,7 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
     actual_weight = weight - tare_weight
     subsidy_price = unit_price + is_subsidized
     dry_rubber = round(actual_weight * degree / 100, 2)
-    total_amount = round(actual_weight * degree * subsidy_price, 0)
+    total_amount = round(dry_rubber * subsidy_price, 0)
 
     # Phân bổ theo lưu sổ
     if co_luu_so in ("yes", "y", "có", "co"):
@@ -1355,11 +1355,11 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
             f"<b>Ngày:</b> {ngay_str}\n"
             f"<b>Tuần:</b> {week_val}\n"
             f"<b>Trợ Giá:</b> {is_subsidized}\n"
-            f"<b>Khối Lượng:</b> {fmt_vn(weight)} kg\n"
-            f"<b>Trừ Bì:</b> {fmt_vn(tare_weight)} kg\n"
-            f"<b>KL Thực Tế:</b> {fmt_vn(actual_weight)} kg\n"
-            f"<b>Số Độ:</b> {fmt_vn(degree)}%\n"
-            f"<b>Mủ Khô:</b> {fmt_vn(dry_rubber)} kg\n"
+            f"<b>Khối Lượng:</b> {fmt_num(weight)} kg\n"
+            f"<b>Trừ Bì:</b> {fmt_num(tare_weight)} kg\n"
+            f"<b>KL Thực Tế:</b> {fmt_num(actual_weight)} kg\n"
+            f"<b>Số Độ:</b> {fmt_num(degree)}%\n"
+            f"<b>Mủ Khô:</b> {fmt_num(dry_rubber)} kg\n"
             f"<b>Đơn Giá:</b> {fmt_money(unit_price)}\n"
             f"<b>Giá Hỗ Trợ:</b> {fmt_money(subsidy_price)}\n"
             f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
@@ -1521,17 +1521,29 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
         from bot.utils.daily_purchase_report_generator import generate_daily_purchase_report_image
         img_buf = await generate_daily_purchase_report_image(report_data)
 
-        await message.reply_photo(
-            photo=img_buf,
-            caption=(
+        caption_text = (
                 f"<b>BÁO CÁO MUA MỦ</b>\n"
                 f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
                 f"<b>Xưởng:</b> {cp_name}\n"
                 f"<b>Thời gian:</b> {timeframe}\n"
                 f"<b>Số lần mua:</b> {len(records)}"
-            ),
-            parse_mode=ParseMode.HTML,
-        )
+            )
+
+        try:
+            await message.reply_photo(
+                photo=img_buf,
+                caption=caption_text,
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            # Fallback: send as document if photo dimensions are rejected
+            img_buf.seek(0)
+            await message.reply_document(
+                document=img_buf,
+                file_name=f"bao_cao_mua_mu_{hoursehold_id}.png",
+                caption=caption_text,
+                parse_mode=ParseMode.HTML,
+            )
 
         await loading_msg.delete()
         LogInfo(f"[TienNga] Exported daily purchase report for '{hoursehold_id}' ({timeframe}) by user {message.from_user.id}", LogType.SYSTEM_STATUS)
@@ -4512,6 +4524,7 @@ async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
 async def tien_nga_create_investment_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
@@ -4528,6 +4541,7 @@ Ngày Bắt Đầu: {today_str}
 Ngày Kết Thúc: 
 Ghi Chú: </pre>
 
+<i> Lưu ý: Vốn ban đầu phải là 0 VNĐ, sau đó góp vốn vào quỹ sau</i>
 <i>(*Các trường bắt buộc: <b>Mã Đầu Tư</b>, <b>Tên Đầu Tư</b>)</i>"""
         await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         return
@@ -4589,6 +4603,18 @@ Ghi Chú: </pre>
 
     db = SessionLocal()
     try:
+        # Check for duplicate investment_code
+        existing = db.query(Investment).filter(Investment.investment_code == inv_code).first()
+        if existing:
+            await message.reply_text(
+                f"⚠️ Mã Đầu Tư <b>{inv_code}</b> đã tồn tại.\n"
+                f"Tên: <b>{existing.name}</b>\n"
+                f"Trạng thái: <b>{existing.status}</b>\n\n"
+                f"<i>Vui lòng chọn mã khác.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
         new_inv = Investment(
             id=_uuid.uuid4(),
             investment_code=inv_code,
@@ -5992,17 +6018,47 @@ async def cdp_inv_cb(client, callback_query: CallbackQuery):
 # =========================================================================================
 
 @bot.on_message(filters.command(["tien_nga_check_investments", "tien_nga_kiem_tra_quy_dau_tu"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_investments|tien_nga_kiem_tra_quy_dau_tu)\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Tiến Nga")
-@require_group_role("main")
 async def tien_nga_check_investments_handler(client, message: Message) -> None:
     from app.models.business import Investment
+    from app.models.telegram import TelegramProjectMember
+
+    chat_id = str(message.chat.id)
+
     db = SessionLocal()
     try:
-        investments = db.query(Investment).all() # Show all, including CLOSED
+        # Determine group role
+        group_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == chat_id
+        ).first()
+        group_role = group_member.role if group_member else None
+        group_name = group_member.group_name if group_member else None
+
+        investments = db.query(Investment).all()
         if not investments:
             await message.reply_text("⚠️ Chưa có khoản đầu tư nào trong hệ thống.", parse_mode=ParseMode.HTML)
             return
+
+        # For member groups, filter investments that have a shareholder matching group_name
+        if group_role == "member" and group_name:
+            from app.models.business import Shareholder
+            filtered_investments = []
+            for inv in investments:
+                sh = db.query(Shareholder).filter(
+                    Shareholder.investment_id == inv.id,
+                    Shareholder.telegram_group == group_name
+                ).first()
+                if sh:
+                    filtered_investments.append(inv)
+            investments = filtered_investments
+
+            if not investments:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy Quỹ Đầu Tư nào liên kết với nhóm <b>{group_name}</b>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
 
         buttons = []
         for inv in investments:
@@ -6037,11 +6093,23 @@ async def chk_inv_cancel_cb(client, callback_query: CallbackQuery):
 async def chk_inv_cb(client, callback_query: CallbackQuery):
     inv_id = callback_query.matches[0].group(1)
     
-    from app.models.business import Investment
+    from app.models.business import Investment, Shareholder
+    from app.models.telegram import TelegramProjectMember
+
+    chat_id = str(callback_query.message.chat.id)
+
     db = SessionLocal()
     try:
         if inv_id == "cancel": return # safety check
         
+        # Determine group role
+        group_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == chat_id
+        ).first()
+        group_role = group_member.role if group_member else None
+        group_name = group_member.group_name if group_member else None
+        is_member_group = (group_role == "member")
+
         import uuid as _uuid
         try:
             parsed_id = _uuid.UUID(inv_id)
@@ -6052,7 +6120,20 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
         if not inv:
             await callback_query.answer("⚠️ Không tìm thấy thông tin Quỹ.", show_alert=True)
             return
-            
+
+        # For member groups, verify the shareholder exists for this group
+        matched_shareholder = None
+        if is_member_group and group_name:
+            matched_shareholder = db.query(Shareholder).filter(
+                Shareholder.investment_id == inv.id,
+                Shareholder.telegram_group == group_name
+            ).first()
+            if not matched_shareholder:
+                await callback_query.answer(
+                    f"⚠️ Nhóm '{group_name}' không có cổ đông trong Quỹ này.", show_alert=True
+                )
+                return
+
         inv_code = getattr(inv, "investment_code", "") or "N/A"
         date_start_str = inv.start_date.strftime("%d/%m/%Y") if inv.start_date else "N/A"
         date_end_str = inv.end_date.strftime("%d/%m/%Y") if inv.end_date else "Chưa xác định"
@@ -6067,15 +6148,18 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
             f"<b>Trạng thái:</b> {status_str}\n\n"
             f"<b>Ngày Bắt Đầu:</b> {date_start_str}\n"
             f"<b>Ngày Kết Thúc:</b> {date_end_str}\n\n"
+        )
+
+        # Show financial info (both main and member groups)
+        msg += (
             f"<b>Vốn Ban Đầu:</b> <code>{fmt_vn(inv.initial_capital or 0)}</code>\n"
             f"<b>Tổng Thu:</b> <code>{fmt_vn(inv.total_income or 0)}</code>\n"
             f"<b>Tổng Chi:</b> <code>{fmt_vn(inv.total_expense or 0)}</code>\n"
             f"<b>Lợi Nhuận / Số Dư:</b> <code>{fmt_vn(inv.profit or 0)}</code>\n\n"
             f"<b>Ghi chú:</b> {inv.notes or 'Không có'}\n"
         )
-        
-        # Query danh sách cổ đông thuộc quỹ này
-        from app.models.business import Shareholder
+
+        # Show all shareholders
         shareholders = db.query(Shareholder).filter(Shareholder.investment_id == inv.id).order_by(Shareholder.shareholder_code).all()
         
         if shareholders:
@@ -6100,6 +6184,43 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
         else:
             msg += f"\n━━━━━━━━━━━━━━━━━━\n"
             msg += "<i>Chưa có cổ đông nào.</i>\n"
+
+        # In member group → also show transaction summary for the matched shareholder
+        if is_member_group and matched_shareholder:
+            from app.models.business import DailyPayment
+            from sqlalchemy import or_, func
+
+            sh_code = matched_shareholder.shareholder_code
+
+            total_thu = db.query(func.coalesce(func.sum(DailyPayment.amount), 0)).filter(
+                DailyPayment.investment_id == inv.id,
+                DailyPayment.status == "APPROVED",
+                DailyPayment.payment_type == "thu",
+                or_(
+                    DailyPayment.executor.ilike(f"%{sh_code}%"),
+                    DailyPayment.receiver.ilike(f"%{sh_code}%"),
+                    DailyPayment.requester.ilike(f"%{sh_code}%"),
+                )
+            ).scalar() or 0
+
+            total_chi = db.query(func.coalesce(func.sum(DailyPayment.amount), 0)).filter(
+                DailyPayment.investment_id == inv.id,
+                DailyPayment.status == "APPROVED",
+                DailyPayment.payment_type == "chi",
+                or_(
+                    DailyPayment.executor.ilike(f"%{sh_code}%"),
+                    DailyPayment.receiver.ilike(f"%{sh_code}%"),
+                    DailyPayment.requester.ilike(f"%{sh_code}%"),
+                )
+            ).scalar() or 0
+
+            msg += (
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"<b>TỔNG KẾT GIAO DỊCH ({matched_shareholder.fullname})</b>\n\n"
+                f"Tổng Thu: <code>{fmt_vn(total_thu)}</code>\n"
+                f"Tổng Chi: <code>{fmt_vn(total_chi)}</code>\n"
+                f"Chênh Lệch: <code>{fmt_vn(total_thu - total_chi)}</code>\n"
+            )
         
         # Add a back button
         buttons = [[InlineKeyboardButton("Quay Lại Danh Sách", callback_data="chk_inv_back")]]
@@ -6115,9 +6236,34 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
 @bot.on_callback_query(filters.regex(r"^chk_inv_back$"))
 async def chk_inv_back_cb(client, callback_query: CallbackQuery):
     from app.models.business import Investment
+    from app.models.telegram import TelegramProjectMember
+
+    chat_id = str(callback_query.message.chat.id)
+
     db = SessionLocal()
     try:
+        # Determine group role for filtering
+        group_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == chat_id
+        ).first()
+        group_role = group_member.role if group_member else None
+        group_name = group_member.group_name if group_member else None
+
         investments = db.query(Investment).all()
+
+        # Filter for member groups
+        if group_role == "member" and group_name:
+            from app.models.business import Shareholder
+            filtered = []
+            for inv in investments:
+                sh = db.query(Shareholder).filter(
+                    Shareholder.investment_id == inv.id,
+                    Shareholder.telegram_group == group_name
+                ).first()
+                if sh:
+                    filtered.append(inv)
+            investments = filtered
+
         buttons = []
         for inv in investments:
             label = f"[{inv.investment_code}] {inv.name}" if getattr(inv, "investment_code", None) else inv.name
@@ -6325,7 +6471,7 @@ async def _sel_inv_cb(client, callback_query):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY)
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_material_purchase_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -6366,11 +6512,11 @@ async def tien_nga_material_purchase_handler(client, message: Message) -> None:
         except: return 0.0
 
     trip_count = int(parse_float_val(data.get("Số Chuyến", "1")))
-    weight = parse_float_val(data.get("Khối Lượng", "0"))
-    unit_price = parse_float_val(data.get("Đơn Giá", "0"))
+    weight = parse_float_val(data.get("Khối Lượng (Kg)", data.get("Khối Lượng", "0")))
+    unit_price = parse_float_val(data.get("Đơn Giá (VNĐ)", data.get("Đơn Giá", "0")))
     total_amount = weight * unit_price
-    advance_payment = parse_float_val(data.get("Tạm Ứng", "0"))
-    parsed_debt = parse_float_val(data.get("Công Nợ", "0"))
+    advance_payment = parse_float_val(data.get("Tạm Ứng (VNĐ)", data.get("Tạm Ứng", "0")))
+    parsed_debt = parse_float_val(data.get("Công Nợ (VNĐ)", data.get("Công Nợ", "0")))
     debt = parsed_debt if parsed_debt != 0 else (total_amount - advance_payment)
 
     from datetime import datetime
@@ -6423,6 +6569,7 @@ async def tien_nga_material_purchase_handler(client, message: Message) -> None:
             f"<b>Ngày GD:</b> {transaction_date.strftime('%d/%m/%Y')}\n"
             f"<b>Khách Hàng:</b> {customer_display}\n"
             f"<b>Khối Lượng Nhập:</b> {weight:,.0f} kg\n"
+            f"<b>Đơn Giá:</b> {fmt_vn(unit_price)} đ\n"
             f"<b>Thành Tiền:</b> {fmt_vn(total_amount)} đ\n"
             f"<b>Công Nợ Đợt Này:</b> {fmt_vn(debt)} đ\n"
         )
@@ -6459,12 +6606,14 @@ async def _purmat_cb(client, callback_query):
             f"Ngày Giao Dịch: {today_str}\n"
             "Mã Khách Hàng: \n"
             "Số Chuyến: 1\n"
-            "Khối Lượng: 0\n"
-            "Đơn Giá: 0\n"
-            "Thành Tiền: 0\n"
-            "Tạm Ứng: 0\n"
-            "Công Nợ: 0\n"
-            "Ghi Chú: </pre>"
+            "Khối Lượng (Kg): 0\n"
+            "Đơn Giá (VNĐ): 0\n"
+            "Thành Tiền (VNĐ): 0\n"
+            "Tạm Ứng (VNĐ): 0\n"
+            "Công Nợ (VNĐ): 0\n"
+            "Ghi Chú: </pre>\n"
+            "<i>Lưu ý: Thành tiền = Khối lượng x Đơn giá</i>\n"
+            "<i>Lưu ý: Thành tiền, Công nợ Bot sẽ tự động tính, không cần điền.</i>"
         )
         await callback_query.message.reply_text(form, parse_mode=ParseMode.HTML)
         await callback_query.answer()
@@ -6476,7 +6625,7 @@ async def _purmat_cb(client, callback_query):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY)
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_export_inventory_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -6516,7 +6665,7 @@ async def tien_nga_export_inventory_handler(client, message: Message) -> None:
         try: return float(val_str)
         except: return 0.0
 
-    export_weight = parse_float_val(data.get("Khối Lượng Xuất", "0"))
+    export_weight = parse_float_val(data.get("Khối Lượng Xuất (Kg)", data.get("Khối Lượng Xuất", "0")))
 
     from datetime import datetime
     try:
@@ -6551,8 +6700,8 @@ async def tien_nga_export_inventory_handler(client, message: Message) -> None:
         await message.reply_text(
             f"<b>✅ XUẤT KHO THÀNH CÔNG</b>\n\n"
             f"<b>Nguyên Liệu:</b> {material_type}\n"
-            f"<b>Khối Lượng Xuất:</b> {export_weight:,.0f} kg\n"
-            f"<b>Tồn Kho Còn Lại:</b> {rem_w:,.0f} kg\n",
+            f"<b>Khối Lượng Xuất (Kg):</b> {export_weight:,.0f} kg\n"
+            f"<b>Tồn Kho Còn Lại (Kg):</b> {rem_w:,.0f} kg\n",
             parse_mode=ParseMode.HTML
         )
 
@@ -6598,7 +6747,7 @@ async def _expinv_cb(client, callback_query):
             f"Tên Kho: {inv.storage_name or ''}\n"
             f"Ngày Xuất Kho: {today_str}\n"
             f"Người Thực Hiện: {name.strip()}\n"
-            "Khối Lượng Xuất: 0\n"
+            "Khối Lượng Xuất (Kg): 0\n"
             "Ghi Chú: </pre>"
         )
         await callback_query.message.reply_text(form, parse_mode=ParseMode.HTML)
@@ -6840,16 +6989,18 @@ async def tien_nga_select_prod_ttype_callback(client, callback_query):
         db.close()
 
 
+# Pending shareholder creation data (in-memory store)
+_pending_shareholder_data = {}
+
 @bot.on_message(filters.command(["tien_nga_create_shareholder", "tien_nga_tao_co_dong"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_shareholder|tien_nga_tao_co_dong)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE)
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
 async def tien_nga_create_shareholder_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     
     if len(lines) < 2:
-        from app.db.session import SessionLocal
         from app.models.business import Investment
         db = SessionLocal()
         try:
@@ -6901,7 +7052,6 @@ async def tien_nga_create_shareholder_handler(client, message: Message) -> None:
         await message.reply_text("⚠️ Vui lòng điền đủ Mã Quỹ Đầu Tư, Mã Cổ Đông và Tên Cổ Đông.", parse_mode=ParseMode.HTML)
         return
 
-    from datetime import datetime
     start_date = None
     if start_date_str:
         try:
@@ -6910,52 +7060,171 @@ async def tien_nga_create_shareholder_handler(client, message: Message) -> None:
             await message.reply_text("⚠️ <b>Ngày Bắt Đầu</b> sai định dạng (dd/mm/yyyy).", parse_mode=ParseMode.HTML)
             return
 
-    from app.db.session import SessionLocal
     from app.models.business import Shareholder, Investment
-    import uuid
-    
+
     db = SessionLocal()
     try:
         investment = db.query(Investment).filter(Investment.id == inv_id).first()
         if not investment:
-            await message.reply_text(f"⚠️ Quỹ Đầu Tư không tồn tại.", parse_mode=ParseMode.HTML)
+            await message.reply_text("⚠️ Quỹ Đầu Tư không tồn tại.", parse_mode=ParseMode.HTML)
             return
-            
+
         existing = db.query(Shareholder).filter(Shareholder.shareholder_code == shareholder_code).first()
-        
-        if existing:
-            # Cổ đông đã tồn tại → cộng dồn số tiền góp vốn
+        is_existing = existing is not None
+
+        # Determine action label
+        if is_existing:
+            action_label = "GÓP VỐN THÊM"
+            old_amount = existing.investment_amount or 0
+            new_total = old_amount + amount
+        else:
+            action_label = "TẠO CỔ ĐÔNG MỚI"
+            old_amount = 0
+            new_total = amount
+
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        start_date_display = start_date.strftime("%d/%m/%Y") if start_date else today_str
+
+        # Generate a unique pending key
+        import uuid as _uuid
+        pending_key = str(_uuid.uuid4())[:8]
+
+        # Store pending data
+        _pending_shareholder_data[pending_key] = {
+            "inv_id": inv_id,
+            "inv_name": investment.name,
+            "inv_code": investment.investment_code or "N/A",
+            "shareholder_code": shareholder_code,
+            "fullname": fullname,
+            "username": username,
+            "telegram_group": telegram_group,
+            "notes": notes,
+            "amount": amount,
+            "start_date": start_date.isoformat() if start_date else None,
+            "is_existing": is_existing,
+            "old_amount": old_amount,
+            "new_total": new_total,
+            "user_id": message.from_user.id,
+        }
+
+        # Build preview message
+        preview = (
+            f"📋 <b>XÁC NHẬN {action_label}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>📌 THÔNG TIN CỔ ĐÔNG</b>\n"
+            f"<b>Quỹ Đầu Tư:</b> {investment.name} (<code>{investment.investment_code or 'N/A'}</code>)\n"
+            f"<b>Mã Cổ Đông:</b> <code>{shareholder_code}</code>\n"
+            f"<b>Tên Cổ Đông:</b> {fullname}\n"
+        )
+        if username:
+            preview += f"<b>Username TG:</b> @{username}\n"
+        if telegram_group:
+            preview += f"<b>Nhóm Telegram:</b> {telegram_group}\n"
+        preview += f"<b>Ngày Bắt Đầu:</b> {start_date_display}\n"
+        if notes:
+            preview += f"<b>Ghi Chú:</b> {notes}\n"
+
+        if is_existing:
+            preview += (
+                f"\n<b>Vốn góp hiện tại:</b> <code>{fmt_vn(old_amount)}</code>\n"
+                f"<b>Số tiền góp thêm:</b> <code>{fmt_vn(amount)}</code>\n"
+                f"<b>Tổng vốn sau góp:</b> <code>{fmt_vn(new_total)}</code>\n"
+            )
+        else:
+            preview += f"<b>Số Tiền Đầu Tư:</b> <code>{fmt_vn(amount)}</code>\n"
+
+        preview += (
+            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"<b>💰 PHIẾU THU - DAILY PAYMENT</b>\n"
+            f"<b>Loại:</b> THU\n"
+            f"<b>Người Thực Hiện:</b> {shareholder_code}\n"
+            f"<b>Mục Đích:</b> Góp vốn Quỹ {investment.name}\n"
+            f"<b>Số Tiền:</b> <code>{fmt_vn(amount)}</code>\n"
+            f"<b>Ngày:</b> {start_date_display}\n"
+            f"<b>Trạng Thái:</b> APPROVED\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"<i>Vui lòng kiểm tra thông tin và nhấn nút bên dưới để xác nhận.</i>"
+        )
+
+        buttons = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Xác Nhận", callback_data=f"shcf_y_{pending_key}"),
+                InlineKeyboardButton("❌ Hủy", callback_data=f"shcf_n_{pending_key}"),
+            ]
+        ])
+
+        await message.reply_text(preview, reply_markup=buttons, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error preparing shareholder preview: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# --- Confirm / Cancel shareholder creation ---
+@bot.on_callback_query(filters.regex(r"^shcf_(y|n)_(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+async def tien_nga_confirm_shareholder_callback(client, callback_query):
+    action = callback_query.matches[0].group(1)  # "y" or "n"
+    pending_key = callback_query.matches[0].group(2)
+
+    pending = _pending_shareholder_data.pop(pending_key, None)
+    if not pending:
+        await callback_query.answer("⚠️ Dữ liệu đã hết hạn hoặc đã được xử lý.", show_alert=True)
+        try:
+            await callback_query.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+
+    # Cancel
+    if action == "n":
+        await callback_query.message.edit_text(
+            "❌ <b>ĐÃ HỦY</b>\n\n<i>Thao tác tạo/góp vốn cổ đông đã bị hủy.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer("Đã hủy thao tác.")
+        return
+
+    # Confirm → save both Shareholder + DailyPayment
+    from app.models.business import Shareholder, Investment, DailyPayment
+    import uuid as _uuid
+
+    db = SessionLocal()
+    try:
+        inv_id = pending["inv_id"]
+        investment = db.query(Investment).filter(Investment.id == inv_id).first()
+        if not investment:
+            await callback_query.answer("⚠️ Quỹ Đầu Tư không tồn tại.", show_alert=True)
+            return
+
+        shareholder_code = pending["shareholder_code"]
+        fullname = pending["fullname"]
+        amount = pending["amount"]
+        notes = pending["notes"]
+        username = pending["username"]
+        telegram_group = pending["telegram_group"]
+        is_existing = pending["is_existing"]
+
+        start_date = None
+        if pending["start_date"]:
+            start_date = datetime.strptime(pending["start_date"], "%Y-%m-%d").date()
+        payment_day = start_date or datetime.now().date()
+
+        existing = db.query(Shareholder).filter(Shareholder.shareholder_code == shareholder_code).first()
+
+        if is_existing and existing:
+            # Cộng dồn vốn góp
             old_amount = existing.investment_amount or 0
             existing.investment_amount = old_amount + amount
             if notes:
                 existing.notes = (existing.notes or "") + f"\n[Góp thêm] {notes}" if existing.notes else notes
-            
-            # Cập nhật Quỹ ban đầu và Tổng thu
-            if investment.initial_capital is None:
-                investment.initial_capital = 0
-            if investment.total_income is None:
-                investment.total_income = 0
-            investment.initial_capital += amount
-            investment.total_income += amount
-            
-            db.commit()
-            
-            LogInfo(f"[TienNga] Shareholder '{shareholder_code}' added {amount} to Investment '{investment.name}'", LogType.SYSTEM_STATUS)
-            
-            await message.reply_text(
-                f"✅ <b>GÓP VỐN THÊM THÀNH CÔNG</b>\n\n"
-                f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
-                f"<b>Mã Cổ Đông:</b> {shareholder_code}\n"
-                f"<b>Tên Cổ Đông:</b> {existing.fullname}\n"
-                f"<b>Số Tiền Góp Thêm:</b> <code>{fmt_vn(amount)}</code>\n"
-                f"<b>Tổng Tiền Đã Góp:</b> <code>{fmt_vn(existing.investment_amount)}</code>\n\n"
-                f"<i>Quỹ ban đầu của '{investment.name}' đã tăng thêm {fmt_vn(amount)}.</i>",
-                parse_mode=ParseMode.HTML
-            )
+            action_label = "GÓP VỐN THÊM"
         else:
             # Tạo mới cổ đông
             new_shareholder = Shareholder(
-                id=uuid.uuid4(),
+                id=_uuid.uuid4(),
                 shareholder_code=shareholder_code,
                 fullname=fullname,
                 investment_id=investment.id,
@@ -6966,32 +7235,121 @@ async def tien_nga_create_shareholder_handler(client, message: Message) -> None:
                 notes=notes if notes else None
             )
             db.add(new_shareholder)
-            
-            # Cập nhật Quỹ ban đầu và Tổng thu
-            if investment.initial_capital is None:
-                investment.initial_capital = 0
-            if investment.total_income is None:
-                investment.total_income = 0
-            investment.initial_capital += amount
-            investment.total_income += amount
-            
-            db.commit()
-            
-            LogInfo(f"[TienNga] Created Shareholder '{shareholder_code}' for Investment '{investment.name}'", LogType.SYSTEM_STATUS)
-            
-            await message.reply_text(
-                f"✅ <b>TẠO CỔ ĐÔNG THÀNH CÔNG</b>\n\n"
+            action_label = "TẠO CỔ ĐÔNG"
+
+        # Cập nhật Quỹ ban đầu và Tổng thu
+        if investment.initial_capital is None:
+            investment.initial_capital = 0
+        if investment.total_income is None:
+            investment.total_income = 0
+        investment.initial_capital += amount
+        investment.total_income += amount
+
+        # Tạo DailyPayment record cho khoản góp vốn
+        purpose_text = f"Góp vốn Quỹ {investment.name}"
+        if is_existing:
+            purpose_text = f"Góp vốn thêm Quỹ {investment.name}"
+
+        new_payment = DailyPayment(
+            id=_uuid.uuid4(),
+            investment_id=investment.id,
+            requester=fullname,
+            executor=shareholder_code,
+            receiver=investment.name,
+            payment_type="thu",
+            purpose=purpose_text,
+            reason=f"Cổ đông {shareholder_code} góp vốn",
+            amount=amount,
+            day=payment_day,
+            notes=notes if notes else None,
+            status="APPROVED",
+        )
+        db.add(new_payment)
+
+        db.commit()
+
+        LogInfo(f"[TienNga] {action_label} '{shareholder_code}' amount {fmt_vn(amount)} for Investment '{investment.name}' + DailyPayment created", LogType.SYSTEM_STATUS)
+
+        # Build success message
+        if is_existing and existing:
+            success_msg = (
+                f"✅ <b>{action_label} THÀNH CÔNG</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n\n"
+                f"<b>📌 THÔNG TIN CỔ ĐÔNG</b>\n"
                 f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
-                f"<b>Mã Cổ Đông:</b> {shareholder_code}\n"
+                f"<b>Mã Cổ Đông:</b> <code>{shareholder_code}</code>\n"
+                f"<b>Tên Cổ Đông:</b> {existing.fullname}\n"
+                f"<b>Số Tiền Góp Thêm:</b> <code>{fmt_vn(amount)}</code>\n"
+                f"<b>Tổng Tiền Đã Góp:</b> <code>{fmt_vn(existing.investment_amount)}</code>\n\n"
+            )
+        else:
+            success_msg = (
+                f"✅ <b>{action_label} THÀNH CÔNG</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n\n"
+                f"<b>📌 THÔNG TIN CỔ ĐÔNG</b>\n"
+                f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
+                f"<b>Mã Cổ Đông:</b> <code>{shareholder_code}</code>\n"
                 f"<b>Tên Cổ Đông:</b> {fullname}\n"
                 f"<b>Số Tiền Đầu Tư:</b> <code>{fmt_vn(amount)}</code>\n\n"
-                f"<i>Quỹ ban đầu của '{investment.name}' đã tăng thêm số tiền trên.</i>",
-                parse_mode=ParseMode.HTML
             )
+
+        success_msg += (
+            f"<b>💰 PHIẾU THU ĐÃ GHI NHẬN</b>\n"
+            f"<b>Loại:</b> THU\n"
+            f"<b>Người Thực Hiện:</b> {shareholder_code}\n"
+            f"<b>Mục Đích:</b> {purpose_text}\n"
+            f"<b>Số Tiền:</b> <code>{fmt_vn(amount)}</code>\n"
+            f"<b>Ngày:</b> {payment_day.strftime('%d/%m/%Y')}\n"
+            f"<b>Trạng Thái:</b> APPROVED\n\n"
+            f"<i>Quỹ ban đầu của '{investment.name}' đã tăng thêm {fmt_vn(amount)}.</i>"
+        )
+
+        await callback_query.message.edit_text(success_msg, parse_mode=ParseMode.HTML)
+        await callback_query.answer("✅ Đã xác nhận thành công!")
+
+        # Gửi thông báo xuống nhóm member của cổ đông
+        if telegram_group:
+            try:
+                from app.models.telegram import TelegramProjectMember
+                member_group = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.group_name == telegram_group,
+                    TelegramProjectMember.role == "member"
+                ).first()
+
+                if member_group and member_group.chat_id:
+                    notify_msg = (
+                        f"<b>THÔNG BÁO GÓP VỐN CỔ ĐÔNG</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━\n\n"
+                        f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
+                        f"<b>Mã Cổ Đông:</b> <code>{shareholder_code}</code>\n"
+                        f"<b>Tên Cổ Đông:</b> {fullname}\n"
+                        f"<b>Loại:</b> {action_label}\n"
+                        f"<b>Số Tiền:</b> <code>{fmt_vn(amount)}</code>\n"
+                        f"<b>Ngày:</b> {payment_day.strftime('%d/%m/%Y')}\n"
+                    )
+                    if is_existing and existing:
+                        notify_msg += f"<b>Tổng Vốn Góp:</b> <code>{fmt_vn(existing.investment_amount)}</code>\n"
+                    notify_msg += (
+                        f"\n<b>Trạng Thái:</b> ĐÃ XÁC NHẬN ✅\n\n"
+                        f"<i>Phiếu thu đã được ghi nhận vào hệ thống.</i>"
+                    )
+                    await client.send_message(
+                        chat_id=int(member_group.chat_id),
+                        text=notify_msg,
+                        parse_mode=ParseMode.HTML
+                    )
+                    LogInfo(f"[TienNga] Sent shareholder notification to member group '{telegram_group}' (chat_id: {member_group.chat_id})", LogType.SYSTEM_STATUS)
+            except Exception as notify_err:
+                LogError(f"[TienNga] Failed to send notification to member group '{telegram_group}': {notify_err}", LogType.SYSTEM_STATUS)
+
     except Exception as e:
-        LogError(f"Error creating shareholder: {e}", LogType.SYSTEM_STATUS)
         db.rollback()
-        await message.reply_text("❌ Có lỗi xảy ra khi lưu vào database.", parse_mode=ParseMode.HTML)
+        LogError(f"Error confirming shareholder creation: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi lưu dữ liệu.", show_alert=True)
+        await callback_query.message.edit_text(
+            f"❌ <b>LỖI</b>\n\nCó lỗi xảy ra khi lưu vào database: {e}",
+            parse_mode=ParseMode.HTML
+        )
     finally:
         db.close()
 
@@ -7033,7 +7391,7 @@ Ghi Chú: </pre>
 
 # --- CHIA CỔ TỨC ---
 @bot.on_message(filters.command(["tien_nga_dividend_distribution","tien_nga_chia_co_tuc"]) | filters.regex(r"^@\w+\s+/(tien_nga_dividend_distribution|tien_nga_chia_co_tuc)\b"))
-@require_user_type(UserType.OWNER)
+@require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE)
@@ -7065,10 +7423,12 @@ async def tien_nga_chia_co_tuc_handler(client, message: Message) -> None:
         db.close()
 
 
+# Pending dividend distribution data (in-memory store)
+_pending_dividend_data = {}
+
 @bot.on_callback_query(filters.regex(r"^tn_divid_(.+)$"))
 async def tien_nga_dividend_callback(client, callback_query):
     inv_id = callback_query.matches[0].group(1)
-    from app.db.session import SessionLocal
     from app.models.business import Investment, Shareholder
     
     db = SessionLocal()
@@ -7085,42 +7445,107 @@ async def tien_nga_dividend_callback(client, callback_query):
         
         total_income = inv.total_income or 0
         total_expense = inv.total_expense or 0
-        profit = total_income - total_expense
         
         total_shareholder_amount = sum(sh.investment_amount or 0 for sh in shareholders)
         
+        # Tiền lời thực tế = Tổng Thu - Tổng Chi - Tổng Vốn Góp
+        # (vì tổng thu đã bao gồm tiền góp vốn)
+        distributable_profit = total_income - total_expense - total_shareholder_amount
+
+        # Calculate dividend for each shareholder
+        dividend_details = []
+        for sh in shareholders:
+            sh_amount = sh.investment_amount or 0
+            share_pct = (sh_amount / total_shareholder_amount * 100) if total_shareholder_amount > 0 else 0
+            dividend = distributable_profit * (sh_amount / total_shareholder_amount) if total_shareholder_amount > 0 and distributable_profit > 0 else 0
+            dividend_details.append({
+                "shareholder_code": sh.shareholder_code,
+                "fullname": sh.fullname,
+                "investment_amount": sh_amount,
+                "share_pct": share_pct,
+                "dividend": dividend,
+            })
+
+        # Store pending data
+        import uuid as _uuid
+        pending_key = str(_uuid.uuid4())[:8]
+        today_str = datetime.now().strftime("%d/%m/%Y")
+
+        _pending_dividend_data[pending_key] = {
+            "inv_id": str(inv.id),
+            "inv_name": inv.name,
+            "inv_code": inv.investment_code or "N/A",
+            "total_income": total_income,
+            "total_expense": total_expense,
+            "distributable_profit": distributable_profit,
+            "total_shareholder_amount": total_shareholder_amount,
+            "dividend_details": dividend_details,
+            "user_id": callback_query.from_user.id,
+        }
+
+        # Build preview message
         msg = (
-            f"<b>BÁO CÁO CHIA CỔ TỨC</b>\n"
+            f"<b>XÁC NHẬN CHIA CỔ TỨC</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"<b>Quỹ:</b> {inv.name}\n"
             f"<b>Mã Quỹ:</b> <code>{inv.investment_code or 'N/A'}</code>\n\n"
             f"<b>Tổng Thu:</b> <code>{fmt_vn(total_income)}</code>\n"
             f"<b>Tổng Chi:</b> <code>{fmt_vn(total_expense)}</code>\n"
-            f"<b>Tiền Lời:</b> <code>{fmt_vn(profit)}</code>\n"
-            f"<b>Tổng Vốn Góp:</b> <code>{fmt_vn(total_shareholder_amount)}</code>\n\n"
+            f"<b>Tổng Vốn Góp:</b> <code>{fmt_vn(total_shareholder_amount)}</code>\n"
+            f"<b>Lợi Nhuận Chia:</b> <code>{fmt_vn(distributable_profit)}</code>\n"
+            f"<i>(= Tổng Thu - Tổng Chi - Tổng Vốn Góp)</i>\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"<b>CHI TIẾT CHIA CỔ TỨC</b>\n\n"
         )
+
         
-        for idx, sh in enumerate(shareholders, 1):
-            sh_amount = sh.investment_amount or 0
-            share_pct = (sh_amount / total_shareholder_amount * 100) if total_shareholder_amount > 0 else 0
-            dividend = profit * (sh_amount / total_shareholder_amount) if total_shareholder_amount > 0 else 0
-            
+        total_dividend = 0
+        for idx, d in enumerate(dividend_details, 1):
             msg += (
-                f"<b>{idx}. {sh.fullname}</b> (<code>{sh.shareholder_code}</code>)\n"
-                f"   Vốn góp: <code>{fmt_vn(sh_amount)}</code>\n"
-                f"   Cổ phần: <b>{share_pct:.1f}%</b>\n"
-                f"   Cổ tức nhận được: <code>{fmt_vn(dividend)}</code>\n\n"
+                f"<b>{idx}. {d['fullname']}</b> (<code>{d['shareholder_code']}</code>)\n"
+                f"   Vốn góp: <code>{fmt_vn(d['investment_amount'])}</code>\n"
+                f"   Cổ phần: <b>{d['share_pct']:.1f}%</b>\n"
+                f"   Cổ tức nhận được: <code>{fmt_vn(d['dividend'])}</code>\n\n"
             )
+            total_dividend += d['dividend']
         
-        if profit <= 0:
-            msg += "<i>⚠️ Quỹ chưa có lời hoặc đang lỗ, không nên chia cổ tức.</i>\n"
-        
-        await callback_query.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        msg += (
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<b>PHIẾU CHI - DAILY PAYMENT ({len(dividend_details)} phiếu)</b>\n\n"
+        )
+
+        for idx, d in enumerate(dividend_details, 1):
+            msg += (
+                f"<b>{idx}. Phiếu Chi</b>\n"
+                f"   <b>Loại:</b> CHI\n"
+                f"   <b>Người Thực Hiện:</b> {d['shareholder_code']}\n"
+                f"   <b>Người Nhận:</b> {d['fullname']}\n"
+                f"   <b>Mục Đích:</b> Nhận cổ tức Quỹ {inv.name}\n"
+                f"   <b>Số Tiền:</b> <code>{fmt_vn(d['dividend'])}</code>\n"
+                f"   <b>Ngày:</b> {today_str}\n"
+                f"   <b>Trạng Thái:</b> APPROVED\n\n"
+            )
+
+        msg += (
+            f"<b>Tổng Số Tiền Chi:</b> <code>{fmt_vn(total_dividend)}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+        )
+
+
+        if distributable_profit <= 0:
+            msg += "<i>⚠️ Quỹ chưa có lợi nhuận hoặc đang lỗ, không nên chia cổ tức.</i>\n\n"
+
+        msg += "<i>Vui lòng kiểm tra thông tin và nhấn nút bên dưới để xác nhận.</i>"
+
+        buttons = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Xác Nhận Chia Cổ Tức", callback_data=f"divcf_y_{pending_key}"),
+                InlineKeyboardButton("❌ Hủy", callback_data=f"divcf_n_{pending_key}"),
+            ]
+        ])
+
+        await callback_query.message.reply_text(msg, reply_markup=buttons, parse_mode=ParseMode.HTML)
         await callback_query.answer()
-        
-        LogInfo(f"[TienNga] Dividend report generated for '{inv.name}' by @{callback_query.from_user.username}", LogType.SYSTEM_STATUS)
         
     except Exception as e:
         LogError(f"Error in dividend callback: {e}", LogType.SYSTEM_STATUS)
@@ -7129,6 +7554,164 @@ async def tien_nga_dividend_callback(client, callback_query):
         db.close()
 
 
+# --- Confirm / Cancel dividend distribution ---
+@bot.on_callback_query(filters.regex(r"^divcf_(y|n)_(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+async def tien_nga_confirm_dividend_callback(client, callback_query):
+    action = callback_query.matches[0].group(1)  # "y" or "n"
+    pending_key = callback_query.matches[0].group(2)
+
+    pending = _pending_dividend_data.pop(pending_key, None)
+    if not pending:
+        await callback_query.answer("⚠️ Dữ liệu đã hết hạn hoặc đã được xử lý.", show_alert=True)
+        try:
+            await callback_query.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+
+    # Cancel
+    if action == "n":
+        await callback_query.message.edit_text(
+            "❌ <b>ĐÃ HỦY</b>\n\n<i>Thao tác chia cổ tức đã bị hủy.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer("Đã hủy thao tác.")
+        return
+
+    # Confirm → create DailyPayment for each shareholder
+    from app.models.business import Investment, DailyPayment
+    import uuid as _uuid
+
+    db = SessionLocal()
+    try:
+        inv_id = pending["inv_id"]
+        investment = db.query(Investment).filter(Investment.id == inv_id).first()
+        if not investment:
+            await callback_query.answer("⚠️ Quỹ Đầu Tư không tồn tại.", show_alert=True)
+            return
+
+        dividend_details = pending["dividend_details"]
+        distributable_profit = pending["distributable_profit"]
+        today = datetime.now().date()
+
+        total_dividend_paid = 0
+
+        for d in dividend_details:
+            dividend_amount = d["dividend"]
+            if dividend_amount <= 0:
+                continue
+
+            new_payment = DailyPayment(
+                id=_uuid.uuid4(),
+                investment_id=investment.id,
+                requester=investment.name,
+                executor=d["shareholder_code"],
+                receiver=d["fullname"],
+                payment_type="chi",
+                purpose=f"Nhận cổ tức Quỹ {investment.name}",
+                reason=f"Cổ đông {d['shareholder_code']} nhận cổ tức ({d['share_pct']:.1f}%)",
+                amount=dividend_amount,
+                day=today,
+                notes=f"Vốn góp: {fmt_vn(d['investment_amount'])} | Cổ phần: {d['share_pct']:.1f}%",
+                status="APPROVED",
+            )
+            db.add(new_payment)
+            total_dividend_paid += dividend_amount
+
+        # Cập nhật tổng chi của Investment
+        if investment.total_expense is None:
+            investment.total_expense = 0
+        investment.total_expense += total_dividend_paid
+        investment.profit = (investment.total_income or 0) - investment.total_expense
+
+        db.commit()
+
+        LogInfo(f"[TienNga] Dividend distribution confirmed for '{investment.name}', total paid: {fmt_vn(total_dividend_paid)} by @{callback_query.from_user.username}", LogType.SYSTEM_STATUS)
+
+        # Build success message
+        success_msg = (
+            f"✅ <b>CHIA CỔ TỨC THÀNH CÔNG</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>Quỹ:</b> {investment.name} (<code>{investment.investment_code or 'N/A'}</code>)\n"
+            f"<b>Ngày:</b> {today.strftime('%d/%m/%Y')}\n\n"
+        )
+
+        for idx, d in enumerate(dividend_details, 1):
+            if d["dividend"] <= 0:
+                continue
+            success_msg += (
+                f"<b>{idx}. {d['fullname']}</b> (<code>{d['shareholder_code']}</code>)\n"
+                f"   Cổ tức: <code>{fmt_vn(d['dividend'])}</code>\n"
+            )
+
+        success_msg += (
+            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"<b>TỔNG CHI CỔ TỨC:</b> <code>{fmt_vn(total_dividend_paid)}</code>\n"
+            f"<b>Số phiếu chi đã tạo:</b> {sum(1 for d in dividend_details if d['dividend'] > 0)}\n"
+            f"<b>Trạng Thái:</b> APPROVED\n\n"
+            f"<i>Tất cả phiếu chi đã được ghi nhận vào hệ thống.</i>"
+        )
+
+        await callback_query.message.edit_text(success_msg, parse_mode=ParseMode.HTML)
+        await callback_query.answer("✅ Chia cổ tức thành công!")
+
+        # Gửi thông báo xuống nhóm member của từng cổ đông
+        try:
+            from app.models.business import Shareholder
+            from app.models.telegram import TelegramProjectMember
+
+            for d in dividend_details:
+                if d["dividend"] <= 0:
+                    continue
+                sh = db.query(Shareholder).filter(
+                    Shareholder.shareholder_code == d["shareholder_code"],
+                    Shareholder.investment_id == investment.id
+                ).first()
+                if not sh or not sh.telegram_group:
+                    continue
+
+                member_group = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.group_name == sh.telegram_group,
+                    TelegramProjectMember.role == "member"
+                ).first()
+                if not member_group or not member_group.chat_id:
+                    continue
+
+                notify_msg = (
+                    f"<b>THÔNG BÁO CHIA CỔ TỨC</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n\n"
+                    f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
+                    f"<b>Mã Cổ Đông:</b> <code>{d['shareholder_code']}</code>\n"
+                    f"<b>Tên Cổ Đông:</b> {d['fullname']}\n"
+                    f"<b>Cổ Phần:</b> {d['share_pct']:.1f}%\n"
+                    f"<b>Cổ Tức Nhận Được:</b> <code>{fmt_vn(d['dividend'])}</code>\n"
+                    f"<b>Ngày:</b> {today.strftime('%d/%m/%Y')}\n\n"
+                    f"<b>Trạng Thái:</b> ĐÃ XÁC NHẬN ✅\n\n"
+                    f"<i>Phiếu chi đã được ghi nhận vào hệ thống.</i>"
+                )
+                try:
+                    await client.send_message(
+                        chat_id=int(member_group.chat_id),
+                        text=notify_msg,
+                        parse_mode=ParseMode.HTML
+                    )
+                    LogInfo(f"[TienNga] Sent dividend notification to '{sh.telegram_group}' for {d['shareholder_code']}", LogType.SYSTEM_STATUS)
+                except Exception as send_err:
+                    LogError(f"[TienNga] Failed to send dividend notification to '{sh.telegram_group}': {send_err}", LogType.SYSTEM_STATUS)
+        except Exception as notify_err:
+            LogError(f"[TienNga] Error sending dividend notifications: {notify_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error confirming dividend distribution: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi lưu dữ liệu.", show_alert=True)
+        await callback_query.message.edit_text(
+            f"❌ <b>LỖI</b>\n\nCó lỗi xảy ra khi lưu vào database: {e}",
+            parse_mode=ParseMode.HTML
+        )
+    finally:
+        db.close()
 
 
 
@@ -7166,10 +7749,12 @@ async def tien_nga_payment_shareholder_handler(client, message: Message) -> None
         db.close()
 
 
+# Pending payment shareholder data (in-memory store)
+_pending_payment_sh_data = {}
+
 @bot.on_callback_query(filters.regex(r"^tn_paysh_(.+)$"))
 async def tien_nga_payment_shareholder_callback(client, callback_query):
     inv_id = callback_query.matches[0].group(1)
-    from app.db.session import SessionLocal
     from app.models.business import Investment, Shareholder
     
     db = SessionLocal()
@@ -7189,6 +7774,8 @@ async def tien_nga_payment_shareholder_callback(client, callback_query):
         initial_capital = inv.initial_capital or 0
         profit = total_income - total_expense
         
+        total_shareholder_amount = sum(sh.investment_amount or 0 for sh in shareholders)
+
         # Xác định quỹ thanh toán
         if profit > initial_capital:
             payout_pool = initial_capital
@@ -7196,11 +7783,44 @@ async def tien_nga_payment_shareholder_callback(client, callback_query):
         else:
             payout_pool = profit
             payout_label = "Lợi Nhuận (Lợi nhuận < Vốn)"
-        
-        total_shareholder_amount = sum(sh.investment_amount or 0 for sh in shareholders)
-        
+
+        # Calculate payment for each shareholder
+        payment_details = []
+        for sh in shareholders:
+            sh_amount = sh.investment_amount or 0
+            share_pct = (sh_amount / total_shareholder_amount * 100) if total_shareholder_amount > 0 else 0
+            payment = payout_pool * (sh_amount / total_shareholder_amount) if total_shareholder_amount > 0 and payout_pool > 0 else 0
+            payment_details.append({
+                "shareholder_code": sh.shareholder_code,
+                "fullname": sh.fullname,
+                "investment_amount": sh_amount,
+                "share_pct": share_pct,
+                "payment": payment,
+            })
+
+        # Store pending data
+        import uuid as _uuid
+        pending_key = str(_uuid.uuid4())[:8]
+        today_str = datetime.now().strftime("%d/%m/%Y")
+
+        _pending_payment_sh_data[pending_key] = {
+            "inv_id": str(inv.id),
+            "inv_name": inv.name,
+            "inv_code": inv.investment_code or "N/A",
+            "total_income": total_income,
+            "total_expense": total_expense,
+            "initial_capital": initial_capital,
+            "profit": profit,
+            "payout_pool": payout_pool,
+            "payout_label": payout_label,
+            "total_shareholder_amount": total_shareholder_amount,
+            "payment_details": payment_details,
+            "user_id": callback_query.from_user.id,
+        }
+
+        # Build preview message
         msg = (
-            f"<b>BÁO CÁO THANH TOÁN QUỸ CỔ ĐÔNG</b>\n"
+            f"<b>XÁC NHẬN THANH TOÁN QUỸ CỔ ĐÔNG</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"<b>Quỹ:</b> {inv.name}\n"
             f"<b>Mã Quỹ:</b> <code>{inv.investment_code or 'N/A'}</code>\n\n"
@@ -7215,25 +7835,52 @@ async def tien_nga_payment_shareholder_callback(client, callback_query):
             f"<b>CHI TIẾT THANH TOÁN CHO CỔ ĐÔNG</b>\n\n"
         )
         
-        for idx, sh in enumerate(shareholders, 1):
-            sh_amount = sh.investment_amount or 0
-            share_pct = (sh_amount / total_shareholder_amount * 100) if total_shareholder_amount > 0 else 0
-            payment = payout_pool * (sh_amount / total_shareholder_amount) if total_shareholder_amount > 0 else 0
-            
+        for idx, d in enumerate(payment_details, 1):
             msg += (
-                f"<b>{idx}. {sh.fullname}</b> (<code>{sh.shareholder_code}</code>)\n"
-                f"   Vốn góp: <code>{fmt_vn(sh_amount)}</code>\n"
-                f"   Cổ phần: <b>{share_pct:.1f}%</b>\n"
-                f"   Thanh toán: <code>{fmt_vn(payment)}</code>\n\n"
+                f"<b>{idx}. {d['fullname']}</b> (<code>{d['shareholder_code']}</code>)\n"
+                f"   Vốn góp: <code>{fmt_vn(d['investment_amount'])}</code>\n"
+                f"   Cổ phần: <b>{d['share_pct']:.1f}%</b>\n"
+                f"   Thanh toán: <code>{fmt_vn(d['payment'])}</code>\n\n"
             )
-        
+
+        # Daily Payment details
+        total_payout = sum(d['payment'] for d in payment_details)
+        msg += (
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<b>PHIẾU CHI - DAILY PAYMENT ({len(payment_details)} phiếu)</b>\n\n"
+        )
+
+        for idx, d in enumerate(payment_details, 1):
+            msg += (
+                f"<b>{idx}. Phiếu Chi</b>\n"
+                f"   <b>Loại:</b> CHI\n"
+                f"   <b>Người Thực Hiện:</b> {d['shareholder_code']}\n"
+                f"   <b>Người Nhận:</b> {d['fullname']}\n"
+                f"   <b>Mục Đích:</b> Thanh toán Quỹ cổ đông {inv.name}\n"
+                f"   <b>Số Tiền:</b> <code>{fmt_vn(d['payment'])}</code>\n"
+                f"   <b>Ngày:</b> {today_str}\n"
+                f"   <b>Trạng Thái:</b> APPROVED\n\n"
+            )
+
+        msg += (
+            f"<b>Tổng Số Tiền Chi:</b> <code>{fmt_vn(total_payout)}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+        )
+
         if profit <= 0:
-            msg += "<i>⚠️ Quỹ đang lỗ, không thể thanh toán cho cổ đông.</i>\n"
-        
-        await callback_query.message.reply_text(msg, parse_mode=ParseMode.HTML)
+            msg += "<i>⚠️ Quỹ đang lỗ, không thể thanh toán cho cổ đông.</i>\n\n"
+
+        msg += "<i>Vui lòng kiểm tra thông tin và nhấn nút bên dưới để xác nhận.</i>"
+
+        buttons = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Xác Nhận Thanh Toán", callback_data=f"payshcf_y_{pending_key}"),
+                InlineKeyboardButton("❌ Hủy", callback_data=f"payshcf_n_{pending_key}"),
+            ]
+        ])
+
+        await callback_query.message.reply_text(msg, reply_markup=buttons, parse_mode=ParseMode.HTML)
         await callback_query.answer()
-        
-        LogInfo(f"[TienNga] Shareholder payment report for '{inv.name}' by @{callback_query.from_user.username}", LogType.SYSTEM_STATUS)
         
     except Exception as e:
         LogError(f"Error in payment shareholder callback: {e}", LogType.SYSTEM_STATUS)
@@ -7242,3 +7889,690 @@ async def tien_nga_payment_shareholder_callback(client, callback_query):
         db.close()
 
 
+# --- Confirm / Cancel payment shareholder ---
+@bot.on_callback_query(filters.regex(r"^payshcf_(y|n)_(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+async def tien_nga_confirm_payment_sh_callback(client, callback_query):
+    action = callback_query.matches[0].group(1)  # "y" or "n"
+    pending_key = callback_query.matches[0].group(2)
+
+    pending = _pending_payment_sh_data.pop(pending_key, None)
+    if not pending:
+        await callback_query.answer("⚠️ Dữ liệu đã hết hạn hoặc đã được xử lý.", show_alert=True)
+        try:
+            await callback_query.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+
+    # Cancel
+    if action == "n":
+        await callback_query.message.edit_text(
+            "❌ <b>ĐÃ HỦY</b>\n\n<i>Thao tác thanh toán quỹ cổ đông đã bị hủy.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer("Đã hủy thao tác.")
+        return
+
+    # Confirm → create DailyPayment for each shareholder
+    from app.models.business import Investment, DailyPayment
+    import uuid as _uuid
+
+    db = SessionLocal()
+    try:
+        inv_id = pending["inv_id"]
+        investment = db.query(Investment).filter(Investment.id == inv_id).first()
+        if not investment:
+            await callback_query.answer("⚠️ Quỹ Đầu Tư không tồn tại.", show_alert=True)
+            return
+
+        payment_details = pending["payment_details"]
+        today = datetime.now().date()
+
+        total_paid = 0
+
+        for d in payment_details:
+            pay_amount = d["payment"]
+            if pay_amount <= 0:
+                continue
+
+            new_payment = DailyPayment(
+                id=_uuid.uuid4(),
+                investment_id=investment.id,
+                requester=investment.name,
+                executor=d["shareholder_code"],
+                receiver=d["fullname"],
+                payment_type="chi",
+                purpose=f"Thanh toán Quỹ cổ đông {investment.name}",
+                reason=f"Cổ đông {d['shareholder_code']} nhận thanh toán ({d['share_pct']:.1f}%)",
+                amount=pay_amount,
+                day=today,
+                notes=f"Vốn góp: {fmt_vn(d['investment_amount'])} | Cổ phần: {d['share_pct']:.1f}%",
+                status="APPROVED",
+            )
+            db.add(new_payment)
+            total_paid += pay_amount
+
+        # Cập nhật tổng chi của Investment
+        if investment.total_expense is None:
+            investment.total_expense = 0
+        investment.total_expense += total_paid
+        investment.profit = (investment.total_income or 0) - investment.total_expense
+
+        # Quỹ hết hoạt động sau khi thanh toán
+        investment.status = "CLOSED"
+        investment.end_date = today
+
+        db.commit()
+
+        LogInfo(f"[TienNga] Payment shareholder confirmed for '{investment.name}', total paid: {fmt_vn(total_paid)} by @{callback_query.from_user.username}", LogType.SYSTEM_STATUS)
+
+        # Build success message
+        success_msg = (
+            f"✅ <b>THANH TOÁN QUỸ CỔ ĐÔNG THÀNH CÔNG</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>Quỹ:</b> {investment.name} (<code>{investment.investment_code or 'N/A'}</code>)\n"
+            f"<b>Ngày:</b> {today.strftime('%d/%m/%Y')}\n\n"
+        )
+
+        for idx, d in enumerate(payment_details, 1):
+            if d["payment"] <= 0:
+                continue
+            success_msg += (
+                f"<b>{idx}. {d['fullname']}</b> (<code>{d['shareholder_code']}</code>)\n"
+                f"   Thanh toán: <code>{fmt_vn(d['payment'])}</code>\n"
+            )
+
+        success_msg += (
+            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"<b>TỔNG CHI THANH TOÁN:</b> <code>{fmt_vn(total_paid)}</code>\n"
+            f"<b>Số phiếu chi đã tạo:</b> {sum(1 for d in payment_details if d['payment'] > 0)}\n"
+            f"<b>Trạng Thái Phiếu:</b> APPROVED\n\n"
+            f"<b>📌 Quỹ '{investment.name}' đã được ĐÓNG.</b>\n"
+            f"<b>Ngày Kết Thúc:</b> {today.strftime('%d/%m/%Y')}\n\n"
+            f"<i>Tất cả phiếu chi đã được ghi nhận vào hệ thống.</i>"
+        )
+
+        await callback_query.message.edit_text(success_msg, parse_mode=ParseMode.HTML)
+        await callback_query.answer("✅ Thanh toán thành công!")
+
+        # Gửi thông báo xuống nhóm member của từng cổ đông
+        try:
+            from app.models.business import Shareholder
+            from app.models.telegram import TelegramProjectMember
+
+            for d in payment_details:
+                if d["payment"] <= 0:
+                    continue
+                sh = db.query(Shareholder).filter(
+                    Shareholder.shareholder_code == d["shareholder_code"],
+                    Shareholder.investment_id == investment.id
+                ).first()
+                if not sh or not sh.telegram_group:
+                    continue
+
+                member_group = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.group_name == sh.telegram_group,
+                    TelegramProjectMember.role == "member"
+                ).first()
+                if not member_group or not member_group.chat_id:
+                    continue
+
+                notify_msg = (
+                    f"<b>THÔNG BÁO THANH TOÁN QUỸ CỔ ĐÔNG</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n\n"
+                    f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
+                    f"<b>Mã Cổ Đông:</b> <code>{d['shareholder_code']}</code>\n"
+                    f"<b>Tên Cổ Đông:</b> {d['fullname']}\n"
+                    f"<b>Cổ Phần:</b> {d['share_pct']:.1f}%\n"
+                    f"<b>Số Tiền Thanh Toán:</b> <code>{fmt_vn(d['payment'])}</code>\n"
+                    f"<b>Ngày:</b> {today.strftime('%d/%m/%Y')}\n\n"
+                    f"<b>Trạng Thái:</b> ĐÃ XÁC NHẬN ✅\n\n"
+                    f"<i>Phiếu chi đã được ghi nhận vào hệ thống.</i>"
+                )
+                try:
+                    await client.send_message(
+                        chat_id=int(member_group.chat_id),
+                        text=notify_msg,
+                        parse_mode=ParseMode.HTML
+                    )
+                    LogInfo(f"[TienNga] Sent payment notification to '{sh.telegram_group}' for {d['shareholder_code']}", LogType.SYSTEM_STATUS)
+                except Exception as send_err:
+                    LogError(f"[TienNga] Failed to send payment notification to '{sh.telegram_group}': {send_err}", LogType.SYSTEM_STATUS)
+        except Exception as notify_err:
+            LogError(f"[TienNga] Error sending payment notifications: {notify_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error confirming payment shareholder: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi lưu dữ liệu.", show_alert=True)
+        await callback_query.message.edit_text(
+            f"❌ <b>LỖI</b>\n\nCó lỗi xảy ra khi lưu vào database: {e}",
+            parse_mode=ParseMode.HTML
+        )
+    finally:
+        db.close()
+
+
+
+# --- XUẤT BÁO CÁO SẢN PHẨM HÀNG NGÀY ---
+@bot.on_message(filters.command(["tien_nga_export_daily_product", "tien_nga_xuat_bao_cao_san_pham"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_daily_product|tien_nga_xuat_bao_cao_san_pham)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT)
+async def tien_nga_export_daily_product_handler(client, message: Message) -> None:
+    from datetime import datetime, timedelta
+    text = message.text.strip()
+    parts = text.split(maxsplit=1)
+    
+    if len(parts) < 2:
+        # Không có tham số → hiển thị button chọn khoảng thời gian
+        buttons = [
+            [InlineKeyboardButton("1 Ngày", callback_data="tn_expprod_1d"),
+             InlineKeyboardButton("7 Ngày", callback_data="tn_expprod_7d")],
+            [InlineKeyboardButton("14 Ngày", callback_data="tn_expprod_14d"),
+             InlineKeyboardButton("1 Tháng", callback_data="tn_expprod_1m")],
+            [InlineKeyboardButton("3 Tháng", callback_data="tn_expprod_3m"),
+             InlineKeyboardButton("6 Tháng", callback_data="tn_expprod_6m")],
+            [InlineKeyboardButton("1 Năm", callback_data="tn_expprod_1y"),
+             InlineKeyboardButton("Năm Trước", callback_data="tn_expprod_ly")],
+            [InlineKeyboardButton("Hủy", callback_data="cancel_action")]
+        ]
+        await message.reply_text(
+            "<b>XUẤT BÁO CÁO SẢN PHẨM</b>\n\nChọn khoảng thời gian:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Có tham số ngày
+    date_str = parts[1].strip()
+    try:
+        if " - " in date_str:
+            d1, d2 = date_str.split(" - ", 1)
+            start_date = datetime.strptime(d1.strip(), "%d/%m/%Y").date()
+            end_date = datetime.strptime(d2.strip(), "%d/%m/%Y").date()
+        else:
+            start_date = datetime.strptime(date_str.strip(), "%d/%m/%Y").date()
+            end_date = start_date
+    except ValueError:
+        await message.reply_text(
+            "⚠️ Sai định dạng ngày.\n\n"
+            "<i>VD: <code>/tien_nga_export_daily_product 22/04/2026</code>\n"
+            "<code>/tien_nga_export_daily_product 01/04/2026 - 22/04/2026</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    await _generate_daily_product_report(message, start_date, end_date)
+
+
+@bot.on_callback_query(filters.regex(r"^tn_expprod_(.+)$"))
+async def tien_nga_export_daily_product_callback(client, callback_query):
+    from datetime import datetime, timedelta
+    period = callback_query.matches[0].group(1)
+    today = datetime.now().date()
+    
+    if period == "1d":
+        start_date = today
+        end_date = today
+    elif period == "7d":
+        start_date = today - timedelta(days=6)
+        end_date = today
+    elif period == "14d":
+        start_date = today - timedelta(days=13)
+        end_date = today
+    elif period == "1m":
+        start_date = today - timedelta(days=29)
+        end_date = today
+    elif period == "3m":
+        start_date = today - timedelta(days=89)
+        end_date = today
+    elif period == "6m":
+        start_date = today - timedelta(days=179)
+        end_date = today
+    elif period == "1y":
+        start_date = today.replace(month=1, day=1)
+        end_date = today
+    elif period == "ly":
+        start_date = today.replace(year=today.year - 1, month=1, day=1)
+        end_date = today.replace(year=today.year - 1, month=12, day=31)
+    else:
+        await callback_query.answer("❌ Không hợp lệ", show_alert=True)
+        return
+    
+    await callback_query.answer("⏳ Đang tạo báo cáo...")
+    await _generate_daily_product_report(callback_query.message, start_date, end_date)
+
+
+async def _generate_daily_product_report(message, start_date, end_date):
+    from app.db.session import SessionLocal
+    from app.models.inventory import ProductTransaction, Inventory
+    from datetime import datetime, timedelta
+    import tempfile
+    import os
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    
+    db = SessionLocal()
+    try:
+        # Query transactions chỉ liên quan Mủ thành phẩm
+        transactions = db.query(ProductTransaction).filter(
+            ProductTransaction.transaction_date >= start_date,
+            ProductTransaction.transaction_date <= end_date,
+            ProductTransaction.material_type.ilike("%Mủ%")
+        ).order_by(ProductTransaction.transaction_date).all()
+        
+        # Query current inventory - chỉ kho Mủ thành phẩm
+        inventories = db.query(Inventory).filter(Inventory.material_name.ilike("%Mủ%")).all()
+        inv_map = {str(inv.id): inv for inv in inventories}
+        
+        # Get unique storage names from filtered transactions
+        storage_names = sorted(set(t.storage_name for t in transactions if t.storage_name))
+        if not storage_names and not transactions:
+            await message.reply_text("⚠️ Không có dữ liệu giao dịch Mủ thành phẩm trong khoảng thời gian này.", parse_mode=ParseMode.HTML)
+            return
+        
+        # Also add storages from Mủ inventory that may not have transactions
+        for inv in inventories:
+            if inv.storage_name and inv.storage_name not in storage_names:
+                storage_names.append(inv.storage_name)
+        storage_names = sorted(set(storage_names))
+        
+        # Build date list
+        date_list = []
+        d = start_date
+        while d <= end_date:
+            date_list.append(d)
+            d += timedelta(days=1)
+        
+        # Styles
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        sub_header_fill = PatternFill("solid", fgColor="4472C4")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        money_align = Alignment(horizontal="right", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin"),
+        )
+        alt_fill = PatternFill("solid", fgColor="D9E2F3")
+        total_fill = PatternFill("solid", fgColor="FFC000")
+        total_font = Font(bold=True, size=11)
+        inventory_fill = PatternFill("solid", fgColor="92D050")
+        
+        wb = openpyxl.Workbook()
+        
+        def fmt_money(val):
+            if val is None or val == 0:
+                return "0"
+            return f"{int(val):,}".replace(",", ".")
+        
+        def write_storage_sheet(ws, sheet_storage_name, txns, is_total=False):
+            """Write a sheet for one storage or total"""
+            ws.title = sheet_storage_name[:31]  # Excel sheet name limit
+            
+            headers = ["Ngày", "SL Nhập (kg)", "SL Xuất (kg)", "Thành Tiền Nhập", "Thành Tiền Xuất"]
+            for col_idx, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+                cell.border = thin_border
+            
+            grand_total_import_qty = 0
+            grand_total_export_qty = 0
+            grand_total_import_amount = 0
+            grand_total_export_amount = 0
+            
+            row = 2
+            for idx, d in enumerate(date_list):
+                day_txns = [t for t in txns if t.transaction_date == d]
+                
+                import_qty = sum(t.quantity or 0 for t in day_txns if t.transaction_type and t.transaction_type.lower() in ("nhập", "nhap", "import"))
+                export_qty = sum(t.quantity or 0 for t in day_txns if t.transaction_type and t.transaction_type.lower() in ("xuất", "xuat", "export"))
+                import_amount = sum(t.total_amount or 0 for t in day_txns if t.transaction_type and t.transaction_type.lower() in ("nhập", "nhap", "import"))
+                export_amount = sum(t.total_amount or 0 for t in day_txns if t.transaction_type and t.transaction_type.lower() in ("xuất", "xuat", "export"))
+                
+                grand_total_import_qty += import_qty
+                grand_total_export_qty += export_qty
+                grand_total_import_amount += import_amount
+                grand_total_export_amount += export_amount
+                
+                row_fill = alt_fill if idx % 2 == 0 else None
+                values = [
+                    d.strftime("%d/%m/%Y"),
+                    f"{import_qty:,.1f}".replace(",", ".") if import_qty else "0",
+                    f"{export_qty:,.1f}".replace(",", ".") if export_qty else "0",
+                    fmt_money(import_amount),
+                    fmt_money(export_amount)
+                ]
+                for col_idx, val in enumerate(values, 1):
+                    cell = ws.cell(row=row, column=col_idx, value=val)
+                    cell.border = thin_border
+                    if col_idx == 1:
+                        cell.alignment = center_align
+                    elif col_idx in (4, 5):
+                        cell.alignment = money_align
+                    else:
+                        cell.alignment = center_align
+                    if row_fill:
+                        cell.fill = row_fill
+                row += 1
+            
+            # Dòng TỔNG
+            total_values = [
+                "TỔNG CỘNG",
+                f"{grand_total_import_qty:,.1f}".replace(",", "."),
+                f"{grand_total_export_qty:,.1f}".replace(",", "."),
+                fmt_money(grand_total_import_amount),
+                fmt_money(grand_total_export_amount)
+            ]
+            for col_idx, val in enumerate(total_values, 1):
+                cell = ws.cell(row=row, column=col_idx, value=val)
+                cell.font = total_font
+                cell.fill = total_fill
+                cell.border = thin_border
+                if col_idx == 1:
+                    cell.alignment = center_align
+                elif col_idx in (4, 5):
+                    cell.alignment = money_align
+                else:
+                    cell.alignment = center_align
+            row += 1
+            
+            # Dòng TỒN KHO
+            if is_total:
+                total_inv_qty = sum((inv.quantity or 0) for inv in inventories)
+                inv_label = "Tồn kho (Tất cả kho)"
+            else:
+                matched_inv = [inv for inv in inventories if inv.storage_name == sheet_storage_name]
+                total_inv_qty = sum((inv.quantity or 0) for inv in matched_inv)
+                inv_label = f"Tồn kho ({sheet_storage_name})"
+            
+            cell = ws.cell(row=row, column=1, value=inv_label)
+            cell.font = Font(bold=True, size=11, color="FFFFFF")
+            cell.fill = inventory_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+            
+            cell = ws.cell(row=row, column=2, value=f"{total_inv_qty:,.1f}".replace(",", "."))
+            cell.font = Font(bold=True, size=11)
+            cell.fill = inventory_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+            
+            for col_idx in range(3, 6):
+                cell = ws.cell(row=row, column=col_idx, value="")
+                cell.fill = inventory_fill
+                cell.border = thin_border
+            
+            # Column widths
+            col_widths = [15, 15, 15, 20, 20]
+            for col_idx, width in enumerate(col_widths, 1):
+                ws.column_dimensions[get_column_letter(col_idx)].width = width
+            
+            ws.freeze_panes = "A2"
+        
+        # Sheet cho từng kho
+        first_sheet = True
+        for sn in storage_names:
+            if first_sheet:
+                ws = wb.active
+                first_sheet = False
+            else:
+                ws = wb.create_sheet()
+            
+            storage_txns = [t for t in transactions if t.storage_name == sn]
+            write_storage_sheet(ws, sn, storage_txns, is_total=False)
+        
+        # Sheet TỔNG HỢP
+        ws_total = wb.create_sheet() if not first_sheet else wb.active
+        write_storage_sheet(ws_total, "TỔNG HỢP", transactions, is_total=True)
+        
+        # Save and send
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+        
+        now_str = datetime.now().strftime("%Y%m%d_%H%M")
+        period_str = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
+        
+        await message.reply_document(
+            document=tmp_path,
+            file_name=f"bao_cao_san_pham_{now_str}.xlsx",
+            caption=(
+                f"<b>BÁO CÁO XUẤT NHẬP KHO MỦ THÀNH PHẨM</b>\n\n"
+                f"<b>Khoảng thời gian:</b> {period_str}\n"
+                f"<b>Tổng giao dịch:</b> {len(transactions)}\n"
+                f"<b>Số kho:</b> {len(storage_names)}\n\n"
+                f"<i>Xuất lúc: {datetime.now().strftime('%H:%M %d/%m/%Y')}</i>"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+        
+        os.remove(tmp_path)
+        LogInfo(f"[TienNga] Exported daily product report ({period_str}), {len(transactions)} txns", LogType.SYSTEM_STATUS)
+        
+    except Exception as e:
+        LogError(f"Error in export daily product: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# --- KIỂM TRA LỊCH SỬ GIAO DỊCH CỔ ĐÔNG ---
+@bot.on_message(filters.command(["tien_nga_check_history_transaction", "tien_nga_lich_su_giao_dich_co_dong"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_history_transaction|tien_nga_lich_su_giao_dich_co_dong)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
+async def tien_nga_check_history_transaction_handler(client, message: Message) -> None:
+    """
+    /tien_nga_check_history_transaction [mã cổ đông] [dd/mm/yyyy - dd/mm/yyyy]
+    Lấy lịch sử giao dịch của cổ đông: góp vốn, rút vốn, nhận cổ tức, thanh toán quỹ cổ đông, ...
+    """
+    args_text = (message.text or "").strip()
+    # Remove command prefix
+    for cmd in ["tien_nga_check_history_transaction", "tien_nga_lich_su_giao_dich_co_dong"]:
+        args_text = re.sub(rf"^/?{cmd}\s*", "", args_text, flags=re.IGNORECASE).strip()
+    # Also handle @bot prefix
+    args_text = re.sub(r"^@\w+\s+/?(?:tien_nga_check_history_transaction|tien_nga_lich_su_giao_dich_co_dong)\s*", "", args_text, flags=re.IGNORECASE).strip()
+
+    if not args_text:
+        await message.reply_text(
+            "<b>KIỂM TRA LỊCH SỬ GIAO DỊCH CỔ ĐÔNG</b>\n\n"
+            "Cú pháp: <code>/tien_nga_check_history_transaction [mã cổ đông] [dd/mm/yyyy - dd/mm/yyyy]</code>\n\n"
+            "<i>Ví dụ:</i>\n"
+            "<code>/tien_nga_check_history_transaction CD001 01/01/2025 - 31/12/2025</code>\n\n"
+            "<i>Nếu không nhập ngày, hệ thống sẽ lấy toàn bộ lịch sử giao dịch.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Parse: [mã cổ đông] [dd/mm/yyyy - dd/mm/yyyy]
+    date_range_match = re.search(r"(\d{2}/\d{2}/\d{4})\s*-\s*(\d{2}/\d{2}/\d{4})", args_text)
+
+    start_date = None
+    end_date = None
+    if date_range_match:
+        try:
+            start_date = datetime.strptime(date_range_match.group(1), "%d/%m/%Y").date()
+            end_date = datetime.strptime(date_range_match.group(2), "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text(
+                "⚠️ Định dạng ngày không hợp lệ. Vui lòng dùng <code>dd/mm/yyyy - dd/mm/yyyy</code>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        # Shareholder code is everything before the date range
+        shareholder_code = args_text[:date_range_match.start()].strip()
+    else:
+        # No date range: entire string is the shareholder code
+        shareholder_code = args_text.strip()
+
+    if not shareholder_code:
+        await message.reply_text(
+            "⚠️ Vui lòng nhập <b>Mã Cổ Đông</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    from app.models.business import Shareholder, Investment, DailyPayment
+    from sqlalchemy import or_
+
+    db = SessionLocal()
+    try:
+        # Find shareholder
+        shareholder = db.query(Shareholder).filter(Shareholder.shareholder_code == shareholder_code).first()
+        if not shareholder:
+            await message.reply_text(
+                f"⚠️ Không tìm thấy cổ đông với mã <b>{shareholder_code}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Find associated investment
+        investment = db.query(Investment).filter(Investment.id == shareholder.investment_id).first()
+        inv_name = investment.name if investment else "N/A"
+        inv_code = (investment.investment_code if investment and investment.investment_code else "N/A")
+
+        # Build date range label
+        if start_date and end_date:
+            period_label = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
+        else:
+            period_label = "Toàn bộ"
+
+        # ------------------------------------------------------------------
+        # Collect transactions from DailyPayment that relate to this shareholder
+        # Match by: receiver, requester, executor, purpose, or notes containing shareholder_code or shareholder fullname
+        # ------------------------------------------------------------------
+        sh_code = shareholder.shareholder_code
+        sh_name = shareholder.fullname or ""
+
+        query = db.query(DailyPayment).filter(
+            DailyPayment.investment_id == shareholder.investment_id,
+            DailyPayment.status == "APPROVED",
+            or_(
+                DailyPayment.receiver.ilike(f"%{sh_code}%"),
+                DailyPayment.requester.ilike(f"%{sh_code}%"),
+                DailyPayment.executor.ilike(f"%{sh_code}%"),
+                DailyPayment.purpose.ilike(f"%{sh_code}%"),
+                DailyPayment.notes.ilike(f"%{sh_code}%"),
+                DailyPayment.receiver.ilike(f"%{sh_name}%"),
+                DailyPayment.requester.ilike(f"%{sh_name}%"),
+                DailyPayment.executor.ilike(f"%{sh_name}%"),
+                DailyPayment.purpose.ilike(f"%{sh_name}%"),
+                DailyPayment.notes.ilike(f"%{sh_name}%"),
+            )
+        )
+
+        if start_date:
+            query = query.filter(DailyPayment.day >= start_date)
+        if end_date:
+            query = query.filter(DailyPayment.day <= end_date)
+
+        payments = query.order_by(DailyPayment.day.asc()).all()
+
+        # ------------------------------------------------------------------
+        # Aggregate totals by shareholders portion vs investment fund
+        # ------------------------------------------------------------------
+        all_shareholders = db.query(Shareholder).filter(
+            Shareholder.investment_id == shareholder.investment_id
+        ).all()
+        total_invest_amount = sum(sh.investment_amount or 0 for sh in all_shareholders)
+        sh_invest_amount = shareholder.investment_amount or 0
+        share_pct = (sh_invest_amount / total_invest_amount * 100) if total_invest_amount > 0 else 0
+
+        # ------------------------------------------------------------------
+        # Build the report message
+        # ------------------------------------------------------------------
+        msg = (
+            f"<b>LỊCH SỬ GIAO DỊCH CỔ ĐÔNG</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<b>Mã Cổ Đông:</b> <code>{sh_code}</code>\n"
+            f"<b>Tên Cổ Đông:</b> {sh_name}\n"
+            f"<b>Quỹ Đầu Tư:</b> {inv_name} (<code>{inv_code}</code>)\n"
+            f"<b>Vốn Góp:</b> <code>{fmt_vn(sh_invest_amount)}</code>\n"
+            f"<b>Cổ Phần:</b> <b>{share_pct:.1f}%</b>\n"
+            f"<b>Khoảng thời gian:</b> {period_label}\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+        )
+
+        if not payments:
+            msg += "<i>Không có giao dịch thu/chi nào trong khoảng thời gian này.</i>\n"
+        else:
+            total_thu = 0
+            total_chi = 0
+
+            msg += f"<b>CHI TIẾT GIAO DỊCH ({len(payments)})</b>\n\n"
+
+            for idx, p in enumerate(payments, 1):
+                p_type = "THU" if p.payment_type == "thu" else "CHI"
+                p_icon = "📈" if p.payment_type == "thu" else "📉"
+                p_day = p.day.strftime("%d/%m/%Y") if p.day else "—"
+                p_amount = p.amount or 0
+
+                if p.payment_type == "thu":
+                    total_thu += p_amount
+                else:
+                    total_chi += p_amount
+
+                msg += (
+                    f"{p_icon} <b>{idx}. [{p_type}] {p.purpose or 'Không rõ'}</b>\n"
+                    f"   Ngày: {p_day}\n"
+                    f"   Số tiền: <code>{fmt_vn(p_amount)}</code>\n"
+                )
+                if p.executor:
+                    msg += f"   Người TH: {p.executor}\n"
+                if p.receiver:
+                    msg += f"   Người nhận: {p.receiver}\n"
+                if p.requester:
+                    msg += f"   Người YC: {p.requester}\n"
+                if p.reason:
+                    msg += f"   Lý do: {p.reason}\n"
+                if p.notes:
+                    msg += f"   Ghi chú: {p.notes}\n"
+                msg += "\n"
+
+            # Summary
+            msg += (
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"<b>TỔNG KẾT</b>\n\n"
+                f"Tổng Thu: <code>{fmt_vn(total_thu)}</code>\n"
+                f"Tổng Chi: <code>{fmt_vn(total_chi)}</code>\n"
+                f"Chênh Lệch: <code>{fmt_vn(total_thu - total_chi)}</code>\n"
+            )
+
+        # If message too long, split into parts
+        if len(msg) > 4000:
+            parts = []
+            while msg:
+                if len(msg) <= 4000:
+                    parts.append(msg)
+                    break
+                split_idx = msg.rfind("\n", 0, 4000)
+                if split_idx == -1:
+                    split_idx = 4000
+                parts.append(msg[:split_idx])
+                msg = msg[split_idx:]
+
+            for part in parts:
+                await message.reply_text(part, parse_mode=ParseMode.HTML)
+        else:
+            await message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+        LogInfo(f"[TienNga] Check history transaction for shareholder '{sh_code}' ({period_label}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        LogError(f"Error checking shareholder transaction history: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()

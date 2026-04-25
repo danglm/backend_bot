@@ -352,8 +352,8 @@ def _render_to_png_sync(html_content: str) -> bytes:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(
-            viewport={"width": 1180, "height": 1200},
-            device_scale_factor=2
+            viewport={"width": 1180, "height": 800},
+            device_scale_factor=1.5
         )
 
         page.set_content(html_content, wait_until="networkidle")

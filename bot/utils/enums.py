@@ -13,28 +13,32 @@ class UserType(IntFlag):
 class CustomTitle(str, Enum):
     # Tiến Nga Projects
     SUPER_MAIN = "super_main"
-    MAIN_SUPPLIER = "main_supplier"           #Nhà cung cấp
-    MEMBER_SUPPLIER = "member_supplier"       #Nhà cung cấp
-    MAIN_SALES = "main_sales"               #Kinh doanh
-    MEMBER_SALES = "member_sales"           #Kinh doanh
-    MAIN_HR = "main_hr"                  #Nhân sự
-    MEMBER_HR = "member_hr"              #Nhân sự
-    MAIN_FINANCE = "main_finance"        #Tài chính
-    MEMBER_FINANCE = "member_finance"    #Tài chính
-    MAIN_PRODUCT = "main_product"             #Thành phẩm
-    MEMBER_PRODUCT = "member_product"         #Thành phẩm
-    MAIN_PARTNER = "main_partner"             #Đối tác
-    MEMBER_PARTNER = "member_partner"         #Đối tác
-    MAIN_INVENTORY = "main_inventory"         #Kho
-    MEMBER_INVENTORY = "member_inventory"     #Kho
+    MAIN_SUPPLIER = "main_supplier"             #Nhà cung cấp (Mủ cao su, Củi, Acid, Amoniac)
+    MEMBER_SUPPLIER = "member_supplier"         #Nhà cung cấp (Mủ cao su, Củi, Acid, Amoniac)
+    MAIN_SALES = "main_sales"                   #Kinh doanh
+    MEMBER_SALES = "member_sales"               #Kinh doanh
+    MAIN_HR = "main_hr"                         #Nhân sự
+    MEMBER_HR = "member_hr"                     #Nhân sự
+    MAIN_FINANCE = "main_finance"               #Tài chính
+    MEMBER_FINANCE = "member_finance"           #Tài chính
+    MAIN_PRODUCT = "main_product"               #Thành phẩm
+    MEMBER_PRODUCT = "member_product"           #Thành phẩm
+    MAIN_PARTNER = "main_partner"               #Đối tác, Khách hàng
+    MEMBER_PARTNER = "member_partner"           #Đối tác, Khách hàng
+    MAIN_INVENTORY = "main_inventory"           #Kho
+    MEMBER_INVENTORY = "member_inventory"       #Kho
+    MAIN_SHAREHOLDER = "main_shareholder"       #Cổ đông
+    MEMBER_SHAREHOLDER = "member_shareholder"   #Cổ đông
+    MAIN_HARVEST = "main_harvest"               #Thu hoạch Cao su
+    MEMBER_HARVEST = "member_harvest"           #Thu hoạch Cao su
     
     # Other Projects
-    MAIN_DEVICE = "main_device"       #Thiết bị
-    MEMBER_DEVICE = "member_device"   #Thiết bị
-    MAIN_VEHICLE = "main_vehicle"     #Phương tiện
-    MEMBER_VEHICLE = "member_vehicle" #Phương tiện
-    MAIN_IMAGE = "main_image"         #Hình ảnh, giấy tờ
-    MEMBER_IMAGE = "member_image"     #Hình ảnh, giấy tờ
+    MAIN_DEVICE = "main_device"                 #Thiết bị
+    MEMBER_DEVICE = "member_device"             #Thiết bị
+    MAIN_VEHICLE = "main_vehicle"               #Phương tiện
+    MEMBER_VEHICLE = "member_vehicle"           #Phương tiện
+    MAIN_IMAGE = "main_image"                   #Hình ảnh, giấy tờ
+    MEMBER_IMAGE = "member_image"               #Hình ảnh, giấy tờ
 
 
 def has_flag(user_mask, flag):
