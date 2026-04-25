@@ -8481,7 +8481,7 @@ async def _generate_daily_product_report(message, start_date, end_date):
 
 
 # --- KIỂM TRA LỊCH SỬ GIAO DỊCH CỔ ĐÔNG ---
-@bot.on_message(filters.command(["tien_nga_check_history_transaction", "tien_nga_lich_su_giao_dich_co_dong"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_history_transaction|tien_nga_lich_su_giao_dich_co_dong)\b"))
+@bot.on_message(filters.command(["tien_nga_check_history_transaction", "tien_nga_lich_su_giao_dich_co_dong", "tien_nga_lich_su_gd"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_history_transaction|tien_nga_lich_su_giao_dich_co_dong|tien_nga_lich_su_gd)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
@@ -8493,10 +8493,10 @@ async def tien_nga_check_history_transaction_handler(client, message: Message) -
     """
     args_text = (message.text or "").strip()
     # Remove command prefix
-    for cmd in ["tien_nga_check_history_transaction", "tien_nga_lich_su_giao_dich_co_dong"]:
+    for cmd in ["tien_nga_check_history_transaction", "tien_nga_lich_su_giao_dich_co_dong", "tien_nga_lich_su_gd"]:
         args_text = re.sub(rf"^/?{cmd}\s*", "", args_text, flags=re.IGNORECASE).strip()
     # Also handle @bot prefix
-    args_text = re.sub(r"^@\w+\s+/?(?:tien_nga_check_history_transaction|tien_nga_lich_su_giao_dich_co_dong)\s*", "", args_text, flags=re.IGNORECASE).strip()
+    args_text = re.sub(r"^@\w+\s+/?(?:tien_nga_check_history_transaction|tien_nga_lich_su_giao_dich_co_dong|tien_nga_lich_su_gd)\s*", "", args_text, flags=re.IGNORECASE).strip()
 
     if not args_text:
         await message.reply_text(

@@ -797,7 +797,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_tao_co_dong", "Tạo cổ đông quỹ"),
                     BotCommand("tien_nga_chia_co_tuc", "Chia cổ tức quỹ"),
                     BotCommand("tien_nga_thanh_toan_co_dong", "Thanh toán quỹ cổ đông"),
-                    BotCommand("tien_nga_check_history_transaction", "Lịch sử GD cổ đông"),
+                    BotCommand("tien_nga_lich_su_gd", "Lịch sử GD cổ đông"),
                     BotCommand("tien_nga_tao_dau_tu", "Tạo khoản đầu tư"),
                 ])
 
@@ -809,7 +809,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_tao_co_dong", "Tạo cổ đông quỹ"),
                     BotCommand("tien_nga_chia_co_tuc", "Chia cổ tức quỹ"),
                     BotCommand("tien_nga_thanh_toan_co_dong", "Thanh toán quỹ cổ đông"),
-                    BotCommand("tien_nga_check_history_transaction", "Lịch sử GD cổ đông"),
+                    BotCommand("tien_nga_lich_su_gd", "Lịch sử GD cổ đông"),
                     BotCommand("tien_nga_tao_dau_tu", "Tạo khoản đầu tư"),
                     ## Giao dịch
                     BotCommand("tien_nga_xn_thanh_toan_cong_no", "Xác nhận thanh toán công nợ"),
@@ -860,7 +860,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                 label = "Tiến Nga (Cổ Đông)"
                 commands_to_set.extend([
                     BotCommand("tien_nga_kiem_tra_quy_dau_tu", "Kiểm tra Quỹ Đầu Tư"),
-                    BotCommand("tien_nga_check_history_transaction", "Lịch sử GD cổ đông"),
+                    BotCommand("tien_nga_lich_su_gd", "Lịch sử GD cổ đông"),
                 ])
 
             if custom_title == "member_finance":
