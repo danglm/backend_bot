@@ -3744,26 +3744,31 @@ async def tien_nga_export_summary_callback(client, callback_query: CallbackQuery
     finally:
         db.close()
 
-# ===================== CÔNG TY / ĐƠN VỊ =====================
+# ===================== ĐỐI TÁC =====================
 
-@bot.on_message(filters.command(["tien_nga_create_company", "tien_nga_tao_don_vi"]) | filters.regex(r"^@\w+\s+/tien_nga_create_company|/tien_nga_tao_don_vi\b"))
+@bot.on_message(filters.command(["tien_nga_create_partner", "tien_nga_tao_doi_tac"]) | filters.regex(r"^@\w+\s+/tien_nga_create_partner|/tien_nga_tao_doi_tac\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
-async def tien_nga_create_company_handler(client, message: Message) -> None:
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+async def tien_nga_create_partner_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
     if len(lines) < 2:
-        form_template = """<b>FORM TẠO ĐƠN VỊ (CÔNG TY)</b>
+        form_template = """<b>FORM TẠO ĐỐI TÁC</b>
 
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<pre>/tien_nga_create_company
-Mã Đơn Vị: 
-Tên Đơn Vị: </pre>
+<pre>/tien_nga_create_partner
+Mã Đối Tác: 
+Tên Đối Tác: 
+Công Nợ: 0
+Username TG: 
+Nhóm Telegram: 
+Ngân Hàng: 
+Số TK: </pre>
 
-<i>Ghi chú: Mã đơn vị nên viết liền không dấu (VD: CT001).</i>"""
+<i>Ghi chú: Mã đối tác nên viết liền không dấu (VD: DT001).</i>"""
         await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         return
 
@@ -3773,112 +3778,130 @@ Tên Đơn Vị: </pre>
             key, val = line.split(":", 1)
             data[key.strip()] = val.strip()
 
-    unit_id = data.get("Mã Đơn Vị", "").strip()
-    unit_name = data.get("Tên Đơn Vị", "").strip()
+    partner_id = data.get("Mã Đối Tác", "").strip().upper()
+    partner_name = data.get("Tên Đối Tác", "").strip()
+    total_debt = parse_float_vn(data.get("Công Nợ", "0"))
+    username = data.get("Username TG", "").strip()
+    telegram_group = data.get("Nhóm Telegram", "").strip()
+    bank_name = data.get("Ngân Hàng", "").strip()
+    bank_account = data.get("Số TK", "").strip()
 
-    if not unit_id:
-        await message.reply_text("⚠️ <b>Mã Đơn Vị</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+    if not partner_id:
+        await message.reply_text("⚠️ <b>Mã Đối Tác</b> là bắt buộc.", parse_mode=ParseMode.HTML)
         return
-    if not unit_name:
-        await message.reply_text("⚠️ <b>Tên Đơn Vị</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+    if not partner_name:
+        await message.reply_text("⚠️ <b>Tên Đối Tác</b> là bắt buộc.", parse_mode=ParseMode.HTML)
         return
 
     from app.db.session import SessionLocal
-    from app.models.business import CompanyCustomers
+    from app.models.business import Partners
     import uuid as uuid_lib
 
     db = SessionLocal()
     try:
         # Kiểm tra xem mã đã tồn tại chưa
-        existing = db.query(CompanyCustomers).filter(CompanyCustomers.unit_id == unit_id).first()
+        existing = db.query(Partners).filter(
+            Partners.partner_id == partner_id,
+            Partners.status == "ACTIVE"
+        ).first()
         if existing:
-            await message.reply_text(f"⚠️ Mã đơn vị <b>{unit_id}</b> đã tồn tại trong hệ thống.", parse_mode=ParseMode.HTML)
+            await message.reply_text(f"⚠️ Mã đối tác <b>{partner_id}</b> đã tồn tại trong hệ thống.", parse_mode=ParseMode.HTML)
             return
 
-        new_company = CompanyCustomers(
+        new_partner = Partners(
             id=uuid_lib.uuid4(),
-            unit_id=unit_id,
-            unit_name=unit_name,
+            partner_id=partner_id,
+            partner_name=partner_name,
+            total_debt=total_debt,
+            username=username if username else None,
+            telegram_group=telegram_group if telegram_group else None,
+            bank_name=bank_name if bank_name else None,
+            bank_account=bank_account if bank_account else None,
             status="ACTIVE"
         )
-        db.add(new_company)
+        db.add(new_partner)
         db.commit()
 
+        def fmt_money(val):
+            if val is None or val == 0:
+                return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
         await message.reply_text(
-            f"✅ <b>Tạo Đơn Vị Thành Công!</b>\n\n"
-            f"<b>Mã Đơn Vị:</b> <code>{unit_id}</code>\n"
-            f"<b>Tên Đơn Vị:</b> {unit_name}\n"
+            f"✅ <b>Tạo Đối Tác Thành Công!</b>\n\n"
+            f"<b>Mã Đối Tác:</b> <code>{partner_id}</code>\n"
+            f"<b>Tên Đối Tác:</b> {partner_name}\n"
+            f"<b>Công Nợ:</b> <code>{fmt_money(total_debt)}</code>\n"
+            f"<b>Username TG:</b> {username or '—'}\n"
+            f"<b>Nhóm Telegram:</b> {telegram_group or '—'}\n"
+            f"<b>Ngân Hàng:</b> {bank_name or '—'}\n"
+            f"<b>Số TK:</b> <code>{bank_account or '—'}</code>\n"
             f"<b>Trạng Thái:</b> ACTIVE",
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
         import traceback as tb
-        LogError(f"Error creating company customer: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        LogError(f"Error creating partner: {tb.format_exc()}", LogType.SYSTEM_STATUS)
         db.rollback()
-        await message.reply_text("❌ Có lỗi hệ thống khi lưu thông tin đơn vị.", parse_mode=ParseMode.HTML)
+        await message.reply_text("❌ Có lỗi hệ thống khi lưu thông tin đối tác.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
-@bot.on_message(filters.command(["tien_nga_company_business", "tien_nga_kinh_doanh_don_vi"]) | filters.regex(r"^@\w+\s+/tien_nga_company_business|/tien_nga_kinh_doanh_don_vi\b"))
+@bot.on_message(filters.command(["tien_nga_update_partner", "tien_nga_cap_nhat_doi_tac"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_partner|tien_nga_cap_nhat_doi_tac)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
-async def tien_nga_company_business_handler(client, message: Message) -> None:
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+async def tien_nga_update_partner_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
-    # Nếu chỉ có 1 dòng (lệnh + mã đơn vị)
     if len(lines) < 2:
         args = lines[0].split()
         if len(args) < 2:
             await message.reply_text(
-                "⚠️ Cú pháp: <code>/tien_nga_company_business [Mã Đơn Vị]</code>\n\n"
-                "<i>Ví dụ: <code>/tien_nga_company_business CT001</code></i>",
+                "⚠️ Cú pháp: <code>/tien_nga_update_partner [Mã Đối Tác]</code>\n\n"
+                "<i>Ví dụ: <code>/tien_nga_update_partner DT001</code></i>",
                 parse_mode=ParseMode.HTML
             )
             return
 
-        unit_id = args[1].upper()
+        partner_id = args[1].upper()
 
-        from app.models.business import CompanyCustomers
         from app.db.session import SessionLocal
+        from app.models.business import Partners
 
         db = SessionLocal()
         try:
-            company = db.query(CompanyCustomers).filter(
-                CompanyCustomers.unit_id == unit_id,
-                CompanyCustomers.status == "ACTIVE"
-            ).first()
-            if not company:
+            partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
+            if not partner:
                 await message.reply_text(
-                    f"⚠️ Không tìm thấy Đơn vị với mã <b>{unit_id}</b>.",
+                    f"⚠️ Không tìm thấy Đối tác với mã <b>{partner_id}</b>.",
                     parse_mode=ParseMode.HTML
                 )
                 return
 
-            today_str = datetime.now().strftime("%d/%m/%Y")
+            def fmt_debt(val):
+                if val is None or val == 0:
+                    return "0"
+                return f"{int(val):,}".replace(",", ".")
 
-            form_template = f"""<b>FORM GIAO DỊCH ĐƠN VỊ</b>
-Đơn vị: <b>{company.unit_name}</b> (<code>{unit_id}</code>)
-
-Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
-
-<pre>/tien_nga_company_business
-Mã Đơn Vị: {unit_id}
-Ngày: {today_str}
-Nhập: 0
-Xuất: 0
-Đơn Giá: 0
-Mã Đơn Hàng: 
-Ghi Chú: </pre>
-
-<i>Ghi chú:
-- Hệ thống sẽ tự tính Thành Tiền = (Nhập hoặc Xuất) x Đơn Giá. Nếu cả Nhập và Xuất đều bằng 0, Thành Tiền = 0.
-- Mã Đơn hàng có thể bỏ trống.</i>"""
+            form_template = (
+                f"<b>FORM CẬP NHẬT ĐỐI TÁC</b>\n"
+                f"Vui lòng sao chép form dưới đây, sửa thông tin và gửi lại:\n\n"
+                f"<pre>/tien_nga_update_partner\n"
+                f"Mã Đối Tác: {partner.partner_id}\n"
+                f"Tên Đối Tác: {partner.partner_name or ''}\n"
+                f"Công Nợ: {fmt_debt(partner.total_debt)}\n"
+                f"Username TG: {partner.username or ''}\n"
+                f"Nhóm Telegram: {partner.telegram_group or ''}\n"
+                f"Ngân Hàng: {partner.bank_name or ''}\n"
+                f"Số TK: {partner.bank_account or ''}\n"
+                f"Trạng Thái: {partner.status or 'ACTIVE'}</pre>"
+            )
             await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         except Exception as e:
             import traceback as tb
-            LogError(f"Error fetching company for business: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+            LogError(f"Error fetching partner for update: {tb.format_exc()}", LogType.SYSTEM_STATUS)
             await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
         finally:
             db.close()
@@ -3891,13 +3914,711 @@ Ghi Chú: </pre>
             key, val = line.split(":", 1)
             data[key.strip()] = val.strip()
 
-    unit_id = data.get("Mã Đơn Vị", "").strip().upper()
+    partner_id = data.get("Mã Đối Tác", "").strip().upper()
+    if not partner_id:
+        await message.reply_text("⚠️ <b>Mã Đối Tác</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    partner_name = data.get("Tên Đối Tác", "").strip()
+    total_debt_str = data.get("Công Nợ", "").strip()
+    username = data.get("Username TG", "").strip()
+    telegram_group = data.get("Nhóm Telegram", "").strip()
+    bank_name = data.get("Ngân Hàng", "").strip()
+    bank_account = data.get("Số TK", "").strip()
+    status = data.get("Trạng Thái", "").strip().upper()
+
+    from app.db.session import SessionLocal
+    from app.models.business import Partners
+
+    db = SessionLocal()
+    try:
+        partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
+        if not partner:
+            await message.reply_text(
+                f"⚠️ Mã đối tác <b>{partner_id}</b> không tồn tại.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        if partner_name:
+            partner.partner_name = partner_name
+        if total_debt_str:
+            partner.total_debt = parse_float_vn(total_debt_str)
+        partner.username = username if username else None
+        partner.telegram_group = telegram_group if telegram_group else None
+        partner.bank_name = bank_name if bank_name else None
+        partner.bank_account = bank_account if bank_account else None
+        if status in ("ACTIVE", "DELETED", "INACTIVE"):
+            partner.status = status
+
+        db.commit()
+
+        def fmt_money(val):
+            if val is None or val == 0:
+                return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        LogInfo(f"[TienNga] Updated partner '{partner_id}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        await message.reply_text(
+            f"✅ <b>CẬP NHẬT ĐỐI TÁC THÀNH CÔNG</b>\n\n"
+            f"<b>Mã Đối Tác:</b> <code>{partner.partner_id}</code>\n"
+            f"<b>Tên Đối Tác:</b> {partner.partner_name}\n"
+            f"<b>Công Nợ:</b> <code>{fmt_money(partner.total_debt)}</code>\n"
+            f"<b>Username TG:</b> {partner.username or '—'}\n"
+            f"<b>Nhóm Telegram:</b> {partner.telegram_group or '—'}\n"
+            f"<b>Ngân Hàng:</b> {partner.bank_name or '—'}\n"
+            f"<b>Số TK:</b> <code>{partner.bank_account or '—'}</code>\n"
+            f"<b>Trạng Thái:</b> {partner.status}",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error updating partner: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        db.rollback()
+        await message.reply_text("❌ Có lỗi hệ thống khi lưu thông tin đối tác.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_delete_partner", "tien_nga_xoa_doi_tac"]) | filters.regex(r"^@\w+\s+/(tien_nga_delete_partner|tien_nga_xoa_doi_tac)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+async def tien_nga_delete_partner_handler(client, message: Message) -> None:
+    args = message.text.split()
+    if len(args) < 2:
+        await message.reply_text(
+            "⚠️ Cú pháp: <code>/tien_nga_delete_partner [Mã Đối Tác]</code>\n\n"
+            "<i>Ví dụ: <code>/tien_nga_delete_partner DT001</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    partner_id = args[1].upper()
+
+    from app.db.session import SessionLocal
+    from app.models.business import Partners
+
+    db = SessionLocal()
+    try:
+        partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
+        if not partner:
+            await message.reply_text(
+                f"⚠️ Không tìm thấy Đối tác với mã <b>{partner_id}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        if partner.status in ("DELETED", "INACTIVE"):
+            await message.reply_text(
+                f"ℹ️ Đối tác <b>{partner_id}</b> đã ở trạng thái khóa / xóa từ trước.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        partner.status = "DELETED"
+        db.commit()
+
+        LogInfo(f"[TienNga] Soft deleted partner '{partner_id}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        await message.reply_text(
+            f"✅ <b>XÓA ĐỐI TÁC THÀNH CÔNG</b>\n\n"
+            f"<b>Mã Đối Tác:</b> <code>{partner_id}</code>\n"
+            f"<b>Tên Đối Tác:</b> {partner.partner_name}\n"
+            f"<i>Đối tác này đã được ẩn (chuyển sang trạng thái DELETED).</i>",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error soft deleting partner: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        db.rollback()
+        await message.reply_text("❌ Có lỗi xảy ra khi xóa đối tác.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_list_partner", "tien_nga_ds_doi_tac"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_partner|tien_nga_ds_doi_tac)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+async def tien_nga_list_partner_handler(client, message: Message) -> None:
+    from app.db.session import SessionLocal
+    from app.models.business import Partners
+
+    db = SessionLocal()
+    try:
+        partners = db.query(Partners).filter(Partners.status == "ACTIVE").order_by(Partners.partner_id).all()
+
+        if not partners:
+            await message.reply_text(
+                "⚠️ <b>Không có đối tác nào trong hệ thống.</b>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        def fmt_money(val):
+            if val is None or val == 0:
+                return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        # ── ≤ 10: hiển thị text ──
+        if len(partners) <= 10:
+            text = f"<b>DANH SÁCH ĐỐI TÁC ({len(partners)})</b>\n\n"
+            for idx, p in enumerate(partners, 1):
+                debt_val = p.total_debt or 0
+                text += (
+                    f"<b>{idx}. {p.partner_name}</b>\n"
+                    f"   Mã ĐT: <code>{p.partner_id}</code>\n"
+                    f"   Công Nợ: <code>{fmt_money(debt_val)}</code>\n"
+                    f"   Username TG: {p.username or '—'}\n"
+                    f"   Nhóm Telegram: {p.telegram_group or '—'}\n"
+                    f"   Ngân Hàng: {p.bank_name or '—'}\n"
+                    f"   Số TK: <code>{p.bank_account or '—'}</code>\n"
+                    f"   Trạng Thái: {p.status}\n\n"
+                )
+            await message.reply_text(text, parse_mode=ParseMode.HTML)
+            return
+
+        # ── > 10: xuất Excel ──
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import tempfile, os
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "DanhSachDoiTac"
+
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        money_align = Alignment(horizontal="right", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin"),
+        )
+        alt_fill = PatternFill("solid", fgColor="D9E2F3")
+
+        headers = ["STT", "Mã Đối Tác", "Tên Đối Tác", "Công Nợ (VNĐ)", "Username TG", "Nhóm Telegram", "Ngân Hàng", "Số TK", "Trạng Thái"]
+
+        for col_idx, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+
+        for idx, p in enumerate(partners, 1):
+            row = idx + 1
+            row_fill = alt_fill if idx % 2 == 0 else None
+            debt_val = p.total_debt or 0
+
+            values = [
+                idx,
+                p.partner_id,
+                p.partner_name or "—",
+                int(debt_val),
+                p.username or "—",
+                p.telegram_group or "—",
+                p.bank_name or "—",
+                p.bank_account or "—",
+                p.status or "ACTIVE",
+            ]
+
+            for col_idx, val in enumerate(values, 1):
+                cell = ws.cell(row=row, column=col_idx, value=val)
+                cell.border = thin_border
+                if col_idx in (1, 2, 8, 9):
+                    cell.alignment = center_align
+                elif col_idx == 4:
+                    cell.alignment = money_align
+                    cell.number_format = '#,##0'
+                else:
+                    cell.alignment = left_align
+                if row_fill:
+                    cell.fill = row_fill
+
+        col_widths = [6, 15, 25, 20, 18, 20, 15, 15, 14]
+        for col_idx, w in enumerate(col_widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = w
+
+        ws.freeze_panes = "A2"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+
+        now_str = datetime.now().strftime("%Y%m%d_%H%M")
+        await message.reply_document(
+            document=tmp_path,
+            file_name=f"danh_sach_doi_tac_{now_str}.xlsx",
+            caption=(
+                f"<b>DANH SÁCH ĐỐI TÁC</b>\n\n"
+                f"Tổng cộng: <b>{len(partners)}</b> đối tác\n"
+                f"<i>Xuất lúc: {datetime.now().strftime('%H:%M %d/%m/%Y')}</i>"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+
+        os.remove(tmp_path)
+        LogInfo(
+            f"[TienNga] Listed {len(partners)} partners by @{message.from_user.username or message.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error listing partners: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_check_transaction", "tien_nga_kiem_tra_giao_dich"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_transaction|tien_nga_kiem_tra_giao_dich)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+async def tien_nga_check_transaction_handler(client, message: Message) -> None:
+    import re
+    text = message.text
+    dates = re.findall(r'(\d{1,2}/\d{1,2}/\d{4})', text)
+    
+    start_date = "ALL"
+    end_date = "ALL"
+    if len(dates) >= 2:
+        start_date = dates[0].replace('/', '')
+        end_date = dates[1].replace('/', '')
+    elif len(dates) == 1:
+        start_date = dates[0].replace('/', '')
+        end_date = dates[0].replace('/', '')
+        
+    text_no_dates = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', '', text).replace('-', '')
+    args = text_no_dates.split()
+    partner_id = None
+    
+    from app.db.session import SessionLocal
+    from app.models.business import Partners
+    from app.models.telegram import TelegramProjectMember
+    
+    db = SessionLocal()
+    try:
+        if len(args) > 1:
+            partner_id = args[1].upper()
+        else:
+            chat_id = str(message.chat.id)
+            group_member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == chat_id
+            ).first()
+            if group_member and group_member.role == "member" and group_member.group_name:
+                partner = db.query(Partners).filter(Partners.telegram_group == group_member.group_name).first()
+                if partner:
+                    partner_id = partner.partner_id
+        
+        if not partner_id:
+            await message.reply_text("⚠️ Không xác định được mã đối tác. Vui lòng truyền mã: <code>/tien_nga_kiem_tra_giao_dich [Mã]</code>", parse_mode=ParseMode.HTML)
+            return
+            
+        partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
+        if not partner:
+            await message.reply_text(f"⚠️ Không tìm thấy đối tác với mã <b>{partner_id}</b>.", parse_mode=ParseMode.HTML)
+            return
+            
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Nhập", callback_data=f"check_partner_txn:import:{partner_id}:{start_date}:{end_date}")],
+            [InlineKeyboardButton("Xuất", callback_data=f"check_partner_txn:export:{partner_id}:{start_date}:{end_date}")],
+            [InlineKeyboardButton("Hủy", callback_data="check_partner_txn:cancel")]
+        ])
+        
+        date_info = f" (Từ {dates[0]} đến {dates[1]})" if len(dates) >= 2 else (f" (Ngày {dates[0]})" if len(dates) == 1 else "")
+        
+        await message.reply_text(
+            f"<b>KIỂM TRA GIAO DỊCH ĐỐI TÁC</b>\n\n"
+            f"Đối tác: <b>{partner.partner_name}</b> (<code>{partner_id}</code>)\n"
+            f"Thời gian: <b>{date_info.strip(' ()') or 'Tất cả'}</b>\n"
+            f"<code>/tien_nga_kiem_tra_giao_dich [dd/mm/yyyy] [dd/mm/yyyy]</code>\n\n"
+            f"Vui lòng chọn loại giao dịch bạn muốn kiểm tra:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error in tien_nga_check_transaction_handler: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^check_partner_txn:"))
+async def check_partner_txn_callback(client, callback_query) -> None:
+    data = callback_query.data.split(":")
+    action = data[1]
+    
+    if action == "cancel":
+        await callback_query.message.delete()
+        return
+        
+    partner_id = data[2]
+    start_date_str = data[3] if len(data) > 3 else "ALL"
+    end_date_str = data[4] if len(data) > 4 else "ALL"
+    
+    txn_type = "Nhập" if action == "import" else "Xuất"
+    
+    from app.db.session import SessionLocal
+    from app.models.business import PartnerBusinesses, Partners
+    import tempfile
+    import os
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    
+    db = SessionLocal()
+    try:
+        partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
+        if not partner:
+            await callback_query.answer("⚠️ Không tìm thấy đối tác.", show_alert=True)
+            return
+            
+        from datetime import datetime
+        start_dt = None
+        end_dt = None
+        if start_date_str != "ALL" and end_date_str != "ALL":
+            try:
+                start_dt = datetime.strptime(start_date_str, "%d%m%Y").date()
+                end_dt = datetime.strptime(end_date_str, "%d%m%Y").date()
+            except:
+                pass
+
+        query = db.query(PartnerBusinesses).filter(PartnerBusinesses.partner_id == partner_id)
+        if txn_type == "Nhập":
+            query = query.filter(PartnerBusinesses.import_amount > 0)
+        else:
+            query = query.filter(PartnerBusinesses.export_amount > 0)
+            
+        if start_dt and end_dt:
+            query = query.filter(PartnerBusinesses.day >= start_dt, PartnerBusinesses.day <= end_dt)
+            
+        txns = query.order_by(PartnerBusinesses.day.desc()).all()
+        
+        if not txns:
+            await callback_query.answer(f"⚠️ Không có giao dịch {txn_type} nào.", show_alert=True)
+            return
+            
+        await callback_query.answer()
+        
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+            
+        if len(txns) <= 10:
+            text = f"<b>DANH SÁCH GIAO DỊCH {txn_type.upper()}</b>\n"
+            text += f"Đối tác: <b>{partner.partner_name}</b> (<code>{partner_id}</code>)\n"
+            if start_dt and end_dt:
+                text += f"Thời gian: {start_dt.strftime('%d/%m/%Y')} - {end_dt.strftime('%d/%m/%Y')}\n\n"
+            else:
+                text += "\n"
+            for idx, txn in enumerate(txns, 1):
+                date_str = txn.day.strftime("%d/%m/%Y") if txn.day else "N/A"
+                quantity = txn.import_amount if txn_type == "Nhập" else txn.export_amount
+                text += (
+                    f"<b>{idx}. Ngày: {date_str}</b>\n"
+                    f"   Số Lượng: {quantity} Kg\n"
+                    f"   Đơn Giá: {fmt_money(txn.unit_price)}\n"
+                    f"   Thành Tiền: {fmt_money(txn.total_amount)}\n"
+                    f"   Mã Đơn: {txn.order_code or '—'}\n\n"
+                )
+            await callback_query.message.reply_text(text, parse_mode=ParseMode.HTML)
+            await callback_query.message.delete()
+            return
+            
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"GiaoDich{txn_type}"
+        
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        money_align = Alignment(horizontal="right", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin"),
+        )
+        alt_fill = PatternFill("solid", fgColor="D9E2F3")
+        
+        headers = ["STT", "Ngày GD", "Mã Đơn Hàng", "Số Lượng (Kg)", "Đơn Giá (VNĐ)", "Thành Tiền (VNĐ)", "Ghi Chú"]
+        for col_idx, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+            
+        total_qty = 0
+        total_amt = 0
+        
+        for idx, txn in enumerate(txns, 1):
+            row = idx + 1
+            row_fill = alt_fill if idx % 2 == 0 else None
+            date_str = txn.day.strftime("%d/%m/%Y") if txn.day else "N/A"
+            quantity = txn.import_amount if txn_type == "Nhập" else txn.export_amount
+            
+            total_qty += (quantity or 0)
+            total_amt += (txn.total_amount or 0)
+            
+            values = [
+                idx, date_str, txn.order_code or "—",
+                quantity or 0, txn.unit_price or 0, txn.total_amount or 0,
+                txn.notes or "—"
+            ]
+            
+            for col_idx, val in enumerate(values, 1):
+                cell = ws.cell(row=row, column=col_idx, value=val)
+                cell.border = thin_border
+                if col_idx in (1, 2, 3):
+                    cell.alignment = center_align
+                elif col_idx in (4, 5, 6):
+                    cell.alignment = money_align
+                    cell.number_format = '#,##0'
+                if row_fill:
+                    cell.fill = row_fill
+                    
+        summary_row = len(txns) + 2
+        ws.merge_cells(start_row=summary_row, start_column=1, end_row=summary_row, end_column=3)
+        sum_cell = ws.cell(row=summary_row, column=1, value="TỔNG CỘNG")
+        sum_cell.font = Font(bold=True)
+        sum_cell.alignment = center_align
+        sum_cell.border = thin_border
+        
+        qty_cell = ws.cell(row=summary_row, column=4, value=total_qty)
+        qty_cell.font = Font(bold=True)
+        qty_cell.alignment = money_align
+        qty_cell.number_format = '#,##0'
+        qty_cell.border = thin_border
+        
+        ws.cell(row=summary_row, column=5, value="").border = thin_border
+        
+        amt_cell = ws.cell(row=summary_row, column=6, value=total_amt)
+        amt_cell.font = Font(bold=True)
+        amt_cell.alignment = money_align
+        amt_cell.number_format = '#,##0'
+        amt_cell.border = thin_border
+        
+        ws.cell(row=summary_row, column=7, value="").border = thin_border
+        
+        col_widths = [6, 15, 15, 15, 15, 20, 25]
+        for col_idx, w in enumerate(col_widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = w
+            
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+        
+        from datetime import datetime
+        now_str = datetime.now().strftime("%Y%m%d_%H%M")
+        
+        caption_text = f"<b>GIAO DỊCH {txn_type.upper()}</b>\nĐối tác: <b>{partner.partner_name}</b>"
+        if start_dt and end_dt:
+            caption_text += f"\nThời gian: {start_dt.strftime('%d/%m/%Y')} - {end_dt.strftime('%d/%m/%Y')}"
+            
+        await callback_query.message.reply_document(
+            document=tmp_path,
+            file_name=f"gd_{'nhap' if action == 'import' else 'xuat'}_{partner_id}_{now_str}.xlsx",
+            caption=caption_text,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.message.delete()
+        os.remove(tmp_path)
+        
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error in check_partner_txn_callback: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_check_debt", "tien_nga_kiem_tra_cong_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_debt|tien_nga_kiem_tra_cong_no)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+async def tien_nga_check_debt_handler(client, message: Message) -> None:
+    args = message.text.split()
+    target_id = None
+    
+    from app.db.session import SessionLocal
+    from app.models.telegram import TelegramProjectMember
+    from app.models.business import Partners, Customers
+    from app.models.employee import Employee
+    
+    db = SessionLocal()
+    try:
+        if len(args) > 1:
+            target_id = args[1].upper()
+        else:
+            chat_id = str(message.chat.id)
+            group_member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == chat_id
+            ).first()
+            
+            if group_member and group_member.role == "member" and group_member.group_name:
+                group_name = group_member.group_name
+                # Check Partner
+                partner = db.query(Partners).filter(Partners.telegram_group == group_name).first()
+                if partner:
+                    target_id = partner.partner_id
+                else:
+                    # Check Customer
+                    customer = db.query(Customers).filter(Customers.telegram_group == group_name).first()
+                    if customer:
+                        target_id = customer.hoursehold_id
+                    else:
+                        # Check Employee
+                        employee = db.query(Employee).filter(Employee.telegram_group == group_name).first()
+                        if employee:
+                            target_id = employee.id
+                            
+        if not target_id:
+            await message.reply_text("⚠️ Không xác định được mã đối tượng. Vui lòng truyền tham số: <code>/tien_nga_kiem_tra_cong_no [Mã DT/KH/NV]</code>", parse_mode=ParseMode.HTML)
+            return
+            
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+            
+        if target_id.startswith("DT"):
+            partner = db.query(Partners).filter(Partners.partner_id == target_id).first()
+            if partner:
+                await message.reply_text(
+                    f"<b>THÔNG TIN CÔNG NỢ ĐỐI TÁC</b>\n\n"
+                    f"<b>Mã ĐT:</b> <code>{partner.partner_id}</code>\n"
+                    f"<b>Tên ĐT:</b> {partner.partner_name}\n"
+                    f"<b>Công Nợ:</b> <code>{fmt_money(partner.total_debt)}</code>\n"
+                    f"<b>Trạng Thái:</b> {partner.status}",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+        elif target_id.startswith("KH"):
+            customer = db.query(Customers).filter(Customers.hoursehold_id == target_id).first()
+            if customer:
+                await message.reply_text(
+                    f"<b>THÔNG TIN CÔNG NỢ KHÁCH HÀNG</b>\n\n"
+                    f"<b>Mã KH:</b> <code>{customer.hoursehold_id}</code>\n"
+                    f"<b>Tên KH:</b> {customer.fullname}\n"
+                    f"<b>Công Nợ:</b> <code>{fmt_money(customer.total_debt)}</code>\n"
+                    f"<b>Trạng Thái:</b> {customer.status}",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+        elif target_id.startswith("NV"):
+            employee = db.query(Employee).filter(Employee.id == target_id).first()
+            if employee:
+                await message.reply_text(
+                    f"<b>THÔNG TIN CÔNG NỢ NHÂN VIÊN</b>\n\n"
+                    f"<b>Mã NV:</b> <code>{employee.id}</code>\n"
+                    f"<b>Tên NV:</b> {employee.last_name} {employee.first_name}\n"
+                    f"<b>Công Nợ:</b> <code>{fmt_money(employee.total_debt)}</code>\n"
+                    f"<b>Trạng Thái:</b> {employee.status}",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+                
+        await message.reply_text(f"⚠️ Không tìm thấy thông tin công nợ cho mã <b>{target_id}</b>.", parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error in tien_nga_check_debt_handler: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_partner_transaction", "tien_nga_giao_dich_doi_tac"]) | filters.regex(r"^@\w+\s+/tien_nga_partner_transaction|/tien_nga_giao_dich_doi_tac\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+async def tien_nga_partner_transaction_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    # ── Step 1: Nếu chỉ có 1 dòng → hiện buttons Nhập / Xuất / Hủy ──
+    if len(lines) < 2:
+        args = lines[0].split()
+        if len(args) < 2:
+            await message.reply_text(
+                "⚠️ Cú pháp: <code>/tien_nga_partner_transaction [Mã Đối Tác]</code>\n\n"
+                "<i>Ví dụ: <code>/tien_nga_partner_transaction DT001</code></i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        partner_id = args[1].upper()
+
+        from app.models.business import Partners
+        from app.db.session import SessionLocal
+
+        db = SessionLocal()
+        try:
+            partner = db.query(Partners).filter(
+                Partners.partner_id == partner_id,
+                Partners.status == "ACTIVE"
+            ).first()
+            if not partner:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy Đối tác với mã <b>{partner_id}</b>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            def fmt_money(val):
+                return f"{int(val):,} VNĐ".replace(",", ".")
+
+            debt_val = partner.total_debt or 0
+            debt_str = fmt_money(abs(debt_val))
+            if debt_val > 0:
+                debt_display = f"{debt_str} (nợ)"
+            elif debt_val < 0:
+                debt_display = f"{debt_str} (dư)"
+            else:
+                debt_display = "0 đ"
+
+            buttons = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("Nhập", callback_data=f"tn_ptxn_{partner_id}_Nhập"),
+                    InlineKeyboardButton("Xuất", callback_data=f"tn_ptxn_{partner_id}_Xuất"),
+                ],
+                [InlineKeyboardButton("Hủy", callback_data="tn_ptxn_cancel")]
+            ])
+
+            await message.reply_text(
+                f"<b>GIAO DỊCH ĐỐI TÁC</b>\n\n"
+                f"<b>Mã Đối Tác:</b> <code>{partner_id}</code>\n"
+                f"<b>Tên Đối Tác:</b> {partner.partner_name}\n"
+                f"<b>Công Nợ:</b> {debt_display}\n\n"
+                f"Vui lòng chọn loại giao dịch:",
+                reply_markup=buttons,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            import traceback as tb
+            LogError(f"Error fetching partner for transaction: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    # ── Step 3: Parse form data (nhiều dòng) → lưu giao dịch ──
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    partner_id = data.get("Mã Đối Tác", "").strip().upper()
+    txn_type = data.get("Loại Giao Dịch", "").strip()
     ngay_str = data.get("Ngày", "").strip()
     order_code = data.get("Mã Đơn Hàng", "").strip()
     notes = data.get("Ghi Chú", "").strip()
 
-    if not unit_id:
-        await message.reply_text("⚠️ <b>Mã Đơn Vị</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+    if not partner_id:
+        await message.reply_text("⚠️ <b>Mã Đối Tác</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    if txn_type not in ("Nhập", "Xuất"):
+        await message.reply_text("⚠️ <b>Loại Giao Dịch</b> phải là Nhập hoặc Xuất.", parse_mode=ParseMode.HTML)
         return
 
     if not ngay_str:
@@ -3913,39 +4634,47 @@ Ghi Chú: </pre>
         )
         return
 
-    import_amt = parse_float_vn(data.get("Nhập", "0"))
-    export_amt = parse_float_vn(data.get("Xuất", "0"))
-    unit_price = parse_float_vn(data.get("Đơn Giá", "0"))
-    total_amount = parse_float_vn(data.get("Thành Tiền", "-1"))
+    qty = parse_float_vn(data.get("Số Lượng (Kg)", "") or data.get("Số Lượng", "0"))
+    unit_price = parse_float_vn(data.get("Đơn Giá (VNĐ)", "") or data.get("Đơn Giá", "0"))
 
-    # Auto-calc thành tiền
-    if total_amount < 0:  # Không điền Thành Tiền
-        if import_amt == 0 and export_amt == 0:
-            total_amount = 0
-        else:
-            total_amount = round((import_amt + export_amt) * unit_price, 0)
+    if qty <= 0:
+        await message.reply_text("⚠️ <b>Số Lượng</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
 
-    from app.models.business import CompanyCustomers, CompanyBusinesses
+    # Auto-calc
+    total_amount = round(qty * unit_price, 0)
+
+    # Tính import/export amount và công nợ
+    if txn_type == "Nhập":
+        import_amt = qty
+        export_amt = 0.0
+        debt_change = total_amount       # Nhập → công nợ tăng (ta nợ đối tác)
+    else:
+        import_amt = 0.0
+        export_amt = qty
+        debt_change = -total_amount      # Xuất → công nợ giảm (đối tác trả hàng/ta thu tiền)
+
+    from app.models.business import Partners, PartnerBusinesses
     from app.db.session import SessionLocal
     import uuid as uuid_lib
-    
+
     db = SessionLocal()
     try:
-        company = db.query(CompanyCustomers).filter(
-            CompanyCustomers.unit_id == unit_id,
-            CompanyCustomers.status == "ACTIVE"
+        partner = db.query(Partners).filter(
+            Partners.partner_id == partner_id,
+            Partners.status == "ACTIVE"
         ).first()
-        if not company:
+        if not partner:
             await message.reply_text(
-                f"⚠️ Mã đơn vị <b>{unit_id}</b> không tồn tại hoặc đã bị xóa.",
+                f"⚠️ Mã đối tác <b>{partner_id}</b> không tồn tại hoặc đã bị xóa.",
                 parse_mode=ParseMode.HTML
             )
             return
 
-        new_business = CompanyBusinesses(
+        new_business = PartnerBusinesses(
             id=uuid_lib.uuid4(),
             day=ngay,
-            unit_id=unit_id,
+            partner_id=partner_id,
             import_amount=import_amt,
             export_amount=export_amt,
             order_code=order_code,
@@ -3954,31 +4683,406 @@ Ghi Chú: </pre>
             notes=notes
         )
         db.add(new_business)
+
+        # Cập nhật công nợ đối tác
+        if partner.total_debt is None:
+            partner.total_debt = 0
+        partner.total_debt += debt_change
+
         db.commit()
 
         def fmt_money(val):
-            return f"{int(val):,} đ".replace(",", ".")
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        debt_val = partner.total_debt or 0
+        debt_str = fmt_money(debt_val)
 
         await message.reply_text(
-            f"✅ <b>Lưu Giao Dịch Đơn Vị Thành Công!</b>\n\n"
-            f"<b>Đơn vị:</b> {company.unit_name} (<code>{unit_id}</code>)\n"
+            f"✅ <b>GIAO DỊCH {txn_type.upper()} THÀNH CÔNG</b>\n\n"
+            f"<b>Đối tác:</b> {partner.partner_name} (<code>{partner_id}</code>)\n"
+            f"<b>Loại:</b> {txn_type}\n"
             f"<b>Ngày:</b> {ngay_str}\n"
-            f"<b>Nhập:</b> <code>{import_amt:,.2f}</code>\n"
-            f"<b>Xuất:</b> <code>{export_amt:,.2f}</code>\n"
+            f"<b>Số Lượng:</b> <code>{qty:,.2f} Kg</code>\n"
             f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
             f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
-            f"<b>Mã Đơn Hàng:</b> {order_code}\n"
-            f"<b>Ghi Chú:</b> {notes}",
+            f"<b>Mã Đơn Hàng:</b> {order_code or '—'}\n"
+            f"<b>Ghi Chú:</b> {notes or '—'}\n\n"
+            f"<b>Công Nợ Hiện Tại:</b> {debt_str}",
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
         import traceback as tb
-        LogError(f"Error creating company business: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        LogError(f"Error creating partner business: {tb.format_exc()}", LogType.SYSTEM_STATUS)
         db.rollback()
         await message.reply_text("❌ Có lỗi hệ thống khi lưu giao dịch.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
+
+# ── Callback: Chọn loại giao dịch Đối Tác (Nhập/Xuất) ──
+@bot.on_callback_query(filters.regex(r"^tn_ptxn_(.+)$"))
+async def tien_nga_partner_txn_type_callback(client, callback_query):
+    action = callback_query.matches[0].group(1)
+
+    if action == "cancel":
+        await callback_query.message.edit_text("Giao dịch đã bị hủy.")
+        await callback_query.answer()
+        return
+
+    parts = action.rsplit("_", 1)
+    if len(parts) < 2:
+        await callback_query.answer("⚠️ Dữ liệu không hợp lệ.", show_alert=True)
+        return
+
+    partner_id, txn_type = parts[0], parts[1]
+
+    from app.db.session import SessionLocal
+    from app.models.business import Partners
+
+    db = SessionLocal()
+    try:
+        partner = db.query(Partners).filter(
+            Partners.partner_id == partner_id,
+            Partners.status == "ACTIVE"
+        ).first()
+        if not partner:
+            await callback_query.answer("⚠️ Không tìm thấy Đối tác.", show_alert=True)
+            return
+
+        today_str = datetime.now().strftime("%d/%m/%Y")
+
+        form = (
+            f"<b>FORM GIAO DỊCH {txn_type.upper()} ĐỐI TÁC</b>\n"
+            f"Đối tác: <b>{partner.partner_name}</b> (<code>{partner_id}</code>)\n\n"
+            f"Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
+            f"<pre>/tien_nga_partner_transaction\n"
+            f"Mã Đối Tác: {partner_id}\n"
+            f"Loại Giao Dịch: {txn_type}\n"
+            f"Ngày: {today_str}\n"
+            f"Số Lượng (Kg): 0\n"
+            f"Đơn Giá (VNĐ): 0\n"
+            f"Mã Đơn Hàng: \n"
+            f"Ghi Chú: </pre>\n\n"
+            f"<i>Ghi chú:\n"
+            f"- Thành Tiền = Số Lượng x Đơn Giá (tự tính).\n"
+            f"- Công nợ sẽ tự cập nhật sau giao dịch.\n"
+            f"- Mã Đơn Hàng có thể bỏ trống.</i>"
+        )
+        await callback_query.message.reply_text(form, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error in partner txn callback: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+
+# ── Báo cáo tổng hợp Đối Tác (Excel) ──
+@bot.on_message(filters.command(["tien_nga_partner_report", "tien_nga_bao_cao_doi_tac"]) | filters.regex(r"^@\w+\s+/(tien_nga_partner_report|tien_nga_bao_cao_doi_tac)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+async def tien_nga_partner_report_handler(client, message: Message) -> None:
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply_text(
+            "⚠️ Cú pháp: <code>/tien_nga_partner_report MM/YYYY - MM/YYYY</code>\n\n"
+            "<i>Ví dụ: <code>/tien_nga_partner_report 01/2026 - 04/2026</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Parse date range mm/yyyy - mm/yyyy
+    range_str = args[1].strip()
+    m = re.match(r"(\d{1,2})/(\d{4})\s*-\s*(\d{1,2})/(\d{4})", range_str)
+    if not m:
+        await message.reply_text(
+            "⚠️ Định dạng không hợp lệ. Vui lòng nhập <code>MM/YYYY - MM/YYYY</code>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    start_month, start_year = int(m.group(1)), int(m.group(2))
+    end_month, end_year = int(m.group(3)), int(m.group(4))
+
+    if not (1 <= start_month <= 12 and 1 <= end_month <= 12):
+        await message.reply_text("⚠️ Tháng phải từ 1-12.", parse_mode=ParseMode.HTML)
+        return
+
+    from datetime import date
+    start_date = date(start_year, start_month, 1)
+    # End date = last day of end_month
+    if end_month == 12:
+        end_date = date(end_year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end_date = date(end_year, end_month + 1, 1) - timedelta(days=1)
+
+    if start_date > end_date:
+        await message.reply_text("⚠️ Ngày bắt đầu không thể lớn hơn ngày kết thúc.", parse_mode=ParseMode.HTML)
+        return
+
+    from app.models.business import Partners, PartnerBusinesses
+    from app.db.session import SessionLocal
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    import tempfile, os
+
+    db = SessionLocal()
+    try:
+        # Lấy tất cả giao dịch trong khoảng thời gian
+        txns = db.query(PartnerBusinesses).filter(
+            PartnerBusinesses.day >= start_date,
+            PartnerBusinesses.day <= end_date
+        ).order_by(PartnerBusinesses.day).all()
+
+        # Lấy tất cả partner (để tra tên)
+        partners = db.query(Partners).filter(Partners.status == "ACTIVE").all()
+        partner_map = {p.partner_id: p for p in partners}
+
+        if not txns:
+            await message.reply_text(
+                f"⚠️ Không có giao dịch đối tác nào từ "
+                f"<b>{start_month:02d}/{start_year}</b> đến <b>{end_month:02d}/{end_year}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # ── Styles ──
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        title_font = Font(bold=True, size=14, color="2F5496")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        money_align = Alignment(horizontal="right", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin"),
+        )
+        alt_fill = PatternFill("solid", fgColor="D9E2F3")
+        total_font = Font(bold=True, size=11)
+        total_fill = PatternFill("solid", fgColor="FFF2CC")
+
+        def fmt_money_xl(val):
+            if val is None or val == 0:
+                return "0"
+            return f"{int(val):,}".replace(",", ".")
+
+        def write_sheet(ws, title, data_rows, headers, col_widths):
+            """Helper: ghi tiêu đề, header, data, tổng vào sheet."""
+            # Title row
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+            title_cell = ws.cell(row=1, column=1, value=title)
+            title_cell.font = title_font
+            title_cell.alignment = Alignment(horizontal="center", vertical="center")
+
+            period_text = f"Từ {start_month:02d}/{start_year} đến {end_month:02d}/{end_year}"
+            ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+            period_cell = ws.cell(row=2, column=1, value=period_text)
+            period_cell.font = Font(italic=True, size=10)
+            period_cell.alignment = Alignment(horizontal="center", vertical="center")
+
+            header_row = 4
+            # Headers
+            for col_idx, h in enumerate(headers, 1):
+                cell = ws.cell(row=header_row, column=col_idx, value=h)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+                cell.border = thin_border
+
+            # Data
+            total_import_qty = 0
+            total_export_qty = 0
+            total_import_amt = 0
+            total_export_amt = 0
+            total_amount_sum = 0
+
+            for idx, row_data in enumerate(data_rows):
+                row_num = header_row + 1 + idx
+                row_fill = alt_fill if idx % 2 == 1 else None
+                for col_idx, val in enumerate(row_data, 1):
+                    cell = ws.cell(row=row_num, column=col_idx, value=val)
+                    cell.border = thin_border
+                    if col_idx in (1, 3, 4):  # STT, Ngày, Loại GD
+                        cell.alignment = center_align
+                    elif col_idx >= 5:  # Số liệu / tiền
+                        cell.alignment = money_align
+                    else:
+                        cell.alignment = left_align
+                    if row_fill:
+                        cell.fill = row_fill
+
+                # Accumulate totals from raw values
+                total_import_qty += row_data[4] if isinstance(row_data[4], (int, float)) else 0
+                total_export_qty += row_data[5] if isinstance(row_data[5], (int, float)) else 0
+                total_import_amt += row_data[7] if len(row_data) > 7 and isinstance(row_data[7], (int, float)) else 0
+                total_export_amt += row_data[8] if len(row_data) > 8 and isinstance(row_data[8], (int, float)) else 0
+                total_amount_sum += row_data[9] if len(row_data) > 9 and isinstance(row_data[9], (int, float)) else 0
+
+            # Total row
+            total_row_num = header_row + 1 + len(data_rows)
+            total_vals = ["", "", "", "TỔNG CỘNG"]
+
+            if len(headers) == 11:  # Tab Tổng
+                total_vals += [total_import_qty, total_export_qty, "", total_import_amt, total_export_amt, total_amount_sum, ""]
+            elif len(headers) == 8:  # Tab Nhập / Xuất
+                # Re-calc for sub-tabs
+                sub_qty = sum(r[4] for r in data_rows if isinstance(r[4], (int, float)))
+                sub_amt = sum(r[6] for r in data_rows if isinstance(r[6], (int, float)))
+                total_vals += [sub_qty, "", sub_amt, ""]
+
+            for col_idx, val in enumerate(total_vals, 1):
+                if col_idx > len(headers):
+                    break
+                cell = ws.cell(row=total_row_num, column=col_idx, value=val)
+                cell.font = total_font
+                cell.fill = total_fill
+                cell.border = thin_border
+                if col_idx >= 5:
+                    cell.alignment = money_align
+                elif col_idx == 4:
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+                    cell.font = total_font
+
+            # Column widths
+            for col_idx, w in enumerate(col_widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = w
+
+            ws.freeze_panes = f"A{header_row + 1}"
+
+        # ── Build data ──
+        all_rows = []      # For "Tổng" sheet
+        import_rows = []   # For "Nhập" sheet
+        export_rows = []   # For "Xuất" sheet
+
+        for idx, t in enumerate(txns, 1):
+            p = partner_map.get(t.partner_id)
+            partner_name = p.partner_name if p else t.partner_id
+            day_str = t.day.strftime("%d/%m/%Y") if t.day else "—"
+            txn_type = "Nhập" if (t.import_amount or 0) > 0 else "Xuất"
+            import_qty = t.import_amount or 0
+            export_qty = t.export_amount or 0
+            unit_price = t.unit_price or 0
+            import_amt = import_qty * unit_price
+            export_amt = export_qty * unit_price
+            total_amt = t.total_amount or 0
+
+            all_rows.append([
+                idx,
+                partner_name,
+                t.partner_id,
+                day_str,
+                import_qty,
+                export_qty,
+                unit_price,
+                import_amt,
+                export_amt,
+                total_amt,
+                t.notes or ""
+            ])
+
+            if txn_type == "Nhập":
+                import_rows.append([
+                    len(import_rows) + 1,
+                    partner_name,
+                    t.partner_id,
+                    day_str,
+                    import_qty,
+                    unit_price,
+                    import_amt,
+                    t.notes or ""
+                ])
+            else:
+                export_rows.append([
+                    len(export_rows) + 1,
+                    partner_name,
+                    t.partner_id,
+                    day_str,
+                    export_qty,
+                    unit_price,
+                    export_amt,
+                    t.notes or ""
+                ])
+
+        # ── Create workbook ──
+        wb = openpyxl.Workbook()
+
+        # Tab 1: Tổng
+        ws_total = wb.active
+        ws_total.title = "Tổng"
+        total_headers = [
+            "STT", "Tên Đối Tác", "Mã ĐT", "Ngày",
+            "SL Nhập (Kg)", "SL Xuất (Kg)", "Đơn Giá (VNĐ)",
+            "Tiền Nhập (VNĐ)", "Tiền Xuất (VNĐ)", "Thành Tiền (VNĐ)", "Ghi Chú"
+        ]
+        total_widths = [6, 22, 12, 14, 14, 14, 16, 18, 18, 18, 20]
+        write_sheet(ws_total, "BÁO CÁO TỔNG HỢP ĐỐI TÁC", all_rows, total_headers, total_widths)
+
+        # Tab 2: Nhập
+        ws_import = wb.create_sheet("Nhập")
+        import_headers = [
+            "STT", "Tên Đối Tác", "Mã ĐT", "Ngày",
+            "Số Lượng (Kg)", "Đơn Giá (VNĐ)", "Thành Tiền (VNĐ)", "Ghi Chú"
+        ]
+        import_widths = [6, 22, 12, 14, 16, 16, 18, 20]
+        write_sheet(ws_import, "BÁO CÁO NHẬP ĐỐI TÁC", import_rows, import_headers, import_widths)
+
+        # Tab 3: Xuất
+        ws_export = wb.create_sheet("Xuất")
+        export_headers = [
+            "STT", "Tên Đối Tác", "Mã ĐT", "Ngày",
+            "Số Lượng (Kg)", "Đơn Giá (VNĐ)", "Thành Tiền (VNĐ)", "Ghi Chú"
+        ]
+        export_widths = [6, 22, 12, 14, 16, 16, 18, 20]
+        write_sheet(ws_export, "BÁO CÁO XUẤT ĐỐI TÁC", export_rows, export_headers, export_widths)
+
+        # ── Format number columns as VN-style in all sheets ──
+        for ws in [ws_total, ws_import, ws_export]:
+            for row in ws.iter_rows(min_row=5, max_row=ws.max_row):
+                for cell in row:
+                    if isinstance(cell.value, float) and cell.value == int(cell.value):
+                        cell.value = int(cell.value)
+
+        # ── Save & send ──
+        file_name = f"bao_cao_tong_hop_doi_tac_{start_month:02d}_{start_year}_{end_month:02d}_{end_year}.xlsx"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+
+        total_import = sum(r[7] for r in all_rows if isinstance(r[7], (int, float)))
+        total_export = sum(r[8] for r in all_rows if isinstance(r[8], (int, float)))
+
+        await message.reply_document(
+            document=tmp_path,
+            file_name=file_name,
+            caption=(
+                f"<b>BÁO CÁO TỔNG HỢP ĐỐI TÁC</b>\n\n"
+                f"<b>Kỳ:</b> {start_month:02d}/{start_year} - {end_month:02d}/{end_year}\n"
+                f"<b>Tổng GD:</b> {len(txns)} giao dịch\n"
+                f"<b>Nhập:</b> {len(import_rows)} GD | <b>Xuất:</b> {len(export_rows)} GD\n"
+                f"<b>Tổng Tiền Nhập:</b> <code>{fmt_money_xl(total_import)} VNĐ</code>\n"
+                f"<b>Tổng Tiền Xuất:</b> <code>{fmt_money_xl(total_export)} VNĐ</code>\n\n"
+                f"<i>Xuất lúc: {datetime.now().strftime('%H:%M %d/%m/%Y')}</i>"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+
+        os.remove(tmp_path)
+        LogInfo(
+            f"[TienNga] Partner report exported {start_month:02d}/{start_year}-{end_month:02d}/{end_year} "
+            f"by @{message.from_user.username or message.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error in partner report: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra khi xuất báo cáo: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
 
 
 # =========================================================================================

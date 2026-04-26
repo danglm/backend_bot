@@ -785,6 +785,19 @@ async def register_bot_command_handler(client, message: Message) -> None:
 
                 ])
 
+            if custom_title in ("super_main", "main_partner"):
+                if custom_title != "super_main": label = "Tiến Nga (Đối Tác)"
+                commands_to_set.extend([
+                    BotCommand("tien_nga_tao_doi_tac", "Tạo đối tác"),
+                    BotCommand("tien_nga_cap_nhat_doi_tac", "Cập nhật đối tác"),
+                    BotCommand("tien_nga_xoa_doi_tac", "Xóa đối tác"),
+                    BotCommand("tien_nga_ds_doi_tac", "Danh sách đối tác"),
+                    BotCommand("tien_nga_giao_dich_doi_tac", "Giao dịch đối tác"),
+                    BotCommand("tien_nga_kiem_tra_giao_dich", "Kiểm tra giao dịch ĐT"),
+                    BotCommand("tien_nga_kiem_tra_cong_no", "Kiểm tra công nợ"),
+                    BotCommand("tien_nga_bao_cao_doi_tac", "Báo cáo tổng hợp đối tác"),
+                ])
+
             if custom_title == "main_sales":
                 label = "Tiến Nga (Kinh Doanh)"
 
@@ -866,6 +879,10 @@ async def register_bot_command_handler(client, message: Message) -> None:
 
             if custom_title == "member_partner":
                 label = "Tiến Nga (Đối Tác)"
+                commands_to_set.extend([
+                    BotCommand("tien_nga_kiem_tra_giao_dich", "Kiểm tra giao dịch"),
+                    BotCommand("tien_nga_kiem_tra_cong_no", "Kiểm tra công nợ"),
+                ])
 
             if custom_title == "member_inventory":
                 label = "Tiến Nga (Kho)"

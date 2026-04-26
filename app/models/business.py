@@ -71,20 +71,25 @@ class FirewoodPurchases(Base):
     total_amount = Column(Float)                        # Thành tiền
     advance_amount = Column(Float, default=0)           # Tạm ứng
 
-class CompanyCustomers(Base):
-    __tablename__ = "company_customers"
+class Partners(Base):
+    __tablename__ = "partners"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    unit_id = Column(String, unique=True, index=True)   # Mã đơn vị
-    unit_name = Column(String)                          # Tên đơn vị
-    status = Column(String, default="ACTIVE")           # Trạng thái
+    partner_id = Column(String, unique=True, index=True)   # Mã đối tác
+    partner_name = Column(String)                          # Tên đối tác
+    total_debt = Column(Float, default=0.0)                # Công nợ
+    username = Column(String)                              # Username Telegram
+    telegram_group = Column(String)                        # Nhóm Telegram
+    bank_name = Column(String)                             # Tên Ngân Hàng
+    bank_account = Column(String)                          # Số TK Ngân Hàng
+    status = Column(String, default="ACTIVE")              # Trạng thái
 
-class CompanyBusinesses(Base):
-    __tablename__ = "company_businesses"
+class PartnerBusinesses(Base):
+    __tablename__ = "partner_businesses"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     day = Column(Date)                                  # Ngày
-    unit_id = Column(String)                            # Mã đơn vị
+    partner_id = Column(String)                         # Mã đối tác
     import_amount = Column(Float, default=0.0)          # Nhập
     export_amount = Column(Float, default=0.0)          # Xuất
     order_code = Column(String)                         # Mã đơn hàng
