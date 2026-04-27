@@ -4526,6 +4526,239 @@ async def tien_nga_check_debt_handler(client, message: Message) -> None:
     finally:
         db.close()
 
+# =========================================================================================
+# YÊU CẦU THANH TOÁN CÔNG NỢ (MEMBER ĐỐI TÁC)
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_partner_payment", "tien_nga_doi_tac_thanh_toan"]) | filters.regex(r"^@\w+\s+/(tien_nga_partner_payment|tien_nga_doi_tac_thanh_toan)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+async def tien_nga_partner_payment_handler(client, message: Message) -> None:
+    args = message.text.split()
+    if len(args) < 2:
+        await message.reply_text(
+            "⚠️ Cú pháp: <code>/tien_nga_doi_tac_thanh_toan [Số Tiền]</code>\n\n"
+            "<i>(Ví dụ: <code>/tien_nga_doi_tac_thanh_toan 500000</code>)</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    try:
+        amount_str = args[1].replace(".", "").replace(",", "")
+        amount = int(amount_str)
+    except ValueError:
+        await message.reply_text("⚠️ <b>Số Tiền</b> phải là một số hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    if amount <= 0:
+        await message.reply_text("⚠️ <b>Số Tiền</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
+    from app.models.business import Partners, Projects
+    from app.models.telegram import TelegramProjectMember
+
+    db = SessionLocal()
+    try:
+        chat_id = str(message.chat.id)
+        group_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == chat_id
+        ).first()
+
+        if not group_member or group_member.role != "member" or not group_member.group_name:
+            await message.reply_text("⚠️ Lệnh này chỉ sử dụng được trong nhóm đối tác.", parse_mode=ParseMode.HTML)
+            return
+
+        partner = db.query(Partners).filter(Partners.telegram_group == group_member.group_name).first()
+        if not partner:
+            await message.reply_text("⚠️ Không tìm thấy đối tác liên kết với nhóm này.", parse_mode=ParseMode.HTML)
+            return
+
+        old_debt = partner.total_debt or 0
+        name = partner.partner_name or partner.partner_id
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        if old_debt >= 0:
+            await message.reply_text(
+                f"⚠️ <b>Không thể thanh toán!</b>\n\n"
+                f"<b>Đối tác:</b> {name}\n"
+                f"<b>Công nợ hiện tại:</b> <code>{fmt_money(old_debt)}</code>\n\n"
+                f"<i>Đối tác không có công nợ cần thanh toán.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        abs_debt = abs(old_debt)
+        if amount > abs_debt:
+            await message.reply_text(
+                f"⚠️ <b>Số tiền thanh toán vượt quá công nợ!</b>\n\n"
+                f"<b>Đối tác:</b> {name}\n"
+                f"<b>Công nợ hiện tại:</b> <code>{fmt_money(old_debt)}</code>\n"
+                f"<b>Số tiền yêu cầu:</b> <code>{fmt_money(amount)}</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        user_display = message.from_user.first_name or message.from_user.username or str(message.from_user.id)
+
+        # Gửi yêu cầu xác nhận vào nhóm main
+        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        if not project:
+            await message.reply_text("⚠️ Không tìm thấy dự án Tiến Nga.", parse_mode=ParseMode.HTML)
+            return
+
+        main_chat = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.project_id == project.id,
+            TelegramProjectMember.role == "main"
+        ).first()
+
+        if not main_chat or not main_chat.chat_id:
+            await message.reply_text("⚠️ Không tìm thấy nhóm chính để gửi yêu cầu.", parse_mode=ParseMode.HTML)
+            return
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Xác Nhận", callback_data=f"partner_pay_confirm:{partner.partner_id}:{amount}:{chat_id}")],
+            [InlineKeyboardButton("Từ Chối", callback_data=f"partner_pay_deny:{partner.partner_id}:{amount}:{chat_id}")]
+        ])
+
+        await client.send_message(
+            chat_id=int(main_chat.chat_id),
+            text=(
+                f"🔔 <b>YÊU CẦU THANH TOÁN CÔNG NỢ ĐỐI TÁC</b>\n\n"
+                f"<b>Người yêu cầu:</b> {user_display}\n"
+                f"<b>Đối tác:</b> {name} (<code>{partner.partner_id}</code>)\n"
+                f"<b>Số Tiền:</b> <code>{fmt_money(amount)}</code>\n"
+                f"<b>Công Nợ Hiện Tại:</b> <code>{fmt_money(old_debt)}</code>\n\n"
+                f"<i>Vui lòng xác nhận hoặc từ chối yêu cầu này.</i>"
+            ),
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+
+        await message.reply_text(
+            f"✅ <b>Đã gửi yêu cầu thanh toán!</b>\n\n"
+            f"<b>Số Tiền:</b> <code>{fmt_money(amount)}</code>\n"
+            f"<b>Trạng Thái:</b> <i>Đang chờ xác nhận từ quản lý.</i>",
+            parse_mode=ParseMode.HTML
+        )
+
+        LogInfo(f"[TienNga] Partner payment request {partner.partner_id} amount={amount} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error in tien_nga_partner_payment: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^partner_pay_(confirm|deny):"))
+async def partner_pay_callback(client, callback_query) -> None:
+    data = callback_query.data.split(":")
+    action = data[0].replace("partner_pay_", "")  # "confirm" or "deny"
+    partner_id = data[1]
+    amount = int(data[2])
+    member_chat_id = data[3]
+
+    from app.models.business import Partners, Projects
+    from app.models.telegram import TelegramProjectMember
+
+    def fmt_money(val):
+        if val is None or val == 0: return "0 VNĐ"
+        return f"{int(val):,} VNĐ".replace(",", ".")
+
+    db = SessionLocal()
+    try:
+        partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
+        if not partner:
+            await callback_query.answer("⚠️ Không tìm thấy đối tác.", show_alert=True)
+            return
+
+        name = partner.partner_name or partner_id
+        approver = callback_query.from_user.first_name or callback_query.from_user.username or str(callback_query.from_user.id)
+
+        if action == "deny":
+            await callback_query.answer()
+            await callback_query.message.edit_text(
+                f"❌ <b>TỪ CHỐI THANH TOÁN CÔNG NỢ</b>\n\n"
+                f"<b>Đối tác:</b> {name} (<code>{partner_id}</code>)\n"
+                f"<b>Số Tiền:</b> <code>{fmt_money(amount)}</code>\n"
+                f"<b>Người xử lý:</b> {approver}",
+                parse_mode=ParseMode.HTML
+            )
+
+            # Thông báo từ chối vào nhóm member
+            try:
+                await client.send_message(
+                    chat_id=int(member_chat_id),
+                    text=(
+                        f"❌ <b>YÊU CẦU THANH TOÁN BỊ TỪ CHỐI</b>\n\n"
+                        f"<b>Số Tiền:</b> <code>{fmt_money(amount)}</code>\n"
+                        f"<b>Người xử lý:</b> {approver}\n\n"
+                        f"<i>Vui lòng liên hệ quản lý để biết thêm chi tiết.</i>"
+                    ),
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                LogError(f"Error notifying member about denied payment: {e}", LogType.SYSTEM_STATUS)
+            return
+
+        # action == "confirm"
+        old_debt = partner.total_debt or 0
+
+        if amount > abs(old_debt):
+            await callback_query.answer("⚠️ Số tiền vượt quá công nợ hiện tại!", show_alert=True)
+            return
+
+        new_debt = old_debt + amount  # old_debt < 0, thêm amount để giảm nợ
+        partner.total_debt = new_debt
+        db.commit()
+
+        await callback_query.answer()
+        
+        status_note = ""
+        if new_debt < 0:
+            status_note = f"\n<i>Còn nợ <code>{fmt_money(new_debt)}</code>.</i>"
+        elif new_debt == 0:
+            status_note = f"\n<i>Đã thanh toán hết công nợ!</i>"
+
+        await callback_query.message.edit_text(
+            f"✅ <b>XÁC NHẬN THANH TOÁN CÔNG NỢ THÀNH CÔNG</b>\n\n"
+            f"<b>Đối tác:</b> {name} (<code>{partner_id}</code>)\n"
+            f"<b>Số Tiền:</b> <code>{fmt_money(amount)}</code>\n"
+            f"<b>Công Nợ Cũ:</b> <code>{fmt_money(old_debt)}</code>\n"
+            f"<b>Công Nợ Mới:</b> <code>{fmt_money(new_debt)}</code>\n"
+            f"<b>Người xử lý:</b> {approver}"
+            f"{status_note}",
+            parse_mode=ParseMode.HTML
+        )
+
+        # Thông báo vào nhóm member
+        try:
+            await client.send_message(
+                chat_id=int(member_chat_id),
+                text=(
+                    f"🔔 <b>THANH TOÁN CÔNG NỢ ĐƯỢC XÁC NHẬN</b>\n\n"
+                    f"<b>Số Tiền Thanh Toán:</b> <code>{fmt_money(amount)}</code>\n"
+                    f"<b>Công Nợ Hiện Tại:</b> <code>{fmt_money(new_debt)}</code>\n\n"
+                    f"<i>Cảm ơn quý đối tác!</i>"
+                ),
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            LogError(f"Error notifying member about confirmed payment: {e}", LogType.SYSTEM_STATUS)
+
+        LogInfo(f"[TienNga] Partner payment confirmed {partner_id} amount={amount} by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        import traceback as tb
+        LogError(f"Error in partner_pay_callback: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
 @bot.on_message(filters.command(["tien_nga_partner_transaction", "tien_nga_giao_dich_doi_tac"]) | filters.regex(r"^@\w+\s+/tien_nga_partner_transaction|/tien_nga_giao_dich_doi_tac\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -5517,14 +5750,14 @@ async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) < 3:
         await message.reply_text(
-            "⚠️ Cú pháp: <code>/tien_nga_payment_of_debt [Mã Hộ/Mã NV] [Số Tiền]</code>\n\n"
-            "<i>(Ví dụ: <code>/tien_nga_payment_of_debt KH001 500000</code>)</i>\n"
-            "<i>Hỗ trợ cả Khách hàng (Mã Hộ) và Nhân sự (Mã NV).</i>",
+            "⚠️ Cú pháp: <code>/tien_nga_thanh_toan_cong_no [Mã] [Số Tiền]</code>\n\n"
+            "<i>(Ví dụ: <code>/tien_nga_thanh_toan_cong_no DT001 500000</code>)</i>\n"
+            "<i>Hỗ trợ: Đối tác (DT), Khách hàng (KH), Nhân sự (NV).</i>",
             parse_mode=ParseMode.HTML
         )
         return
 
-    target_id = args[1]
+    target_id = args[1].upper()
 
     try:
         amount_str = args[2].replace(".", "").replace(",", "")
@@ -5537,33 +5770,57 @@ async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
         await message.reply_text("⚠️ <b>Số Tiền</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
         return
 
-    from app.models.business import Customers, Projects
+    from app.models.business import Customers, Partners, Projects
     from app.models.employee import Employee
     from app.models.telegram import TelegramProjectMember
 
     db = SessionLocal()
     try:
-        # Try to find in Customers first, then Employee
-        customer = db.query(Customers).filter(Customers.hoursehold_id == target_id).first()
+        # Try to find in Partners, Customers, then Employee
+        partner = None
+        customer = None
         employee = None
-        target_type = None  # "customer" or "employee"
+        target_type = None  # "partner", "customer" or "employee"
 
-        if customer:
-            target_type = "customer"
-            old_debt = customer.total_debt or 0
-            name = customer.fullname or customer.hoursehold_id
-        else:
+        if target_id.startswith("DT"):
+            partner = db.query(Partners).filter(Partners.partner_id == target_id).first()
+            if partner:
+                target_type = "partner"
+                old_debt = partner.total_debt or 0
+                name = partner.partner_name or partner.partner_id
+
+        if not target_type:
+            customer = db.query(Customers).filter(Customers.hoursehold_id == target_id).first()
+            if customer:
+                target_type = "customer"
+                old_debt = customer.total_debt or 0
+                name = customer.fullname or customer.hoursehold_id
+
+        if not target_type:
             employee = db.query(Employee).filter(Employee.id == target_id).first()
             if employee:
                 target_type = "employee"
                 old_debt = employee.total_debt or 0
                 name = f"{employee.last_name or ''} {employee.first_name or ''}".strip() or employee.id
-            else:
-                await message.reply_text(
-                    f"⚠️ Không tìm thấy Khách hàng hoặc Nhân sự với mã <b>{target_id}</b>.",
-                    parse_mode=ParseMode.HTML
-                )
-                return
+
+        if not target_type:
+            await message.reply_text(
+                f"⚠️ Không tìm thấy Đối tác, Khách hàng hoặc Nhân sự với mã <b>{target_id}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Validate: debt must be positive
+        if old_debt <= 0:
+            await message.reply_text(
+                f"⚠️ <b>Không thể thanh toán!</b>\n\n"
+                f"<b>Mã:</b> <code>{target_id}</code>\n"
+                f"<b>Tên:</b> {name}\n"
+                f"<b>Công nợ hiện tại:</b> <code>{fmt_vn(old_debt)}</code>\n\n"
+                f"<i>Đối tượng này không có công nợ hoặc đang được nợ ngược.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
 
         # Validate: amount must not exceed total_debt
         if amount > old_debt:
@@ -5580,14 +5837,16 @@ async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
 
         # Update debt
         new_debt = old_debt - amount
-        if target_type == "customer":
+        if target_type == "partner":
+            partner.total_debt = new_debt
+        elif target_type == "customer":
             customer.total_debt = new_debt
         else:
             employee.total_debt = new_debt
 
         db.commit()
 
-        type_label = "Khách hàng" if target_type == "customer" else "Nhân sự"
+        type_label = {"partner": "Đối tác", "customer": "Khách hàng", "employee": "Nhân sự"}.get(target_type, "")
         success_msg = (
             f"✅ <b>THANH TOÁN CÔNG NỢ THÀNH CÔNG</b>\n\n"
             f"<b>Loại:</b> {type_label}\n"
@@ -5597,12 +5856,41 @@ async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
             f"<b>Công Nợ Cũ:</b> <code>{fmt_vn(old_debt)}</code>\n"
             f"<b>Công Nợ Mới:</b> <code>{fmt_vn(new_debt)}</code>"
         )
+        if new_debt > 0:
+            success_msg += f"\n\n<i>Còn nợ <code>{fmt_vn(new_debt)}</code>. Vui lòng thanh toán phần còn lại.</i>"
+        elif new_debt == 0:
+            success_msg += f"\n\n<i>Đã thanh toán hết công nợ!</i>"
         await message.reply_text(success_msg, parse_mode=ParseMode.HTML)
 
         LogInfo(f"[TienNga] /tien_nga_payment_of_debt {target_type} {target_id} amount={amount} by {message.from_user.id}", LogType.SYSTEM_STATUS)
 
-        # Notify the customer's member group (only for customers)
-        if target_type == "customer" and customer.username:
+        # Notify member group
+        if target_type == "partner" and partner.telegram_group:
+            project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+            if project:
+                member_chat = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.project_id == project.id,
+                    TelegramProjectMember.role == "member",
+                    TelegramProjectMember.group_name == partner.telegram_group
+                ).first()
+
+                if member_chat and member_chat.chat_id:
+                    try:
+                        await client.send_message(
+                            chat_id=int(member_chat.chat_id),
+                            text=(
+                                f"🔔 <b>THÔNG BÁO CẬP NHẬT CÔNG NỢ</b>\n\n"
+                                f"<b>Kính gửi:</b> {name}\n"
+                                f"<b>Số Tiền Thanh Toán:</b> <code>{fmt_vn(amount)}</code>\n"
+                                f"<b>Công Nợ Hiện Tại:</b> <code>{fmt_vn(new_debt)}</code>\n\n"
+                                f"<i>Cảm ơn quý đối tác!</i>"
+                            ),
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception as e:
+                        LogError(f"Error sending debt update to partner {target_id}: {e}", LogType.SYSTEM_STATUS)
+
+        elif target_type == "customer" and customer.username:
             username_clean = customer.username.lstrip('@')
             project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
             if project:

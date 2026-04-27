@@ -795,6 +795,8 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_giao_dich_doi_tac", "Giao dịch đối tác"),
                     BotCommand("tien_nga_kiem_tra_giao_dich", "Kiểm tra giao dịch ĐT"),
                     BotCommand("tien_nga_kiem_tra_cong_no", "Kiểm tra công nợ"),
+                    BotCommand("tien_nga_thanh_toan_cong_no", "Thanh toán công nợ"),
+                    BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
                     BotCommand("tien_nga_bao_cao_doi_tac", "Báo cáo tổng hợp đối tác"),
                 ])
 
@@ -882,6 +884,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                 commands_to_set.extend([
                     BotCommand("tien_nga_kiem_tra_giao_dich", "Kiểm tra giao dịch"),
                     BotCommand("tien_nga_kiem_tra_cong_no", "Kiểm tra công nợ"),
+                    BotCommand("tien_nga_doi_tac_thanh_toan", "Yêu cầu thanh toán"),
                 ])
 
             if custom_title == "member_inventory":
