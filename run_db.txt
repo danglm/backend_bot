@@ -1,0 +1,10 @@
+ALTER TABLE projects 
+    ALTER COLUMN id TYPE UUID USING (gen_random_uuid());
+
+INSERT INTO projects (project_name) VALUES 
+('Credit'),
+('Rental'),
+('Tiến Nga'),
+('Ggomoonsin'),
+('Hụi'),
+('Other');

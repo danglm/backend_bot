@@ -141,3 +141,48 @@ class Shareholder(Base):
     telegram_group = Column(String)                             # Nhóm Telegram
     notes = Column(String)                                      # Ghi chú
     created_at = Column(DateTime, default=lambda: __import__('datetime').datetime.now())
+
+class AgriculturalLand(Base):
+    __tablename__ = "agricultural_lands"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    land_code = Column(String, unique=True, index=True)     # Mã đất
+    land_name = Column(String, nullable=True)                # Tên đất
+    address = Column(String)                                 # Địa chỉ
+    total_area = Column(Float, default=0.0)                  # Diện tích (ha)
+    rubber_area = Column(Float, default=0.0)                 # Diện tích đang khai thác cao su (ha)
+    empty_area = Column(Float, default=0.0)                  # Diện tích trống (ha)
+    planting_area = Column(Float, default=0.0)               # Diện tích đang trồng (ha)
+    harvesting_trees = Column(Integer, default=0)             # Số lượng cây đang thu hoạch
+    planting_trees = Column(Integer, default=0)               # Số lượng cây đang trồng
+    status = Column(String, default="ACTIVE")                # Trạng thái
+
+class Households(Base):
+    __tablename__ = "households"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    household_code = Column(String, unique=True, index=True) # Mã hộ dân (HD001)
+    purchase_code = Column(String, unique=True, index=True)  # Mã hộ thu mua (TM001)
+    land_code = Column(String, nullable=True)                # Mã đất trồng trọt
+    fullname = Column(String)                                # Họ và tên
+    username = Column(String, nullable=True)                  # Username Telegram
+    telegram_group = Column(String, nullable=True)             # Nhóm Telegram
+    phone = Column(String)                                   # SĐT
+    address = Column(String)                                 # Địa chỉ
+    total_debt = Column(Float, default=0.0)                  # Công nợ
+    tapping_price = Column(Float, default=0.0)               # Đơn giá cạo mủ
+    bank_account = Column(String)                            # Số TK ngân hàng
+    bank_name = Column(String)                               # Tên ngân hàng
+    status = Column(String, default="ACTIVE")                # Trạng thái
+
+class DailyHarvest(Base):
+    __tablename__ = "daily_harvests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    day = Column(Date)                                       # Ngày thu hoạch
+    household_code = Column(String, index=True)              # Mã hộ dân
+    land_code = Column(String, index=True)                   # Mã đất thu hoạch
+    tree_count = Column(Integer, default=0)                  # Số lượng cây
+    unit_price = Column(Float, default=0.0)                  # Đơn giá
+    total_amount = Column(Float, default=0.0)                # Thành tiền
+    created_at = Column(DateTime, default=lambda: __import__('datetime').datetime.now())

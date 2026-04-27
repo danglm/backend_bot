@@ -571,10 +571,15 @@ async def register_bot_command_handler(client, message: Message) -> None:
         from app.models.telegram import TelegramProjectMember
         from app.models.business import Projects
 
-        # Tìm project của nhóm này
+        # Tìm project của nhóm này (ưu tiên record có custom_title)
         project_member = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.chat_id == chat_id
+            TelegramProjectMember.chat_id == chat_id,
+            TelegramProjectMember.custom_title.isnot(None)
         ).first()
+        if not project_member:
+            project_member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == chat_id
+            ).first()
 
         if not project_member:
             await message.reply_text(
@@ -855,8 +860,23 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_xuat_bao_cao_san_pham", "Xuất báo cáo sản phẩm"),
                 ])
 
-            if custom_title == "main_harvest":
-                label = "Tiến Nga (Thu Hoạch)"
+            if custom_title in ("super_main", "main_harvest"):
+                if custom_title != "super_main": label = "Tiến Nga (Thu Hoạch)"
+                commands_to_set.extend([
+                    BotCommand("tien_nga_tao_dat_trong_trot", "Tạo đất trồng trọt"),
+                    BotCommand("tien_nga_cap_nhat_dat_trong_trot", "Cập nhật đất trồng trọt"),
+                    BotCommand("tien_nga_xoa_dat_trong_trot", "Xóa đất trồng trọt"),
+                    BotCommand("tien_nga_ds_dat_trong_trot", "DS đất trồng trọt"),
+                    BotCommand("tien_nga_tao_ho_dan", "Tạo hộ dân"),
+                    BotCommand("tien_nga_cap_nhat_ho_dan", "Cập nhật hộ dân"),
+                    BotCommand("tien_nga_xoa_ho_dan", "Xóa hộ dân"),
+                    BotCommand("tien_nga_ds_ho_dan", "DS hộ dân"),
+                    BotCommand("tien_nga_kiem_tra_thu_hoach", "Kiểm tra thu hoạch"),
+                    BotCommand("tien_nga_so_sanh_thu_hoach", "So sánh thu hoạch"),
+                    BotCommand("tien_nga_kt_thu_hoach_hang_ngay", "KT thu hoạch hàng ngày"),
+                    BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
+                    BotCommand("tien_nga_thanh_toan_cong_no", "Thanh toán công nợ"),
+                ])
             ## Member
             if custom_title == "member_hr":
                 label = "Tiến Nga (Nhân Viên)"
@@ -895,6 +915,10 @@ async def register_bot_command_handler(client, message: Message) -> None:
 
             if custom_title == "member_harvest":
                 label = "Tiến Nga (Thu Hoạch)"
+                commands_to_set.extend([
+                    BotCommand("tien_nga_thu_hoach_hang_ngay", "Thu hoạch hàng ngày"),
+                    BotCommand("tien_nga_kiem_tra_ho_dan", "Kiểm tra hộ dân"),
+                ])
 
         if not commands_to_set:
             await message.reply_text(
