@@ -5872,6 +5872,22 @@ async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
             success_msg += f"\n\n<i>Đã thanh toán hết công nợ!</i>"
         await message.reply_text(success_msg, parse_mode=ParseMode.HTML)
 
+        # Gợi ý form yêu cầu thu/chi
+        from datetime import datetime
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        fmt_amount = f"{int(amount):,}".replace(",", ".")
+
+        suggest_msg = (
+            f"<b>GỢI Ý:</b> Sao chép lệnh bên dưới để ghi nhận phiếu chi:\n\n"
+            f"<pre>/tien_nga_yeu_cau_thu_chi</pre>\n\n"
+            f"<i>Sau khi chọn quỹ đầu tư, điền thông tin:\n"
+            f"• Số Tiền (VNĐ): {fmt_amount}\n"
+            f"• Người Nhận: {name}\n"
+            f"• Mục Đích: Thanh toán công nợ {type_label} {target_id}\n"
+            f"• Lý Do: Thanh toán công nợ</i>"
+        )
+        await message.reply_text(suggest_msg, parse_mode=ParseMode.HTML)
+
         LogInfo(f"[TienNga] /tien_nga_payment_of_debt {target_type} {target_id} amount={amount} by {message.from_user.id}", LogType.SYSTEM_STATUS)
 
         # Notify member group
