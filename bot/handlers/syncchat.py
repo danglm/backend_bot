@@ -260,6 +260,17 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
         
         LogInfo(f"[SyncChat] Syncing Project: {project_name}, Role: {group_role}, CustomTitle: {custom_title}, Chat: {chat_id}", LogType.SYSTEM_STATUS)
         
+        # Clean up ALL old records for this chat_id before re-syncing
+        # This prevents stale data when a group is re-synced with a different project/role/custom_title
+        old_records = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(chat_id)
+        ).all()
+        old_record_count = len(old_records)
+        for old_record in old_records:
+            db.delete(old_record)
+        if old_record_count > 0:
+            LogInfo(f"[SyncChat] Cleaned up {old_record_count} old records for chat {chat_id} before re-syncing.", LogType.SYSTEM_STATUS)
+        
         synced_count = 0
         admin_count = 0
         member_count = 0
@@ -267,7 +278,6 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
         owner_names = []
         admin_names = []
         member_names = []
-        active_user_ids = []
         
         # Get all members
         async for member in client.get_chat_members(chat_id):
@@ -275,7 +285,6 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
                 continue
             
             user_id = str(member.user.id)
-            active_user_ids.append(user_id)
             username = member.user.username
             full_name = f"{member.user.first_name or ''} {member.user.last_name or ''}".strip()
             
@@ -299,55 +308,27 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
                 slot_name = f"member_{member_count:02d}"
                 member_names.append(f"@{username}" if username else f"ID:{user_id}")
             
-            # Upsert
-            existing = db.query(TelegramProjectMember).filter(
-                TelegramProjectMember.project_id == project_id,
-                TelegramProjectMember.chat_id == str(chat_id),
-                TelegramProjectMember.user_id == user_id
-            ).first()
-            
-            if existing:
-                existing.role = group_role
-                existing.slot_name = slot_name
-                existing.member_status = status.name if hasattr(status, 'name') else str(status)
-                existing.user_name = username
-                existing.full_name = full_name
-                existing.custom_title = custom_title
-                existing.group_name = chat_title
-                existing.last_seen_at = datetime.datetime.now()
-            else:
-                new_member = TelegramProjectMember(
-                    project_id=project_id,
-                    chat_id=str(chat_id),
-                    group_name=chat_title,
-                    user_id=user_id,
-                    user_name=username,
-                    full_name=full_name,
-                    role=group_role,
-                    slot_name=slot_name,
-                    member_status=status.name if hasattr(status, 'name') else str(status),
-                    is_bot=False,
-                    custom_title=custom_title,
-                    first_seen_at=datetime.datetime.now(),
-                    last_seen_at=datetime.datetime.now()
-                )
-                db.add(new_member)
+            # Insert fresh record (old records were already cleaned up)
+            new_member = TelegramProjectMember(
+                project_id=project_id,
+                chat_id=str(chat_id),
+                group_name=chat_title,
+                user_id=user_id,
+                user_name=username,
+                full_name=full_name,
+                role=group_role,
+                slot_name=slot_name,
+                member_status=status.name if hasattr(status, 'name') else str(status),
+                is_bot=False,
+                custom_title=custom_title,
+                first_seen_at=datetime.datetime.now(),
+                last_seen_at=datetime.datetime.now()
+            )
+            db.add(new_member)
             
             synced_count += 1
             if synced_count % 10 == 0:
                 LogInfo(f"[SyncChat] Progress: {synced_count} members processed...", LogType.SYSTEM_STATUS)
-
-        # Cleanup removed members
-        old_members = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.chat_id == str(chat_id)
-        ).all()
-        
-        deleted_count = 0
-        for old_member in old_members:
-            if old_member.user_id not in active_user_ids:
-                db.delete(old_member)
-                deleted_count += 1
 
         db.commit()
         
@@ -364,7 +345,7 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
             f"- Chủ nhóm: {len(owner_names)} ({', '.join(owner_names)})\n"
             f"- Quản trị viên: {admin_count} ({', '.join(admin_names)})\n"
             f"- Thành viên: {member_count} ({', '.join(member_names)})\n"
-            f"🗑 <i>Đã xóa <b>{deleted_count}</b> người dùng không còn trong nhóm khỏi CSDL.</i>"
+            f"🗑 <i>Đã xóa <b>{old_record_count}</b> bản ghi cũ trước khi đồng bộ lại.</i>"
         )
         await callback_query.message.edit_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[SyncChat] Successfully synced {synced_count} members for project {project_name}", LogType.SYSTEM_STATUS)
