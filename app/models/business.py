@@ -186,3 +186,15 @@ class DailyHarvest(Base):
     unit_price = Column(Float, default=0.0)                  # Đơn giá
     total_amount = Column(Float, default=0.0)                # Thành tiền
     created_at = Column(DateTime, default=lambda: __import__('datetime').datetime.now())
+
+class RubberTreeLog(Base):
+    __tablename__ = "rubber_tree_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    day = Column(Date)                                       # Ngày thực hiện
+    land_code = Column(String, index=True)                   # Mã đất trồng trọt
+    action_type = Column(String)                             # Loại: PLANT (trồng mới) / CUT (chặt bỏ)
+    quantity = Column(Integer, default=0)                    # Số lượng cây
+    executor = Column(String)                                # Người thực hiện
+    notes = Column(String, nullable=True)                    # Ghi chú
+    created_at = Column(DateTime, default=lambda: __import__('datetime').datetime.now())

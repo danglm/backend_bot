@@ -10190,6 +10190,232 @@ async def tien_nga_check_history_transaction_handler(client, message: Message) -
         db.close()
 
 # =========================================================================================
+# BÁO CÁO TỔNG HỢP TÀI CHÍNH
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_export_report_summary", "tien_nga_xuat_bc_tong_hop"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_report_summary|tien_nga_xuat_bc_tong_hop)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
+async def tien_nga_export_report_summary_handler(client, message: Message) -> None:
+    args_text = (message.text or "").strip()
+    # Remove command prefix
+    for cmd in ["tien_nga_export_report_summary", "tien_nga_xuat_bc_tong_hop"]:
+        args_text = re.sub(rf"^/?{cmd}\s*", "", args_text, flags=re.IGNORECASE).strip()
+    args_text = re.sub(r"^@\w+\s+/?(?:tien_nga_export_report_summary|tien_nga_xuat_bc_tong_hop)\s*", "", args_text, flags=re.IGNORECASE).strip()
+
+    if not args_text:
+        now = datetime.now()
+        await message.reply_text(
+            "<b>BÁO CÁO TỔNG HỢP TÀI CHÍNH</b>\n\n"
+            "Cú pháp:\n"
+            f"<code>/tien_nga_xuat_bc_tong_hop {now.strftime('%m/%Y')}</code> (1 tháng)\n"
+            f"<code>/tien_nga_xuat_bc_tong_hop 01/{now.strftime('%Y')} - {now.strftime('%m/%Y')}</code> (khoảng thời gian)\n"
+            f"<code>/tien_nga_xuat_bc_tong_hop {now.strftime('%Y')}</code> (cả năm)",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    start_date = None
+    end_date = None
+    import calendar
+
+    # Format: mm/yyyy - mm/yyyy
+    range_match = re.match(r"(\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{4})", args_text)
+    # Format: mm/yyyy (single month)
+    single_month_match = re.match(r"^(\d{1,2}/\d{4})$", args_text)
+    # Format: yyyy (full year)
+    year_match = re.match(r"^(\d{4})$", args_text)
+
+    try:
+        if range_match:
+            s = datetime.strptime(range_match.group(1), "%m/%Y")
+            e = datetime.strptime(range_match.group(2), "%m/%Y")
+            start_date = s.date().replace(day=1)
+            last_day = calendar.monthrange(e.year, e.month)[1]
+            end_date = e.date().replace(day=last_day)
+        elif single_month_match:
+            s = datetime.strptime(single_month_match.group(1), "%m/%Y")
+            start_date = s.date().replace(day=1)
+            last_day = calendar.monthrange(s.year, s.month)[1]
+            end_date = s.date().replace(day=last_day)
+        elif year_match:
+            year = int(year_match.group(1))
+            start_date = datetime(year, 1, 1).date()
+            end_date = datetime(year, 12, 31).date()
+        else:
+            await message.reply_text(
+                "⚠️ Định dạng không hợp lệ.\n\n"
+                "Dùng: <code>mm/yyyy</code>, <code>mm/yyyy - mm/yyyy</code>, hoặc <code>yyyy</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+    except ValueError:
+        await message.reply_text("⚠️ Định dạng ngày không hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    # Lưu date range vào callback data
+    date_key = f"{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+
+    from app.models.business import Investment
+    db = SessionLocal()
+    try:
+        investments = db.query(Investment).all()
+        if not investments:
+            await message.reply_text("⚠️ Chưa có quỹ đầu tư nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for inv in investments:
+            label = f"[{inv.investment_code}] {inv.name}" if inv.investment_code else (inv.name or str(inv.id)[:8])
+            if inv.status != "ACTIVE":
+                label = f"{label} (ĐÃ ĐÓNG)"
+            buttons.append([InlineKeyboardButton(label, callback_data=f"rpt_sum_{date_key}_{inv.id}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="rpt_sum_cancel")])
+
+        period_label = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
+        await message.reply_text(
+            f"<b>BÁO CÁO TỔNG HỢP TÀI CHÍNH</b>\n\n"
+            f"Khoảng thời gian: <b>{period_label}</b>\n\n"
+            f"Chọn Quỹ Đầu Tư:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in export report summary: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^rpt_sum_cancel$"))
+async def rpt_sum_cancel_cb(client, callback_query: CallbackQuery):
+    await callback_query.message.edit_text("Đã hủy thao tác báo cáo tổng hợp.")
+
+@bot.on_callback_query(filters.regex(r"^rpt_sum_(\d{8})_(\d{8})_(.+)$"))
+async def rpt_sum_cb(client, callback_query: CallbackQuery):
+    start_str = callback_query.matches[0].group(1)
+    end_str = callback_query.matches[0].group(2)
+    inv_id = callback_query.matches[0].group(3)
+
+    start_date = datetime.strptime(start_str, "%Y%m%d").date()
+    end_date = datetime.strptime(end_str, "%Y%m%d").date()
+
+    from app.models.business import Investment, DailyPayment, Shareholder
+
+    db = SessionLocal()
+    try:
+        import uuid as _uuid
+        try:
+            parsed_id = _uuid.UUID(inv_id)
+            inv = db.query(Investment).filter(Investment.id == parsed_id).first()
+        except ValueError:
+            inv = None
+
+        if not inv:
+            await callback_query.answer("⚠️ Không tìm thấy quỹ đầu tư.", show_alert=True)
+            return
+
+        # Lấy tất cả giao dịch đã duyệt trong khoảng thời gian
+        payments = db.query(DailyPayment).filter(
+            DailyPayment.investment_id == inv.id,
+            DailyPayment.status == "APPROVED",
+            DailyPayment.day >= start_date,
+            DailyPayment.day <= end_date
+        ).all()
+
+        total_thu = sum(p.amount or 0 for p in payments if p.payment_type == "thu")
+        total_chi = sum(p.amount or 0 for p in payments if p.payment_type == "chi")
+        thu_count = len([p for p in payments if p.payment_type == "thu"])
+        chi_count = len([p for p in payments if p.payment_type == "chi"])
+
+        # Doanh thu = Tổng thu - Vốn ban đầu
+        von_ban_dau = inv.initial_capital or 0
+        doanh_thu = total_thu - von_ban_dau
+        # Chi phí = Tổng chi
+        chi_phi = total_chi
+        # Lợi nhuận = Doanh thu - Chi phí
+        loi_nhuan = doanh_thu - chi_phi
+
+        # Cổ đông
+        shareholders = db.query(Shareholder).filter(
+            Shareholder.investment_id == inv.id
+        ).all()
+        total_invest_amount = sum(sh.investment_amount or 0 for sh in shareholders)
+
+        period_label = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
+
+        text = (
+            f"<b>BÁO CÁO TỔNG HỢP TÀI CHÍNH</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>THÔNG TIN QUỸ ĐẦU TƯ</b>\n"
+            f"  Tên Quỹ: <b>{inv.name or '—'}</b>\n"
+            f"  Mã Quỹ: <code>{inv.investment_code or '—'}</code>\n"
+            f"  Trạng thái: <b>{'Hoạt động' if inv.status == 'ACTIVE' else 'Đã đóng'}</b>\n"
+            f"  Ngày bắt đầu: {inv.start_date.strftime('%d/%m/%Y') if inv.start_date else '—'}\n"
+            f"  Ngày kết thúc: {inv.end_date.strftime('%d/%m/%Y') if inv.end_date else '—'}\n"
+            f"  Vốn ban đầu: <code>{fmt_vn(von_ban_dau)}</code>\n"
+            f"  Số cổ đông: <b>{len(shareholders)}</b>\n"
+            f"  Tổng vốn góp: <code>{fmt_vn(total_invest_amount)}</code>\n"
+        )
+
+        if inv.notes:
+            text += f"  Ghi chú: {inv.notes}\n"
+
+        text += (
+            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"<b>KỲ BÁO CÁO:</b> {period_label}\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>TỔNG HỢP GIAO DỊCH</b>\n"
+            f"  Tổng số giao dịch: <b>{len(payments)}</b>\n"
+            f"  Số phiếu thu: <b>{thu_count}</b>\n"
+            f"  Số phiếu chi: <b>{chi_count}</b>\n\n"
+            f"<b>DOANH THU</b>\n"
+            f"  Tổng thu: <code>{fmt_vn(total_thu)}</code>\n"
+            f"  Vốn ban đầu: <code>{fmt_vn(von_ban_dau)}</code>\n"
+            f"  Doanh thu (Thu - Vốn): <b><code>{fmt_vn(doanh_thu)}</code></b>\n\n"
+            f"<b>CHI PHÍ</b>\n"
+            f"  Tổng chi: <b><code>{fmt_vn(chi_phi)}</code></b>\n\n"
+        )
+
+        # Lợi nhuận
+        if loi_nhuan >= 0:
+            text += f"<b>LỢI NHUẬN: <code>{fmt_vn(loi_nhuan)}</code></b>\n"
+        else:
+            text += f"<b>LỖ: <code>{fmt_vn(abs(loi_nhuan))}</code></b>\n"
+
+        # Thông tin tổng hợp từ bảng Investment (toàn thời gian)
+        text += (
+            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"<b>SỐ LIỆU TÍCH LŨY (TOÀN THỜI GIAN)</b>\n"
+            f"  Tổng thu tích lũy: <code>{fmt_vn(inv.total_income or 0)}</code>\n"
+            f"  Tổng chi tích lũy: <code>{fmt_vn(inv.total_expense or 0)}</code>\n"
+            f"  Lợi nhuận tích lũy: <code>{fmt_vn(inv.profit or 0)}</code>\n"
+        )
+
+        # Danh sách cổ đông
+        if shareholders:
+            text += f"\n<b>DANH SÁCH CỔ ĐÔNG ({len(shareholders)})</b>\n"
+            for idx, sh in enumerate(shareholders, 1):
+                pct = (sh.investment_amount / total_invest_amount * 100) if total_invest_amount > 0 else 0
+                text += f"  {idx}. {sh.fullname or sh.shareholder_code} — <code>{fmt_vn(sh.investment_amount or 0)}</code> ({pct:.1f}%)\n"
+
+        # Truncate
+        if len(text) > 4000:
+            text = text[:3950] + "\n\n<i>... (nội dung bị cắt do giới hạn hiển thị)</i>"
+
+        await callback_query.message.edit_text(text, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error in rpt_sum_cb: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+# =========================================================================================
 # QUẢN LÝ ĐẤT TRỒNG TRỌT (THU HOẠCH)
 # =========================================================================================
 
@@ -10488,6 +10714,85 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
             os.remove(tmp_path)
     except Exception as e:
         LogError(f"Error listing agricultural land: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# =========================================================================================
+# QUẢN LÝ HỘ DÂN (THU HOẠCH)
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_check_agricultural_land", "tien_nga_kt_dat_trong_trot"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_agricultural_land|tien_nga_kt_dat_trong_trot)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_check_agricultural_land_handler(client, message: Message) -> None:
+    args = message.text.strip().split()
+    if len(args) < 2:
+        await message.reply_text(
+            "<b>KIỂM TRA ĐẤT TRỒNG TRỌT</b>\n\n"
+            "Cú pháp: <code>/tien_nga_kt_dat_trong_trot [Mã Đất]</code>\n\n"
+            "<i>Ví dụ: <code>/tien_nga_kt_dat_trong_trot DCS001</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    land_code = args[1].upper()
+    from app.models.business import AgriculturalLand, RubberTreeLog
+
+    db = SessionLocal()
+    try:
+        land = db.query(AgriculturalLand).filter(
+            AgriculturalLand.land_code == land_code,
+            AgriculturalLand.status == "ACTIVE"
+        ).first()
+        if not land:
+            await message.reply_text(f"⚠️ Không tìm thấy đất với mã <b>{land_code}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        # Lấy thống kê cây cao su
+        logs = db.query(RubberTreeLog).filter(RubberTreeLog.land_code == land_code).all()
+        total_planted = sum(log.quantity or 0 for log in logs if log.action_type == "PLANT")
+        total_cut = sum(log.quantity or 0 for log in logs if log.action_type == "CUT")
+        plant_count = len([log for log in logs if log.action_type == "PLANT"])
+        cut_count = len([log for log in logs if log.action_type == "CUT"])
+
+        # Lấy log gần nhất
+        recent_logs = sorted(logs, key=lambda x: x.day or datetime.min, reverse=True)[:5]
+
+        text = (
+            f"<b>THÔNG TIN ĐẤT TRỒNG TRỌT</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<b>Mã Đất:</b> <code>{land.land_code}</code>\n"
+            f"<b>Tên Đất:</b> {land.land_name or '—'}\n"
+            f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>DIỆN TÍCH</b>\n"
+            f"  Tổng: <b>{land.total_area}</b> ha\n"
+            f"  Khai thác cao su: <b>{land.rubber_area}</b> ha\n"
+            f"  Trống: <b>{land.empty_area}</b> ha\n"
+            f"  Đang trồng: <b>{land.planting_area}</b> ha\n\n"
+            f"<b>SỐ LƯỢNG CÂY</b>\n"
+            f"  Cây thu hoạch: <b>{land.harvesting_trees or 0}</b>\n"
+            f"  Cây đang trồng: <b>{land.planting_trees or 0}</b>\n"
+            f"  Tổng: <b>{(land.harvesting_trees or 0) + (land.planting_trees or 0)}</b>\n\n"
+            f"<b>LỊCH SỬ CÂY CAO SU</b>\n"
+            f"  Tổng trồng mới: <b>{total_planted}</b> cây ({plant_count} lần)\n"
+            f"  Tổng chặt bỏ: <b>{total_cut}</b> cây ({cut_count} lần)\n"
+        )
+
+        if recent_logs:
+            text += f"\n<b>HOẠT ĐỘNG GẦN ĐÂY</b>\n"
+            for log in recent_logs:
+                day_str = log.day.strftime("%d/%m/%Y") if log.day else "—"
+                action = "🌱 Trồng" if log.action_type == "PLANT" else "🪓 Chặt"
+                text += f"  {action} | {day_str} | {log.quantity} cây | {log.executor or '—'}\n"
+
+        await message.reply_text(text, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error checking agricultural land: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
@@ -11943,5 +12248,369 @@ async def del_hh_callback(client, callback_query) -> None:
         db.rollback()
         LogError(f"Error deleting household: {e}", LogType.SYSTEM_STATUS)
         await callback_query.message.edit_text("❌ Lỗi hệ thống.")
+    finally:
+        db.close()
+
+# =========================================================================================
+# QUẢN LÝ CÂY CAO SU (THU HOẠCH)
+# =========================================================================================
+
+# --- Lệnh: /tien_nga_rubber_tree / /tien_nga_cay_cao_su ---
+@bot.on_message(filters.command(["tien_nga_rubber_tree", "tien_nga_cay_cao_su"]) | filters.regex(r"^@\w+\s+/(tien_nga_rubber_tree|tien_nga_cay_cao_su)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_rubber_tree_handler(client, message: Message) -> None:
+    # Nếu message có nhiều dòng -> đây là form submission, chuyển sang form handler
+    lines = (message.text or "").strip().split("\n")
+    if len(lines) >= 2:
+        await tien_nga_rubber_tree_form_handler(client, message)
+        return
+
+    args = await check_command_target(client, message.text, ["tien_nga_rubber_tree", "tien_nga_cay_cao_su"])
+    if args is None: return
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Trồng mới", callback_data="rt_action_PLANT")],
+        [InlineKeyboardButton("Chặt cây", callback_data="rt_action_CUT")],
+        [InlineKeyboardButton("Hủy", callback_data="rt_cancel")]
+    ])
+    await message.reply_text(
+        "<b>QUẢN LÝ CÂY CAO SU</b>\n\n"
+        "Vui lòng chọn hành động:",
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML
+    )
+
+# Callback: Chọn hành động -> hiển thị danh sách đất trồng trọt
+@bot.on_callback_query(filters.regex(r"^rt_action_(PLANT|CUT)$"))
+async def rt_action_callback(client, callback_query: CallbackQuery):
+    action_type = callback_query.matches[0].group(1)
+    action_label = "TRỒNG MỚI" if action_type == "PLANT" else "CHẶT CÂY"
+
+    from app.models.business import AgriculturalLand
+    db = SessionLocal()
+    try:
+        lands = db.query(AgriculturalLand).filter(AgriculturalLand.status == "ACTIVE").order_by(AgriculturalLand.land_code).all()
+        if not lands:
+            await callback_query.message.edit_text("⚠️ Chưa có đất trồng trọt nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for land in lands:
+            label = f"{land.land_code} - {land.land_name or land.address or ''}"
+            buttons.append([InlineKeyboardButton(label, callback_data=f"rt_land_{action_type}_{land.land_code}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="rt_cancel")])
+
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await callback_query.message.edit_text(
+            f"<b>{action_label}</b>\n\n"
+            "Chọn đất trồng trọt:",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in rt_action_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+# Callback: Chọn đất -> hiển thị form điền thông tin
+@bot.on_callback_query(filters.regex(r"^rt_land_(PLANT|CUT)_(.+)$"))
+async def rt_land_callback(client, callback_query: CallbackQuery):
+    action_type = callback_query.matches[0].group(1)
+    land_code = callback_query.matches[0].group(2)
+    action_label = "TRỒNG MỚI" if action_type == "PLANT" else "CHẶT CÂY"
+
+    from app.models.business import AgriculturalLand
+    db = SessionLocal()
+    try:
+        land = db.query(AgriculturalLand).filter(
+            AgriculturalLand.land_code == land_code,
+            AgriculturalLand.status == "ACTIVE"
+        ).first()
+        if not land:
+            await callback_query.answer("⚠️ Không tìm thấy đất trồng trọt.", show_alert=True)
+            return
+
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        username = callback_query.from_user.username or callback_query.from_user.first_name or "N/A"
+
+        form = (
+            f"<b>FORM {action_label} CÂY CAO SU</b>\n\n"
+            f"Đất trồng trọt: <b>{land.land_name or land.land_code}</b> (<code>{land.land_code}</code>)\n"
+            f"Cây đang thu hoạch: <b>{land.harvesting_trees or 0}</b>\n"
+            f"Cây đang trồng: <b>{land.planting_trees or 0}</b>\n\n"
+            f"Sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
+            f"<pre>/tien_nga_cay_cao_su\n"
+            f"Loại: {action_label}\n"
+            f"Mã Đất: {land.land_code}\n"
+            f"Ngày: {today_str}\n"
+            f"Số Lượng: 0\n"
+            f"Người Thực Hiện: @{username}\n"
+            f"Ghi Chú: </pre>"
+        )
+        await callback_query.message.edit_text(form, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        LogError(f"Error in rt_land_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+# Callback: Hủy
+@bot.on_callback_query(filters.regex(r"^rt_cancel$"))
+async def rt_cancel_callback(client, callback_query: CallbackQuery):
+    await callback_query.message.delete()
+
+# Handler: Nhận form đã điền (xử lý khi gửi form multi-line)
+@bot.on_message(filters.regex(r"^/tien_nga_(?:rubber_tree|cay_cao_su)\n") & filters.group)
+async def tien_nga_rubber_tree_form_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+    if len(lines) < 2:
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    action_raw = data.get("Loại", data.get("Loai", "")).strip().upper()
+    if "TRỒNG" in action_raw or "TRONG" in action_raw or "PLANT" in action_raw:
+        action_type = "PLANT"
+    elif "CHẶT" in action_raw or "CHAT" in action_raw or "CUT" in action_raw:
+        action_type = "CUT"
+    else:
+        await message.reply_text("⚠️ Loại phải là <b>TRỒNG MỚI</b> hoặc <b>CHẶT CÂY</b>.", parse_mode=ParseMode.HTML)
+        return
+
+    land_code = data.get("Mã Đất", data.get("Ma Dat", "")).strip().upper()
+    day_str = data.get("Ngày", data.get("Ngay", "")).strip()
+    quantity_str = data.get("Số Lượng", data.get("So Luong", "0")).strip()
+    executor = data.get("Người Thực Hiện", data.get("Nguoi Thuc Hien", "")).strip()
+    notes = data.get("Ghi Chú", data.get("Ghi Chu", "")).strip() or None
+
+    if not land_code:
+        await message.reply_text("⚠️ <b>Mã Đất</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        quantity = int(parse_float_vn(quantity_str))
+    except:
+        await message.reply_text("⚠️ <b>Số Lượng</b> phải là số nguyên.", parse_mode=ParseMode.HTML)
+        return
+
+    if quantity <= 0:
+        await message.reply_text("⚠️ <b>Số Lượng</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        day = datetime.strptime(day_str, "%d/%m/%Y").date()
+    except:
+        await message.reply_text("⚠️ Định dạng <b>Ngày</b> không hợp lệ. Dùng <code>dd/mm/yyyy</code>.", parse_mode=ParseMode.HTML)
+        return
+
+    from app.models.business import AgriculturalLand, RubberTreeLog
+    import uuid as uuid_lib
+
+    db = SessionLocal()
+    try:
+        land = db.query(AgriculturalLand).filter(
+            AgriculturalLand.land_code == land_code,
+            AgriculturalLand.status == "ACTIVE"
+        ).first()
+        if not land:
+            await message.reply_text(f"⚠️ Không tìm thấy đất trồng trọt với mã <b>{land_code}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        # Validate: nếu chặt cây thì kiểm tra số lượng cây hiện có
+        if action_type == "CUT":
+            current_total = (land.harvesting_trees or 0) + (land.planting_trees or 0)
+            if quantity > current_total:
+                await message.reply_text(
+                    f"⚠️ Số lượng chặt ({quantity}) vượt quá tổng số cây hiện có ({current_total}).\n"
+                    f"Cây thu hoạch: {land.harvesting_trees or 0} | Cây đang trồng: {land.planting_trees or 0}",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        # Tạo bản ghi log
+        new_log = RubberTreeLog(
+            id=uuid_lib.uuid4(),
+            day=day,
+            land_code=land_code,
+            action_type=action_type,
+            quantity=quantity,
+            executor=executor or None,
+            notes=notes,
+        )
+        db.add(new_log)
+
+        # Cập nhật số lượng cây trong đất
+        if action_type == "PLANT":
+            land.planting_trees = (land.planting_trees or 0) + quantity
+        else:  # CUT
+            # Ưu tiên trừ cây đang thu hoạch trước, sau đó trừ cây đang trồng
+            remaining = quantity
+            harvest_deduct = min(remaining, land.harvesting_trees or 0)
+            land.harvesting_trees = (land.harvesting_trees or 0) - harvest_deduct
+            remaining -= harvest_deduct
+            if remaining > 0:
+                land.planting_trees = (land.planting_trees or 0) - remaining
+
+        db.commit()
+
+        action_label = "TRỒNG MỚI" if action_type == "PLANT" else "CHẶT CÂY"
+        action_icon = "🌱" if action_type == "PLANT" else "🪓"
+
+        await message.reply_text(
+            f"{action_icon} <b>{action_label} CÂY CAO SU THÀNH CÔNG!</b>\n\n"
+            f"<b>Đất:</b> {land.land_name or land.land_code} (<code>{land_code}</code>)\n"
+            f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
+            f"<b>Số Lượng:</b> {quantity} cây\n"
+            f"<b>Người TH:</b> {executor or '—'}\n"
+            f"<b>Ghi Chú:</b> {notes or '—'}\n\n"
+            f"<b>Cập nhật số cây:</b>\n"
+            f"  Cây thu hoạch: <b>{land.harvesting_trees or 0}</b>\n"
+            f"  Cây đang trồng: <b>{land.planting_trees or 0}</b>",
+            parse_mode=ParseMode.HTML
+        )
+        LogInfo(f"[TienNga] RubberTree {action_type}: {quantity} trees on {land_code} by {executor}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in rubber tree form handler: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# --- Lệnh: /tien_nga_check_rubber_tree / /tien_nga_kt_cay_cao_su ---
+@bot.on_message(filters.command(["tien_nga_check_rubber_tree", "tien_nga_kt_cay_cao_su"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_rubber_tree|tien_nga_kt_cay_cao_su)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_check_rubber_tree_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_check_rubber_tree", "tien_nga_kt_cay_cao_su"])
+    if args is None: return
+
+    from app.models.business import AgriculturalLand
+    db = SessionLocal()
+    try:
+        lands = db.query(AgriculturalLand).filter(AgriculturalLand.status == "ACTIVE").order_by(AgriculturalLand.land_code).all()
+        if not lands:
+            await message.reply_text("⚠️ Chưa có đất trồng trọt nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for land in lands:
+            label = f"{land.land_code} - {land.land_name or land.address or ''}"
+            buttons.append([InlineKeyboardButton(label, callback_data=f"rt_check_{land.land_code}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="rt_cancel")])
+
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await message.reply_text(
+            "<b>KIỂM TRA CÂY CAO SU</b>\n\n"
+            "Chọn đất trồng trọt để xem thông tin:",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in check rubber tree handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# Callback: Hiển thị thông tin chi tiết
+@bot.on_callback_query(filters.regex(r"^rt_check_(.+)$"))
+async def rt_check_callback(client, callback_query: CallbackQuery):
+    land_code = callback_query.matches[0].group(1)
+
+    from app.models.business import AgriculturalLand, RubberTreeLog
+    db = SessionLocal()
+    try:
+        land = db.query(AgriculturalLand).filter(
+            AgriculturalLand.land_code == land_code,
+            AgriculturalLand.status == "ACTIVE"
+        ).first()
+        if not land:
+            await callback_query.answer("⚠️ Không tìm thấy đất trồng trọt.", show_alert=True)
+            return
+
+        # Lấy tất cả log của đất này
+        logs = db.query(RubberTreeLog).filter(
+            RubberTreeLog.land_code == land_code
+        ).order_by(RubberTreeLog.day.desc()).all()
+
+        # Tính tổng
+        total_planted = sum(log.quantity or 0 for log in logs if log.action_type == "PLANT")
+        total_cut = sum(log.quantity or 0 for log in logs if log.action_type == "CUT")
+
+        # Phân chia log theo loại
+        plant_logs = [log for log in logs if log.action_type == "PLANT"]
+        cut_logs = [log for log in logs if log.action_type == "CUT"]
+
+        text = (
+            f"<b>THÔNG TIN CÂY CAO SU</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<b>Đất:</b> {land.land_name or land.land_code} (<code>{land.land_code}</code>)\n"
+            f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
+            f"<b>Cây thu hoạch:</b> {land.harvesting_trees or 0}\n"
+            f"<b>Cây đang trồng:</b> {land.planting_trees or 0}\n"
+            f"<b>Tổng cây hiện có:</b> {(land.harvesting_trees or 0) + (land.planting_trees or 0)}\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+        )
+
+        # Thống kê tổng
+        text += (
+            f"<b>THỐNG KÊ:</b>\n"
+            f"  Tổng trồng mới: <b>{total_planted}</b> cây ({len(plant_logs)} lần)\n"
+            f"  Tổng chặt bỏ: <b>{total_cut}</b> cây ({len(cut_logs)} lần)\n\n"
+        )
+
+        # Chi tiết trồng mới
+        text += f"🌱 <b>LỊCH SỬ TRỒNG MỚI ({len(plant_logs)})</b>\n"
+        if not plant_logs:
+            text += "  <i>Chưa có bản ghi nào.</i>\n\n"
+        else:
+            for idx, log in enumerate(plant_logs[:20], 1):
+                day_str = log.day.strftime("%d/%m/%Y") if log.day else "—"
+                text += (
+                    f"  {idx}. {day_str} | {log.quantity} cây | {log.executor or '—'}"
+                )
+                if log.notes:
+                    text += f" | {log.notes}"
+                text += "\n"
+            if len(plant_logs) > 20:
+                text += f"  <i>... và {len(plant_logs) - 20} bản ghi khác.</i>\n"
+            text += "\n"
+
+        # Chi tiết chặt cây
+        text += f"🪓 <b>LỊCH SỬ CHẶT CÂY ({len(cut_logs)})</b>\n"
+        if not cut_logs:
+            text += "  <i>Chưa có bản ghi nào.</i>\n"
+        else:
+            for idx, log in enumerate(cut_logs[:20], 1):
+                day_str = log.day.strftime("%d/%m/%Y") if log.day else "—"
+                text += (
+                    f"  {idx}. {day_str} | {log.quantity} cây | {log.executor or '—'}"
+                )
+                if log.notes:
+                    text += f" | {log.notes}"
+                text += "\n"
+            if len(cut_logs) > 20:
+                text += f"  <i>... và {len(cut_logs) - 20} bản ghi khác.</i>\n"
+
+        # Truncate if too long
+        if len(text) > 4000:
+            text = text[:3950] + "\n\n<i>... (nội dung bị cắt do giới hạn hiển thị)</i>"
+
+        await callback_query.message.edit_text(text, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error in rt_check_callback: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
     finally:
         db.close()

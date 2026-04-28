@@ -834,6 +834,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_thanh_toan_cong_no", "Thanh toán công nợ"),
                     BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_chi", "Xuất báo cáo thu chi Excel"),
+                    BotCommand("tien_nga_xuat_bc_tong_hop", "Báo cáo tổng hợp tài chính"),
                     BotCommand("confirm_payment", "Duyệt phiếu chi"),
                     BotCommand("deny_payment", "Huỷ phiếu chi"),
                 ])
@@ -867,6 +868,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_cap_nhat_dat_trong_trot", "Cập nhật đất trồng trọt"),
                     BotCommand("tien_nga_xoa_dat_trong_trot", "Xóa đất trồng trọt"),
                     BotCommand("tien_nga_ds_dat_trong_trot", "DS đất trồng trọt"),
+                    BotCommand("tien_nga_kt_dat_trong_trot", "KT đất trồng trọt"),
                     BotCommand("tien_nga_tao_ho_dan", "Tạo hộ dân"),
                     BotCommand("tien_nga_cap_nhat_ho_dan", "Cập nhật hộ dân"),
                     BotCommand("tien_nga_xoa_ho_dan", "Xóa hộ dân"),
@@ -874,6 +876,8 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_kiem_tra_thu_hoach", "Kiểm tra thu hoạch"),
                     BotCommand("tien_nga_so_sanh_thu_hoach", "So sánh thu hoạch"),
                     BotCommand("tien_nga_kt_thu_hoach_hang_ngay", "KT thu hoạch hàng ngày"),
+                    BotCommand("tien_nga_cay_cao_su", "Quản lý cây cao su"),
+                    BotCommand("tien_nga_kt_cay_cao_su", "Kiểm tra cây cao su"),
                     BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
                     BotCommand("tien_nga_thanh_toan_cong_no", "Thanh toán công nợ"),
                 ])
