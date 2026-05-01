@@ -271,11 +271,19 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
 
     except Exception as e:
         db.rollback()
-        LogError(f"Error in handle_add_employee: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text(
-            "❌ Có lỗi xảy ra khi thêm nhân viên. Vui lòng thử lại.",
-            parse_mode=ParseMode.HTML
-        )
+        LogError(f"Error in handle_create_employee: {e}", LogType.SYSTEM_STATUS)
+        from sqlalchemy.exc import IntegrityError
+        if isinstance(e, IntegrityError) and "ix_employee_email" in str(e):
+            await message.reply_text("❌ Email này đã được sử dụng cho nhân viên khác. Vui lòng kiểm tra lại.", parse_mode=ParseMode.HTML)
+        elif isinstance(e, IntegrityError) and "ix_employee_number_phone" in str(e):
+            await message.reply_text("❌ Số điện thoại này đã được sử dụng cho nhân viên khác. Vui lòng kiểm tra lại.", parse_mode=ParseMode.HTML)
+        elif isinstance(e, IntegrityError):
+            await message.reply_text("❌ Lỗi dữ liệu trùng lặp (có thể email, SĐT, CCCD đã tồn tại). Vui lòng kiểm tra lại.", parse_mode=ParseMode.HTML)
+        else:
+            await message.reply_text(
+                "❌ Có lỗi xảy ra khi thêm nhân viên. Vui lòng thử lại.",
+                parse_mode=ParseMode.HTML
+            )
     finally:
         db.close()
 
@@ -304,7 +312,11 @@ FIELD_MAP = {
     "Phòng ban": "department",
     "Chức vụ": "position",
     "Loại hợp đồng": "contract_type",
+    "Ảnh nhân viên": "employee_photo",
+    "Phúc lợi": "benefits",
     "Bảo hiểm": "insurance",
+    "Mục tiêu nghề nghiệp": "career_goal",
+    "Đánh giá hiệu suất": "performance_evaluation",
     "Ngân hàng": "bank_name",
     "Số tài khoản": "bank_account_number",
     "Mã thanh toán": "code_payment",
@@ -317,10 +329,25 @@ FIELD_MAP = {
 def _build_prefilled_update_form(emp: "Employee", command_name: str) -> str:
     """Tạo form cập nhật đã điền sẵn dữ liệu hiện tại từ DB."""
     birthday_str = emp.birthday.strftime("%d-%m-%Y") if emp.birthday else ""
-    salary_str = ""
-    if emp.base_salary is not None:
-        int_val = int(emp.base_salary) if emp.base_salary == int(emp.base_salary) else emp.base_salary
-        salary_str = f"{int_val:,}".replace(",", ".")
+
+    def _fmt_salary(val):
+        if val is None: return ""
+        int_val = int(val) if val == int(val) else val
+        return f"{int_val:,}".replace(",", ".")
+
+    salary_str = _fmt_salary(emp.base_salary)
+    monthly_salary_str = _fmt_salary(emp.monthly_salary)
+    weekly_salary_str = _fmt_salary(emp.weekly_salary)
+    daily_salary_str = _fmt_salary(emp.daily_salary)
+    hourly_salary_str = _fmt_salary(emp.hourly_salary)
+    overtime_salary_str = _fmt_salary(emp.overtime_salary)
+    bonus_str = _fmt_salary(emp.bonus)
+    rate_bhxh_str = ""
+    if emp.rate_bhxh is not None:
+        rate_bhxh_str = str(int(emp.rate_bhxh) if emp.rate_bhxh == int(emp.rate_bhxh) else emp.rate_bhxh)
+    working_hours_str = ""
+    if emp.working_hours is not None:
+        working_hours_str = str(int(emp.working_hours) if emp.working_hours == int(emp.working_hours) else emp.working_hours)
     
     start_time_str = emp.start_time.strftime("%H:%M") if emp.start_time else ""
     end_time_str = emp.end_time.strftime("%H:%M") if emp.end_time else ""
@@ -349,11 +376,23 @@ Kinh nghiệm: {emp.experience or ''}
 Phòng ban: {emp.department or ''}
 Chức vụ: {emp.position or ''}
 Loại hợp đồng: {emp.contract_type or ''}
+Ảnh nhân viên: {emp.employee_photo or ''}
 Giờ vào ca (hh:mm): {start_time_str}
 Giờ tan ca (hh:mm): {end_time_str}
+Số giờ làm việc (giờ/ngày): {working_hours_str}
 Lương cơ bản (VNĐ): {salary_str}
+Lương tháng (VNĐ): {monthly_salary_str}
+Lương tuần (VNĐ): {weekly_salary_str}
+Lương ngày (VNĐ): {daily_salary_str}
+Lương giờ (VNĐ): {hourly_salary_str}
+Lương làm thêm giờ (VNĐ): {overtime_salary_str}
+Tiền thưởng (VNĐ): {bonus_str}
+Phúc lợi: {emp.benefits or ''}
 Số ngày phép năm: {emp.leave_balance if emp.leave_balance is not None else ''}
 Bảo hiểm: {emp.insurance or ''}
+Tỷ lệ BHXH (%): {rate_bhxh_str}
+Mục tiêu nghề nghiệp: {emp.career_goal or ''}
+Đánh giá hiệu suất: {emp.performance_evaluation or ''}
 Ngân hàng: {emp.bank_name or ''}
 Số tài khoản: {emp.bank_account_number or ''}
 Mã thanh toán: {emp.code_payment or ''}
@@ -463,6 +502,54 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
                 employee.base_salary = await _parse_float_or_reply(message, "Lương cơ bản", salary_str)
                 updated_fields.append("Lương cơ bản")
 
+            # Xử lý riêng: Lương tháng
+            monthly_str = data.get("Lương tháng (VNĐ)", data.get("Lương tháng", "")).strip()
+            if monthly_str:
+                employee.monthly_salary = await _parse_float_or_reply(message, "Lương tháng", monthly_str)
+                updated_fields.append("Lương tháng")
+
+            # Xử lý riêng: Lương tuần
+            weekly_str = data.get("Lương tuần (VNĐ)", data.get("Lương tuần", "")).strip()
+            if weekly_str:
+                employee.weekly_salary = await _parse_float_or_reply(message, "Lương tuần", weekly_str)
+                updated_fields.append("Lương tuần")
+
+            # Xử lý riêng: Lương ngày
+            daily_str = data.get("Lương ngày (VNĐ)", data.get("Lương ngày", "")).strip()
+            if daily_str:
+                employee.daily_salary = await _parse_float_or_reply(message, "Lương ngày", daily_str)
+                updated_fields.append("Lương ngày")
+
+            # Xử lý riêng: Lương giờ
+            hourly_str = data.get("Lương giờ (VNĐ)", data.get("Lương giờ", "")).strip()
+            if hourly_str:
+                employee.hourly_salary = await _parse_float_or_reply(message, "Lương giờ", hourly_str)
+                updated_fields.append("Lương giờ")
+
+            # Xử lý riêng: Lương làm thêm giờ
+            overtime_str = data.get("Lương làm thêm giờ (VNĐ)", data.get("Lương làm thêm giờ", "")).strip()
+            if overtime_str:
+                employee.overtime_salary = await _parse_float_or_reply(message, "Lương làm thêm giờ", overtime_str)
+                updated_fields.append("Lương làm thêm giờ")
+
+            # Xử lý riêng: Tiền thưởng
+            bonus_str = data.get("Tiền thưởng (VNĐ)", data.get("Tiền thưởng", "")).strip()
+            if bonus_str:
+                employee.bonus = await _parse_float_or_reply(message, "Tiền thưởng", bonus_str)
+                updated_fields.append("Tiền thưởng")
+
+            # Xử lý riêng: Tỷ lệ BHXH
+            bhxh_str = data.get("Tỷ lệ BHXH (%)", data.get("Tỷ lệ BHXH", "")).strip()
+            if bhxh_str:
+                employee.rate_bhxh = await _parse_float_or_reply(message, "Tỷ lệ BHXH", bhxh_str)
+                updated_fields.append("Tỷ lệ BHXH")
+
+            # Xử lý riêng: Số giờ làm việc
+            working_hours_str = data.get("Số giờ làm việc (giờ/ngày)", data.get("Số giờ làm việc", "")).strip()
+            if working_hours_str:
+                employee.working_hours = await _parse_float_or_reply(message, "Số giờ làm việc", working_hours_str)
+                updated_fields.append("Số giờ làm việc")
+
             # Xử lý riêng: Giờ vào ca
             start_str = data.get("Giờ vào ca (hh:mm)", data.get("Giờ vào ca", "")).strip()
             if start_str:
@@ -509,10 +596,18 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
     except Exception as e:
         db.rollback()
         LogError(f"Error in handle_update_employee: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text(
-            "❌ Có lỗi xảy ra khi cập nhật nhân viên.",
-            parse_mode=ParseMode.HTML
-        )
+        from sqlalchemy.exc import IntegrityError
+        if isinstance(e, IntegrityError) and "ix_employee_email" in str(e):
+            await message.reply_text("❌ Email này đã được sử dụng cho nhân viên khác. Vui lòng kiểm tra lại.", parse_mode=ParseMode.HTML)
+        elif isinstance(e, IntegrityError) and "ix_employee_number_phone" in str(e):
+            await message.reply_text("❌ Số điện thoại này đã được sử dụng cho nhân viên khác. Vui lòng kiểm tra lại.", parse_mode=ParseMode.HTML)
+        elif isinstance(e, IntegrityError):
+            await message.reply_text("❌ Lỗi dữ liệu trùng lặp (có thể email, SĐT, CCCD đã tồn tại). Vui lòng kiểm tra lại.", parse_mode=ParseMode.HTML)
+        else:
+            await message.reply_text(
+                "❌ Có lỗi xảy ra khi cập nhật nhân viên.",
+                parse_mode=ParseMode.HTML
+            )
     finally:
         db.close()
 
@@ -910,11 +1005,6 @@ async def handle_check_out(client, message: Message, command_name: str) -> None:
         checkout_dt = now_vn.replace(tzinfo=None)
         attendance.check_out_time = checkout_dt
 
-        # Tính working_time (giờ làm việc)
-        if attendance.check_in_time:
-            diff = (checkout_dt - attendance.check_in_time).total_seconds() / 3600
-            attendance.working_time = round(diff, 2)
-
         # Tính overtime nếu check-out sau end_time
         overtime_minutes = 0
         if current_time > end_time_obj:
@@ -922,6 +1012,13 @@ async def handle_check_out(client, message: Message, command_name: str) -> None:
             end_dt_full = datetime.datetime.combine(today, end_time_obj)
             overtime_minutes = round((now_dt - end_dt_full).total_seconds() / 60)
             attendance.overtime = round(overtime_minutes / 60, 2)
+
+        # Tính working_time (giờ làm việc)
+        if attendance.check_in_time:
+            diff = (checkout_dt - attendance.check_in_time).total_seconds() / 3600
+            if overtime_minutes > 0:
+                diff -= (overtime_minutes / 60)
+            attendance.working_time = round(diff, 2)
 
         db.commit()
 
