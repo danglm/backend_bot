@@ -750,6 +750,12 @@ async def register_bot_command_handler(client, message: Message) -> None:
         elif "tiến nga" in project_name or "tien nga" in project_name:
             if custom_title == "super_main":
                 label = "Tiến Nga (Tổng Hợp)"
+
+            # Lệnh chung cho tất cả nhóm main
+            if custom_title and custom_title.startswith("main_") or custom_title == "super_main":
+                commands_to_set.extend([
+                    BotCommand("tien_nga_ds_nhom_member", "DS nhóm member"),
+                ])
             if custom_title in ("super_main", "main_hr"):
                 if custom_title != "super_main": label = "Tiến Nga (Quản Lý)"
                 commands_to_set.extend([

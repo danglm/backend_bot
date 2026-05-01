@@ -306,8 +306,9 @@ def require_custom_title(*allowed_titles):
             # Convert allowed_titles to strings in case Enum is passed
             str_titles = [t.value if hasattr(t, 'value') else str(t) for t in allowed_titles]
             
-            db = SessionLocal()
+            db = None
             try:
+                db = SessionLocal()
                 from app.models.telegram import TelegramProjectMember
 
                 group_member = db.query(TelegramProjectMember).filter(
@@ -334,7 +335,8 @@ def require_custom_title(*allowed_titles):
                     await send_reply(message, "❌ Có lỗi xảy ra khi kiểm tra custom title nhóm.")
                 return
             finally:
-                db.close()
+                if db:
+                    db.close()
         return wrapper
     return decorator
 

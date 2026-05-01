@@ -4795,7 +4795,6 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
         partner_id = args[1].upper()
 
         from app.models.business import Partners
-        from app.db.session import SessionLocal
 
         db = SessionLocal()
         try:
@@ -4857,6 +4856,7 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
     partner_id = data.get("Mã Đối Tác", "").strip().upper()
     txn_type = data.get("Loại Giao Dịch", "").strip()
     ngay_str = data.get("Ngày", "").strip()
+    storage_name = data.get("Kho", "").strip()
     order_code = data.get("Mã Đơn Hàng", "").strip()
     notes = data.get("Ghi Chú", "").strip()
 
@@ -4902,7 +4902,7 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
         debt_change = -total_amount      # Xuất → công nợ giảm (đối tác trả hàng/ta thu tiền)
 
     from app.models.business import Partners, PartnerBusinesses
-    from app.db.session import SessionLocal
+    from app.models.inventory import Inventory
     import uuid as uuid_lib
 
     db = SessionLocal()
@@ -4918,6 +4918,37 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
             )
             return
 
+        # Tìm kho nếu có
+        inventory = None
+        if storage_name:
+            inventory = db.query(Inventory).filter(Inventory.storage_name == storage_name).first()
+            if not inventory:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy kho <b>{storage_name}</b> trong hệ thống.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            # Kiểm tra tồn kho khi xuất
+            if txn_type == "Xuất":
+                current_qty = inventory.quantity or 0
+                if qty > current_qty:
+                    await message.reply_text(
+                        f"⚠️ <b>Không đủ tồn kho để xuất!</b>\n\n"
+                        f"<b>Kho:</b> {inventory.storage_name}\n"
+                        f"<b>Nguyên liệu:</b> {inventory.material_name}\n"
+                        f"<b>Tồn kho hiện tại:</b> <code>{current_qty:,.1f} Kg</code>\n"
+                        f"<b>Số lượng xuất:</b> <code>{qty:,.1f} Kg</code>\n\n"
+                        f"<i>Số lượng xuất không được vượt quá tồn kho.</i>",
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
+
+        # Lưu giao dịch
+        notes_full = notes
+        if inventory:
+            notes_full = f"[Kho: {inventory.storage_name} | NL: {inventory.material_name}] {notes}".strip()
+
         new_business = PartnerBusinesses(
             id=uuid_lib.uuid4(),
             day=ngay,
@@ -4927,7 +4958,7 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
             order_code=order_code,
             unit_price=unit_price,
             total_amount=total_amount,
-            notes=notes
+            notes=notes_full
         )
         db.add(new_business)
 
@@ -4935,6 +4966,22 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
         if partner.total_debt is None:
             partner.total_debt = 0
         partner.total_debt += debt_change
+
+        # Cập nhật tồn kho
+        inventory_msg = ""
+        if inventory:
+            old_qty = inventory.quantity or 0
+            if txn_type == "Nhập":
+                inventory.quantity = old_qty + qty
+            else:
+                inventory.quantity = old_qty - qty
+            new_qty = inventory.quantity
+            inventory_msg = (
+                f"\n<b>Kho:</b> {inventory.storage_name}\n"
+                f"<b>Nguyên liệu:</b> {inventory.material_name}\n"
+                f"<b>Tồn kho cũ:</b> <code>{old_qty:,.1f} Kg</code>\n"
+                f"<b>Tồn kho mới:</b> <code>{new_qty:,.1f} Kg</code>"
+            )
 
         db.commit()
 
@@ -4954,7 +5001,8 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
             f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
             f"<b>Mã Đơn Hàng:</b> {order_code or '—'}\n"
             f"<b>Ghi Chú:</b> {notes or '—'}\n\n"
-            f"<b>Công Nợ Hiện Tại:</b> {debt_str}",
+            f"<b>Công Nợ Hiện Tại:</b> {debt_str}"
+            f"{inventory_msg}",
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
@@ -4966,7 +5014,7 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
         db.close()
 
 
-# ── Callback: Chọn loại giao dịch Đối Tác (Nhập/Xuất) ──
+# ── Callback: Chọn loại giao dịch Đối Tác (Nhập/Xuất) → Hiện danh sách kho ──
 @bot.on_callback_query(filters.regex(r"^tn_ptxn_(.+)$"))
 async def tien_nga_partner_txn_type_callback(client, callback_query):
     action = callback_query.matches[0].group(1)
@@ -4976,50 +5024,163 @@ async def tien_nga_partner_txn_type_callback(client, callback_query):
         await callback_query.answer()
         return
 
+    # Back to Nhập/Xuất selection
+    if action.startswith("bk_"):
+        back_partner_id = action[3:]
+        from app.models.business import Partners
+        db = SessionLocal()
+        try:
+            partner = db.query(Partners).filter(Partners.partner_id == back_partner_id, Partners.status == "ACTIVE").first()
+            if not partner:
+                await callback_query.answer("⚠️ Không tìm thấy Đối tác.", show_alert=True)
+                return
+            debt_val = partner.total_debt or 0
+            debt_abs = f"{int(abs(debt_val)):,} VNĐ".replace(",", ".")
+            debt_display = f"{debt_abs} (nợ)" if debt_val > 0 else (f"{debt_abs} (dư)" if debt_val < 0 else "0 đ")
+            buttons = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("Nhập", callback_data=f"tn_ptxn_{back_partner_id}_Nhập"),
+                    InlineKeyboardButton("Xuất", callback_data=f"tn_ptxn_{back_partner_id}_Xuất"),
+                ],
+                [InlineKeyboardButton("Hủy", callback_data="tn_ptxn_cancel")]
+            ])
+            await callback_query.message.edit_text(
+                f"<b>GIAO DỊCH ĐỐI TÁC</b>\n\n"
+                f"<b>Mã Đối Tác:</b> <code>{back_partner_id}</code>\n"
+                f"<b>Tên Đối Tác:</b> {partner.partner_name}\n"
+                f"<b>Công Nợ:</b> {debt_display}\n\n"
+                f"Vui lòng chọn loại giao dịch:",
+                reply_markup=buttons, parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            LogError(f"Error in partner txn back: {e}", LogType.SYSTEM_STATUS)
+            await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+        finally:
+            db.close()
+        return
+
     parts = action.rsplit("_", 1)
     if len(parts) < 2:
         await callback_query.answer("⚠️ Dữ liệu không hợp lệ.", show_alert=True)
         return
 
     partner_id, txn_type = parts[0], parts[1]
+    txn_code = "n" if txn_type == "Nhập" else "x"
 
-    from app.db.session import SessionLocal
     from app.models.business import Partners
+    from app.models.inventory import Inventory
 
     db = SessionLocal()
     try:
-        partner = db.query(Partners).filter(
-            Partners.partner_id == partner_id,
-            Partners.status == "ACTIVE"
-        ).first()
+        partner = db.query(Partners).filter(Partners.partner_id == partner_id, Partners.status == "ACTIVE").first()
         if not partner:
             await callback_query.answer("⚠️ Không tìm thấy Đối tác.", show_alert=True)
             return
 
+        inventories = db.query(Inventory).all()
+
+        if not inventories:
+            # No warehouses → show form without warehouse
+            today_str = datetime.now().strftime("%d/%m/%Y")
+            form = (
+                f"<b>FORM GIAO DỊCH {txn_type.upper()} ĐỐI TÁC</b>\n"
+                f"Đối tác: <b>{partner.partner_name}</b> (<code>{partner_id}</code>)\n\n"
+                f"⚠️ <i>Chưa có kho nào trong hệ thống.</i>\n\n"
+                f"Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
+                f"<pre>/tien_nga_partner_transaction\n"
+                f"Mã Đối Tác: {partner_id}\n"
+                f"Loại Giao Dịch: {txn_type}\n"
+                f"Ngày: {today_str}\n"
+                f"Số Lượng (Kg): 0\n"
+                f"Đơn Giá (VNĐ): 0\n"
+                f"Mã Đơn Hàng: \n"
+                f"Ghi Chú: </pre>\n\n"
+                f"<i>- Thành Tiền = Số Lượng x Đơn Giá (tự tính).\n"
+                f"- Công nợ sẽ tự cập nhật sau giao dịch.</i>"
+            )
+            await callback_query.message.reply_text(form, parse_mode=ParseMode.HTML)
+            await callback_query.answer()
+            return
+
+        # Show warehouse list
+        buttons = []
+        for inv in inventories:
+            label = f"{inv.storage_name} — {inv.material_name}"
+            inv_id_short = str(inv.id).replace("-", "")
+            buttons.append([InlineKeyboardButton(label, callback_data=f"ptwh_{inv_id_short}_{partner_id}_{txn_code}")])
+
+        buttons.append([
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_ptxn_bk_{partner_id}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_ptxn_cancel")
+        ])
+
+        await callback_query.message.edit_text(
+            f"<b>CHỌN KHO — GIAO DỊCH {txn_type.upper()}</b>\n\n"
+            f"<b>Đối tác:</b> {partner.partner_name} (<code>{partner_id}</code>)\n\n"
+            f"Vui lòng chọn kho để {txn_type.lower()}:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    except Exception as e:
+        import traceback as tb
+        LogError(f"Error in partner txn callback: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# ── Callback: Chọn kho cho giao dịch Đối Tác ──
+@bot.on_callback_query(filters.regex(r"^ptwh_([a-f0-9]{32})_(\w+)_(n|x)$"))
+async def tien_nga_partner_warehouse_callback(client, callback_query):
+    inv_id_hex = callback_query.matches[0].group(1)
+    partner_id = callback_query.matches[0].group(2)
+    txn_code = callback_query.matches[0].group(3)
+
+    import uuid as uuid_lib
+    inv_id = uuid_lib.UUID(inv_id_hex)
+    txn_type = "Nhập" if txn_code == "n" else "Xuất"
+
+    from app.models.inventory import Inventory
+    from app.models.business import Partners
+
+    db = SessionLocal()
+    try:
+        inventory = db.query(Inventory).filter(Inventory.id == inv_id).first()
+        partner = db.query(Partners).filter(Partners.partner_id == partner_id, Partners.status == "ACTIVE").first()
+
+        if not inventory or not partner:
+            await callback_query.answer("⚠️ Không tìm thấy kho hoặc đối tác.", show_alert=True)
+            return
+
         today_str = datetime.now().strftime("%d/%m/%Y")
+        qty_display = f"{inventory.quantity:,.1f}".replace(",", ".") if inventory.quantity else "0"
 
         form = (
             f"<b>FORM GIAO DỊCH {txn_type.upper()} ĐỐI TÁC</b>\n"
-            f"Đối tác: <b>{partner.partner_name}</b> (<code>{partner_id}</code>)\n\n"
+            f"Đối tác: <b>{partner.partner_name}</b> (<code>{partner_id}</code>)\n"
+            f"Kho: <b>{inventory.storage_name}</b> — {inventory.material_name}\n"
+            f"Tồn kho hiện tại: <code>{qty_display} Kg</code>\n\n"
             f"Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
             f"<pre>/tien_nga_partner_transaction\n"
             f"Mã Đối Tác: {partner_id}\n"
             f"Loại Giao Dịch: {txn_type}\n"
+            f"Kho: {inventory.storage_name}\n"
             f"Ngày: {today_str}\n"
             f"Số Lượng (Kg): 0\n"
             f"Đơn Giá (VNĐ): 0\n"
             f"Mã Đơn Hàng: \n"
             f"Ghi Chú: </pre>\n\n"
             f"<i>Ghi chú:\n"
+            f"- Nguyên liệu: {inventory.material_name}\n"
             f"- Thành Tiền = Số Lượng x Đơn Giá (tự tính).\n"
-            f"- Công nợ sẽ tự cập nhật sau giao dịch.\n"
-            f"- Mã Đơn Hàng có thể bỏ trống.</i>"
+            f"- Công nợ và tồn kho sẽ tự cập nhật sau giao dịch.</i>"
         )
         await callback_query.message.reply_text(form, parse_mode=ParseMode.HTML)
         await callback_query.answer()
     except Exception as e:
         import traceback as tb
-        LogError(f"Error in partner txn callback: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        LogError(f"Error in partner warehouse callback: {tb.format_exc()}", LogType.SYSTEM_STATUS)
         await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
     finally:
         db.close()
@@ -12658,3 +12819,218 @@ async def rt_check_callback(client, callback_query: CallbackQuery):
         await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
     finally:
         db.close()
+
+# =========================================================================================
+# DANH SÁCH NHÓM MEMBER
+# =========================================================================================
+
+# Mapping: main_xxx → member_xxx
+_MAIN_TO_MEMBER_TITLE = {
+    "main_hr": "member_hr",
+    "main_finance": "member_finance",
+    "main_partner": "member_partner",
+    "main_inventory": "member_inventory",
+    "main_product": "member_product",
+    "main_supplier": "member_supplier",
+    "main_sales": "member_sales",
+    "main_shareholder": "member_shareholder",
+    "main_harvest": "member_harvest",
+}
+
+_TITLE_LABELS = {
+    "member_hr": "Nhân Sự",
+    "member_finance": "Tài Chính",
+    "member_partner": "Đối Tác",
+    "member_inventory": "Kho",
+    "member_product": "Sản Phẩm",
+    "member_supplier": "Nhà Cung Cấp",
+    "member_sales": "Kinh Doanh",
+    "member_shareholder": "Cổ Đông",
+    "member_harvest": "Thu Hoạch",
+}
+
+@bot.on_message(filters.command(["tien_nga_list_member_group", "tien_nga_ds_nhom_member"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_member_group|tien_nga_ds_nhom_member)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_list_member_group_handler(client, message: Message) -> None:
+    from app.models.telegram import TelegramProjectMember
+    from app.models.business import Projects
+
+    db = SessionLocal()
+    try:
+        chat_id = str(message.chat.id)
+
+        # Tìm project
+        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        if not project:
+            await message.reply_text("⚠️ Không tìm thấy dự án Tiến Nga.", parse_mode=ParseMode.HTML)
+            return
+
+        # Xác định custom_title của nhóm main hiện tại
+        current_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.project_id == project.id,
+            TelegramProjectMember.chat_id == chat_id,
+            TelegramProjectMember.role == "main"
+        ).first()
+
+        current_title = current_member.custom_title if current_member else None
+
+        # Xác định filter cho member groups
+        if current_title == "super_main":
+            member_filter = None  # Xem tất cả
+            filter_key = "all"
+            dept_label = "Tất Cả"
+        elif current_title and current_title in _MAIN_TO_MEMBER_TITLE:
+            target_member_title = _MAIN_TO_MEMBER_TITLE[current_title]
+            member_filter = target_member_title
+            filter_key = target_member_title
+            dept_label = _TITLE_LABELS.get(target_member_title, target_member_title)
+        else:
+            await message.reply_text(
+                "⚠️ Không xác định được phòng ban của nhóm này.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Query member groups
+        from sqlalchemy import func
+        q = db.query(
+            TelegramProjectMember.chat_id,
+            TelegramProjectMember.group_name,
+            TelegramProjectMember.custom_title,
+            func.count(TelegramProjectMember.id).label("member_count")
+        ).filter(
+            TelegramProjectMember.project_id == project.id,
+            TelegramProjectMember.role == "member"
+        )
+
+        if member_filter:
+            q = q.filter(TelegramProjectMember.custom_title == member_filter)
+
+        member_groups = q.group_by(
+            TelegramProjectMember.chat_id,
+            TelegramProjectMember.group_name,
+            TelegramProjectMember.custom_title
+        ).all()
+
+        if not member_groups:
+            await message.reply_text(
+                f"<b>DANH SÁCH NHÓM MEMBER — {dept_label}</b>\n\n"
+                f"<i>Chưa có nhóm member nào.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        total = len(member_groups)
+        page_size = 10
+        total_pages = (total + page_size - 1) // page_size
+
+        text, markup = _build_member_group_page(member_groups, 0, page_size, total_pages, dept_label, filter_key)
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error in tien_nga_list_member_group: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+def _build_member_group_page(groups, page, page_size, total_pages, dept_label, filter_key):
+    """Build text + inline keyboard for a page of member groups."""
+    start = page * page_size
+    end = start + page_size
+    page_groups = groups[start:end]
+    total = len(groups)
+
+    text = (
+        f"📋 <b>DANH SÁCH NHÓM MEMBER — {dept_label}</b>\n"
+        f"<i>Tổng: {total} nhóm — Trang {page + 1}/{total_pages}</i>\n\n"
+    )
+
+    for idx, g in enumerate(page_groups, start=start + 1):
+        chat_id = g.chat_id
+        name = g.group_name or "N/A"
+        title = _TITLE_LABELS.get(g.custom_title, g.custom_title or "—")
+        count = g.member_count or 0
+        text += (
+            f"<b>{idx}.</b> {name}\n"
+            f"    Phòng ban: <code>{title}</code> · Thành viên: <b>{count}</b>\n"
+            f"    Chat ID: <code>{chat_id}</code>\n\n"
+        )
+
+    # Pagination buttons — include filter_key in callback data
+    buttons = []
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("Trước", callback_data=f"cb_lmg_{filter_key}_{page - 1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Sau", callback_data=f"cb_lmg_{filter_key}_{page + 1}"))
+    if nav_row:
+        buttons.append(nav_row)
+    buttons.append([InlineKeyboardButton("Đóng", callback_data="cb_lmg_close")])
+
+    markup = InlineKeyboardMarkup(buttons) if buttons else None
+    return text, markup
+
+
+@bot.on_callback_query(filters.regex(r"^cb_lmg_(\w+)_(\d+)$"))
+async def lmg_page_callback(client, callback_query: CallbackQuery):
+    filter_key = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    from app.models.telegram import TelegramProjectMember
+    from app.models.business import Projects
+
+    db = SessionLocal()
+    try:
+        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        if not project:
+            await callback_query.answer("⚠️ Không tìm thấy dự án.", show_alert=True)
+            return
+
+        from sqlalchemy import func
+        q = db.query(
+            TelegramProjectMember.chat_id,
+            TelegramProjectMember.group_name,
+            TelegramProjectMember.custom_title,
+            func.count(TelegramProjectMember.id).label("member_count")
+        ).filter(
+            TelegramProjectMember.project_id == project.id,
+            TelegramProjectMember.role == "member"
+        )
+
+        if filter_key != "all":
+            q = q.filter(TelegramProjectMember.custom_title == filter_key)
+
+        dept_label = _TITLE_LABELS.get(filter_key, "Tất Cả") if filter_key != "all" else "Tất Cả"
+
+        member_groups = q.group_by(
+            TelegramProjectMember.chat_id,
+            TelegramProjectMember.group_name,
+            TelegramProjectMember.custom_title
+        ).all()
+
+        total = len(member_groups)
+        page_size = 10
+        total_pages = (total + page_size - 1) // page_size
+
+        if page < 0 or page >= total_pages:
+            await callback_query.answer("⚠️ Trang không hợp lệ.", show_alert=True)
+            return
+
+        text, markup = _build_member_group_page(member_groups, page, page_size, total_pages, dept_label, filter_key)
+        await callback_query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+
+    except Exception as e:
+        LogError(f"Error in lmg_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^cb_lmg_close$"))
+async def lmg_close_callback(client, callback_query: CallbackQuery):
+    await callback_query.message.delete()
+
