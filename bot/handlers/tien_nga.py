@@ -198,6 +198,16 @@ async def _tsk_cancel(client, callback_query):
     from bot.utils.human_resource import task_cancel_callback
     await task_cancel_callback(client, callback_query)
 
+@bot.on_callback_query(filters.regex(r"^lv_req\|(ok|no)\|([-\d]+)\|(\d+)$"))
+async def _lv_req_callback(client, callback_query):
+    from bot.utils.human_resource import handle_leave_request_callback
+    await handle_leave_request_callback(client, callback_query)
+
+@bot.on_callback_query(filters.regex(r"^ov_req\|(ok|no)\|([-\d]+)\|(\d+)$"))
+async def _ov_req_callback(client, callback_query):
+    from bot.utils.human_resource import handle_overtime_request_callback
+    await handle_overtime_request_callback(client, callback_query)
+
 @bot.on_message(filters.command(["cancel", "huy_task"]) & filters.reply)
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -11838,7 +11848,8 @@ Số Lượng Cây: 0</pre>
 
         main_chat = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project.id,
-            TelegramProjectMember.role == "main"
+            TelegramProjectMember.role == "main",
+            TelegramProjectMember.custom_title == "main_harvest"
         ).first()
 
         if not main_chat or not main_chat.chat_id:

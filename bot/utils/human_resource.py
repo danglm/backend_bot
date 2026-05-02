@@ -64,6 +64,47 @@ Người liên hệ khẩn cấp: </pre>
 <i>Các trường không bắt buộc có thể để trống.
 Bắt buộc: <b>Mã NV</b>, <b>Họ</b>, <b>Tên</b>, <b>Username</b> (Telegram)</i>"""
 
+# Danh sách các field label chứa dấu ":" → cần match đặc biệt khi parse form
+_KNOWN_FIELD_LABELS = [
+    "Giờ vào ca (hh:mm)",
+    "Giờ tan ca (hh:mm)",
+    "Số giờ làm việc (giờ/ngày)",
+    "Lương cơ bản (VNĐ)",
+    "Lương tháng (VNĐ)",
+    "Lương tuần (VNĐ)",
+    "Lương ngày (VNĐ)",
+    "Lương giờ (VNĐ)",
+    "Lương làm thêm giờ (VNĐ)",
+    "Tiền thưởng (VNĐ)",
+    "Tỷ lệ BHXH (%)",
+]
+
+
+def _parse_form_lines(lines: list[str]) -> dict[str, str]:
+    """
+    Parse danh sách dòng form thành dict {field_label: value}.
+    Xử lý đúng các field label chứa dấu ":" (vd: "Giờ vào ca (hh:mm): 13:30").
+    """
+    data = {}
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+        matched = False
+        # Thử match với các known field labels (chứa dấu ":")
+        for label in _KNOWN_FIELD_LABELS:
+            prefix = label + ":"
+            if line_stripped.startswith(prefix):
+                val = line_stripped[len(prefix):].strip()
+                data[label] = val
+                matched = True
+                break
+        if not matched and ":" in line_stripped:
+            key, val = line_stripped.split(":", 1)
+            data[key.strip()] = val.strip()
+    return data
+
+
 async def _parse_float_or_reply(message: Message, field_name: str, value: str):
     if not value: return None
     try:
@@ -109,11 +150,7 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
         return
 
     # Parse form data
-    data = {}
-    for line in lines[1:]:
-        if ":" in line:
-            key, val = line.split(":", 1)
-            data[key.strip()] = val.strip()
+    data = _parse_form_lines(lines[1:])
 
     # Validate required fields
     emp_id = data.get("Mã NV", "").strip()
@@ -451,11 +488,7 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
             db.close()
 
     # Parse form
-    data = {}
-    for line in lines[1:]:
-        if ":" in line:
-            key, val = line.split(":", 1)
-            data[key.strip()] = val.strip()
+    data = _parse_form_lines(lines[1:])
 
     username = data.get("Username", "").strip().lstrip("@")
     if not username:
@@ -1288,7 +1321,7 @@ async def handle_request_leave(client, message: Message, command_name: str) -> N
     finally:
         db.close()
 
-    # Build response - Format giống register_leave để approval_reply_handler nhận diện
+    # Build response
     user = message.from_user
     full_name = f"{user.first_name} {user.last_name or ''}".strip()
 
@@ -1299,19 +1332,402 @@ async def handle_request_leave(client, message: Message, command_name: str) -> N
         f"Loại nghỉ: <b>{leave_type}</b>\n"
         f"Người hỗ trợ: <b>{supporter}</b>\n"
         f"Lý do: <i>{reason}</i>\n"
-        f"Người duyệt: <b>{approver}</b>\n\n"
-        f"<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
-        f"phản hồi đơn này bằng cách reply:</b>\n"
-        f"- <code>/confirmed</code> để chấp thuận.\n"
-        f"- <code>/denied</code> để từ chối."
+        f"Người duyệt: <b>{approver}</b>"
     )
+
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        from bot.utils.enums import CustomTitle
+        current_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(message.chat.id)
+        ).first()
+        
+        main_hr_group = None
+        if current_member:
+            main_hr_group = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == current_member.project_id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title.in_([CustomTitle.MAIN_HR.value, CustomTitle.SUPER_MAIN.value])
+            ).first()
+            
+        hr_chat_id = main_hr_group.chat_id if main_hr_group else None
+    except Exception as e:
+        LogError(f"Error finding HR group: {e}", LogType.SYSTEM_STATUS)
+        hr_chat_id = None
+    finally:
+        db.close()
 
     LogInfo(
         f"[RequestLeave] {full_name} (@{username}) submitted leave: "
         f"{display_dates} | {leave_type} | {reason}",
         LogType.SYSTEM_STATUS,
     )
-    await message.reply_text(response, parse_mode=ParseMode.HTML)
+
+    if hr_chat_id:
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Chấp thuận", callback_data=f"lv_req|ok|{message.chat.id}|{message.id}"),
+                InlineKeyboardButton("Từ chối", callback_data=f"lv_req|no|{message.chat.id}|{message.id}")
+            ]
+        ])
+        
+        try:
+            await client.send_message(
+                chat_id=int(hr_chat_id),
+                text=response,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup
+            )
+            await message.reply_text("✅ <b>Đơn xin nghỉ phép đã được gửi đến bộ phận Nhân sự để xét duyệt.</b>", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error forwarding leave request to HR group: {e}", LogType.SYSTEM_STATUS)
+            response += (
+                f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
+                f"phản hồi đơn này bằng cách reply:</b>\n"
+                f"- <code>/confirmed</code> để chấp thuận.\n"
+                f"- <code>/denied</code> để từ chối."
+            )
+            await message.reply_text(response, parse_mode=ParseMode.HTML)
+    else:
+        # Fallback to local reply
+        response += (
+            f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
+            f"phản hồi đơn này bằng cách reply:</b>\n"
+            f"- <code>/confirmed</code> để chấp thuận.\n"
+            f"- <code>/denied</code> để từ chối."
+        )
+        await message.reply_text(response, parse_mode=ParseMode.HTML)
+
+
+async def handle_leave_request_callback(client, callback_query) -> None:
+    data = callback_query.data  # format: lv_req|ok|<orig_chat_id>|<orig_msg_id>
+    parts = data.split("|")
+    if len(parts) != 4:
+        await callback_query.answer("⚠️ Dữ liệu callback không hợp lệ.", show_alert=True)
+        return
+
+    action = parts[1]  # "ok" or "no"
+    orig_chat_id = parts[2]
+    orig_msg_id = parts[3]
+
+    message = callback_query.message
+    content = message.text
+    sender_username = callback_query.from_user.username
+
+    import re
+    approver_match = re.search(r"Người duyệt:\s*(?:<b>)?@([^\s<]+)(?:</b>)?", content)
+    designated_approver = approver_match.group(1).strip() if approver_match else ""
+
+    from bot.utils.enums import UserType, has_flag
+
+    is_authorized = False
+    if sender_username == designated_approver:
+        is_authorized = True
+    else:
+        # Check if the clicker is SUPER_MAIN or ADMIN/OWNER
+        from app.models.employee import Employee
+        db = SessionLocal()
+        try:
+            emp = db.query(Employee).filter(Employee.username == sender_username).first()
+            if emp and has_flag(emp.user_mask, UserType.OWNER | UserType.ADMIN):
+                is_authorized = True
+            else:
+                from app.models.telegram import TelegramProjectMember
+                from bot.utils.enums import CustomTitle
+                member = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.chat_id == str(message.chat.id),
+                    TelegramProjectMember.user_name == sender_username
+                ).first()
+                if member and member.custom_title == CustomTitle.SUPER_MAIN:
+                    is_authorized = True
+        except Exception as e:
+            LogError(f"Error checking authorization: {e}", LogType.SYSTEM_STATUS)
+        finally:
+            db.close()
+
+    if not is_authorized:
+        await callback_query.answer(f"⚠️ Chỉ người duyệt (@{designated_approver}) hoặc Quản lý mới có quyền thực hiện.", show_alert=True)
+        return
+
+    requester_match = re.search(r"Người nghỉ:\s*(?:<b>)?(.*?)(?:</b>)?(?:\n|$)", content)
+    requester_name = requester_match.group(1).strip() if requester_match else "Nhân viên"
+
+    if action == "ok":
+        status_text = "<b>ĐÃ CHẤP THUẬN</b>"
+        color_msg = "đã được chấp thuận"
+    else:
+        status_text = "<b>BỊ TỪ CHỐI</b>"
+        color_msg = "đã bị từ chối"
+
+    response = (
+        f"{status_text}\n\n"
+        f"Yêu cầu của <b>{requester_name}</b> {color_msg} bởi <b>@{sender_username}</b>."
+    )
+
+    # Automated Leave Balance Deduction
+    if action == "ok" and "ĐƠN XIN NGHỈ PHÉP" in content:
+        leave_type_match = re.search(r"Loại nghỉ:\s*(?:<b>)?(.*?)(?:</b>)?(?:\n|$)", content)
+        dates_match = re.search(r"Thời gian:\s*(?:<code>)?(.*?)(?:</code>)?(?:\n|$)", content)
+        requester_user_match = re.search(r"Người nghỉ:.*?\(\s*(?:<b>)?@([^\s<]+)(?:</b>)?\s*\)", content)
+        
+        if leave_type_match and dates_match and requester_user_match:
+            l_type = leave_type_match.group(1).strip()
+            l_dates = dates_match.group(1).strip()
+            l_username = requester_user_match.group(1).strip()
+            
+            from bot.utils.utils import get_best_match
+            if l_type == "Nghỉ phép năm" or get_best_match(l_type, ["Nghỉ phép năm"], threshold=0.7):
+                db = SessionLocal()
+                try:
+                    num_days = 0
+                    if " - " in l_dates:
+                        start_str, end_str = l_dates.split(" - ")
+                        start_dt = datetime.datetime.strptime(start_str.strip(), "%d/%m/%Y")
+                        end_dt = datetime.datetime.strptime(end_str.strip(), "%d/%m/%Y")
+                        num_days = (end_dt - start_dt).days + 1
+                    else:
+                        num_days = 1
+                        
+                    if num_days > 0:
+                        from app.models.employee import Employee
+                        from app.models.finance import Attendance
+                        employee = db.query(Employee).filter(Employee.username == l_username).first()
+                        if employee:
+                            old_balance = employee.leave_balance or 0
+                            new_balance = old_balance - num_days
+                            if new_balance < 0:
+                                response += (
+                                    f"\n\n⚠️ <b>Không thể trừ phép năm!</b>"
+                                    f"\nSố ngày phép còn lại: <code>{old_balance}</code>"
+                                    f"\nSố ngày xin nghỉ: <code>{num_days}</code>"
+                                    f"\n<i>Nhân viên không đủ phép năm. Vui lòng chuyển sang loại nghỉ khác (nghỉ không lương, ...).</i>"
+                                )
+                            else:
+                                employee.leave_balance = new_balance
+                                db.commit()
+                                response += f"\n\n💡 <b>Số ngày nghỉ phép năm còn lại:</b> <code>{new_balance}</code>"
+                            
+                                try:
+                                    start_dt_parsed = datetime.datetime.strptime(l_dates.split(" - ")[0].strip() if " - " in l_dates else l_dates.strip(), "%d/%m/%Y")
+                                    days_vn = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
+                                    
+                                    for i in range(num_days):
+                                        current_date = start_dt_parsed + datetime.timedelta(days=i)
+                                        d, m, y = current_date.day, current_date.month, current_date.year
+                                        d_str = days_vn[current_date.weekday()]
+                                        
+                                        existing_att = db.query(Attendance).filter(
+                                            Attendance.employee_id == employee.id,
+                                            Attendance.year == y,
+                                            Attendance.month == m,
+                                            Attendance.day == d,
+                                        ).first()
+                                        if existing_att:
+                                            existing_att.error = l_type
+                                            db.add(existing_att)
+                                        else:
+                                            new_att = Attendance(
+                                                employee_id=employee.id,
+                                                year=y,
+                                                month=m,
+                                                day=d,
+                                                date_str=d_str,
+                                                error=l_type
+                                            )
+                                            db.add(new_att)
+                                    db.commit()
+                                except Exception as att_err:
+                                    db.rollback()
+                                    LogError(f"Error recording attendance for leave: {att_err}", LogType.SYSTEM_STATUS)
+                except Exception as e:
+                    LogError(f"Error updating leave balance: {e}", LogType.SYSTEM_STATUS)
+                finally:
+                    db.close()
+
+    try:
+        await callback_query.message.edit_text(
+            f"{content}\n\n====================\n{response}",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error editing original message: {e}", LogType.SYSTEM_STATUS)
+
+    try:
+        await client.send_message(
+            chat_id=int(orig_chat_id),
+            reply_to_message_id=int(orig_msg_id),
+            text=response,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error notifying employee: {e}", LogType.SYSTEM_STATUS)
+
+    await callback_query.answer()
+
+async def handle_overtime_request_callback(client, callback_query) -> None:
+    data = callback_query.data  # format: ov_req|ok|<orig_chat_id>|<orig_msg_id>
+    parts = data.split("|")
+    if len(parts) != 4:
+        await callback_query.answer("⚠️ Dữ liệu callback không hợp lệ.", show_alert=True)
+        return
+
+    action = parts[1]  # "ok" or "no"
+    orig_chat_id = parts[2]
+    orig_msg_id = parts[3]
+
+    message = callback_query.message
+    content = message.text
+    sender_username = callback_query.from_user.username
+
+    import re
+    approver_match = re.search(r"Người duyệt:\s*(?:<b>)?@([^\s<]+)(?:</b>)?", content)
+    designated_approver = approver_match.group(1).strip() if approver_match else ""
+
+    from bot.utils.enums import UserType, has_flag
+
+    is_authorized = False
+    if sender_username == designated_approver:
+        is_authorized = True
+    else:
+        # Check if the clicker is SUPER_MAIN or ADMIN/OWNER
+        from app.models.employee import Employee
+        db = SessionLocal()
+        try:
+            emp = db.query(Employee).filter(Employee.username == sender_username).first()
+            if emp and has_flag(emp.user_mask, UserType.OWNER | UserType.ADMIN):
+                is_authorized = True
+            else:
+                from app.models.telegram import TelegramProjectMember
+                from bot.utils.enums import CustomTitle
+                member = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.chat_id == str(message.chat.id),
+                    TelegramProjectMember.user_name == sender_username
+                ).first()
+                if member and member.custom_title == CustomTitle.SUPER_MAIN:
+                    is_authorized = True
+        except Exception as e:
+            LogError(f"Error checking authorization: {e}", LogType.SYSTEM_STATUS)
+        finally:
+            db.close()
+
+    if not is_authorized:
+        await callback_query.answer(f"⚠️ Chỉ người duyệt (@{designated_approver}) hoặc Quản lý mới có quyền thực hiện.", show_alert=True)
+        return
+
+    requester_match = re.search(r"Người yêu cầu:\s*(?:<b>)?(.*?)(?:</b>)?(?:\n|$)", content)
+    requester_name = requester_match.group(1).strip() if requester_match else "Nhân viên"
+
+    if action == "ok":
+        status_text = "<b>ĐÃ CHẤP THUẬN</b>"
+        color_msg = "đã được chấp thuận"
+    else:
+        status_text = "<b>BỊ TỪ CHỐI</b>"
+        color_msg = "đã bị từ chối"
+
+    response = (
+        f"{status_text}\n\n"
+        f"Yêu cầu của <b>{requester_name}</b> {color_msg} bởi <b>@{sender_username}</b>."
+    )
+
+    # Automated Overtime Recording
+    if action == "ok" and "YÊU CẦU ĐĂNG KÝ TĂNG CA" in content:
+        d_match = re.search(r"Ngày:\s*(?:<code>)?(.*?)(?:</code>)?(?:\n|$)", content)
+        t_match = re.search(r"Thời gian:\s*(?:<b>)?(.*?)(?:</b>)?(?:\n|$)", content)
+        u_match = re.search(r"Người yêu cầu:.*?\(\s*(?:<b>)?@([^\s<]+)(?:</b>)?\s*\)", content)
+
+        if d_match and t_match and u_match:
+            ot_date_str = d_match.group(1).strip()
+            ot_time_range = t_match.group(1).strip()
+            ot_username = u_match.group(1).strip()
+
+            db = SessionLocal()
+            try:
+                from app.models.employee import Employee
+                from app.models.finance import Attendance
+                from app.crud.attendance import get_attendance
+                # Parse date
+                ot_date = None
+                if "/" in ot_date_str:
+                    d_parts = ot_date_str.split("/")
+                    try:
+                        if len(d_parts[0]) == 4: # yyyy/mm/dd
+                            ot_date = datetime.datetime.strptime(ot_date_str, "%Y/%m/%d")
+                        else: # dd/mm/yyyy
+                            ot_date = datetime.datetime.strptime(ot_date_str, "%d/%m/%Y")
+                    except Exception as e:
+                        LogError(f"Date parse error in OT recording: {e}", LogType.SYSTEM_STATUS)
+
+                # Parse time range (TimeA - TimeB)
+                if ot_date and "-" in ot_time_range:
+                    time_parts = ot_time_range.split("-")
+                    if len(time_parts) == 2:
+                        s_t_str = time_parts[0].strip()
+                        e_t_str = time_parts[1].strip()
+                        
+                        try:
+                            start_t = datetime.datetime.strptime(s_t_str, "%H:%M").time()
+                            end_t = datetime.datetime.strptime(e_t_str, "%H:%M").time()
+                            
+                            start_dt = datetime.datetime.combine(ot_date.date(), start_t)
+                            end_dt = datetime.datetime.combine(ot_date.date(), end_t)
+                            
+                            if end_dt < start_dt:
+                                end_dt += datetime.timedelta(days=1)
+
+                            employee = db.query(Employee).filter(Employee.username == ot_username).first()
+                            if employee:
+                                s_id = employee.id
+                                y, m, d = ot_date.year, ot_date.month, ot_date.day
+                                days_vn = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
+                                ds_vn = days_vn[ot_date.weekday()]
+
+                                existing_att = get_attendance(db, s_id, y, m, d)
+                                if existing_att:
+                                    existing_att.start_overtime = start_dt
+                                    existing_att.end_overtime = end_dt
+                                    db.add(existing_att)
+                                else:
+                                    new_att = Attendance(
+                                        employee_id=s_id,
+                                        year=y,
+                                        month=m,
+                                        day=d,
+                                        date_str=ds_vn,
+                                        start_overtime=start_dt,
+                                        end_overtime=end_dt
+                                    )
+                                    db.add(new_att)
+                                
+                                db.commit()
+                                response += f"\n\n✅ <b>Đã cập nhật giờ tăng ca vào hệ thống chấm công.</b>"
+                        except Exception as e:
+                            LogError(f"Time parse error in OT recording: {e}", LogType.SYSTEM_STATUS)
+            except Exception as e:
+                LogError(f"Error recording overtime: {e}", LogType.SYSTEM_STATUS)
+            finally:
+                db.close()
+
+    try:
+        await callback_query.message.edit_text(
+            f"{content}\n\n====================\n{response}",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error editing original message: {e}", LogType.SYSTEM_STATUS)
+
+    try:
+        await client.send_message(
+            chat_id=int(orig_chat_id),
+            reply_to_message_id=int(orig_msg_id),
+            text=response,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error notifying employee: {e}", LogType.SYSTEM_STATUS)
+
+    await callback_query.answer()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1466,7 +1882,7 @@ async def handle_request_overtime(client, message: Message, command_name: str) -
     finally:
         db.close()
 
-    # Build response - Format giống register_overtime để approval_reply_handler nhận diện
+    # Build response
     user = message.from_user
     full_name = f"{user.first_name} {user.last_name or ''}".strip()
 
@@ -1477,19 +1893,73 @@ async def handle_request_overtime(client, message: Message, command_name: str) -
         f"Thời gian: <b>{time_str}</b>\n"
         f"Người duyệt: <b>{approver}</b>\n"
         f"Người hỗ trợ: <b>{supporter}</b>\n"
-        f"Lý do: <i>{reason}</i>\n\n"
-        f"<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
-        f"phản hồi đơn này bằng cách reply:</b>\n"
-        f"- <code>/confirmed</code> để chấp thuận.\n"
-        f"- <code>/denied</code> để từ chối."
+        f"Lý do: <i>{reason}</i>"
     )
+
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        from bot.utils.enums import CustomTitle
+        current_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(message.chat.id)
+        ).first()
+        
+        main_hr_group = None
+        if current_member:
+            main_hr_group = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == current_member.project_id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title.in_([CustomTitle.MAIN_HR.value, CustomTitle.SUPER_MAIN.value])
+            ).first()
+            
+        hr_chat_id = main_hr_group.chat_id if main_hr_group else None
+    except Exception as e:
+        LogError(f"Error finding HR group for overtime: {e}", LogType.SYSTEM_STATUS)
+        hr_chat_id = None
+    finally:
+        db.close()
 
     LogInfo(
         f"[RequestOvertime] {full_name} (@{username}) submitted overtime: "
         f"{display_date} | {time_str} | {reason}",
         LogType.SYSTEM_STATUS,
     )
-    await message.reply_text(response, parse_mode=ParseMode.HTML)
+
+    if hr_chat_id:
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Chấp thuận", callback_data=f"ov_req|ok|{message.chat.id}|{message.id}"),
+                InlineKeyboardButton("Từ chối", callback_data=f"ov_req|no|{message.chat.id}|{message.id}")
+            ]
+        ])
+        
+        try:
+            await client.send_message(
+                chat_id=int(hr_chat_id),
+                text=response,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup
+            )
+            await message.reply_text("✅ <b>Đơn xin tăng ca đã được gửi đến bộ phận Nhân sự để xét duyệt.</b>", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error forwarding overtime request to HR group: {e}", LogType.SYSTEM_STATUS)
+            response += (
+                f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
+                f"phản hồi đơn này bằng cách reply:</b>\n"
+                f"- <code>/confirmed</code> để chấp thuận.\n"
+                f"- <code>/denied</code> để từ chối."
+            )
+            await message.reply_text(response, parse_mode=ParseMode.HTML)
+    else:
+        # Fallback to local reply
+        response += (
+            f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
+            f"phản hồi đơn này bằng cách reply:</b>\n"
+            f"- <code>/confirmed</code> để chấp thuận.\n"
+            f"- <code>/denied</code> để từ chối."
+        )
+        await message.reply_text(response, parse_mode=ParseMode.HTML)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1881,6 +2351,7 @@ Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 <pre>{cmd}
 Người nhận: [mã nhân viên]
 Nội dung: 
+Thời gian: hh:mm - hh:mm
 Ngày bắt đầu: dd/mm/yyyy
 Ngày kết thúc: dd/mm/yyyy
 Chu kỳ: </pre>
@@ -1917,17 +2388,19 @@ async def handle_create_task(client, message: Message, command_name: str) -> Non
     # Lấy các trường
     assignee_raw = data.get("Người nhận", "").strip()
     content = data.get("Nội dung", "").strip()
+    time_range = data.get("Thời gian", "").strip()
     start_date = data.get("Ngày bắt đầu", "").strip()
     end_date = data.get("Ngày kết thúc", "").strip()
     cycle = data.get("Chu kỳ", "").strip()
 
     # Validate required fields
-    if not all([assignee_raw, content, start_date, end_date]):
+    if not all([assignee_raw, content, time_range, start_date, end_date]):
         await message.reply_text(
             "⚠️ <b>Thiếu thông tin hoặc sai định dạng!</b>\n\n"
             "Vui lòng nhập đủ các trường theo mẫu sau:\n"
             "<code>Người nhận: [mã nhân viên]</code>\n"
             "<code>Nội dung: ...</code>\n"
+            "<code>Thời gian: hh:mm - hh:mm</code>\n"
             "<code>Ngày bắt đầu: dd/mm/yyyy</code>\n"
             "<code>Ngày kết thúc: dd/mm/yyyy</code>\n"
             "<code>Chu kỳ: ...</code>",
@@ -1943,6 +2416,29 @@ async def handle_create_task(client, message: Message, command_name: str) -> Non
             parse_mode=ParseMode.HTML,
         )
         return
+
+    # Validate time format
+    if " - " not in time_range:
+        await message.reply_text(
+            "⚠️ <b>Sai định dạng thời gian!</b>\n"
+            "Vui lòng nhập theo format: <code>hh:mm - hh:mm</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    try:
+        t1, t2 = time_range.split(" - ")
+        datetime.datetime.strptime(t1.strip(), "%H:%M")
+        datetime.datetime.strptime(t2.strip(), "%H:%M")
+    except ValueError:
+        await message.reply_text(
+            "⚠️ <b>Sai định dạng thời gian!</b>\n"
+            "Vui lòng nhập theo format: <code>hh:mm - hh:mm</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # Append to content
+    full_content = f"{content}\nThời gian: {time_range}"
 
     # Validate dates
     for label, date_str in [("Ngày bắt đầu", start_date), ("Ngày kết thúc", end_date)]:
@@ -1996,7 +2492,7 @@ async def handle_create_task(client, message: Message, command_name: str) -> Non
             group_chat_id=str(message.chat.id),
             assigner=f"{assigner_name} (@{user.username})" if user.username else assigner_name,
             assignee=f"{assignee_name} ({employee_id})",
-            content=content,
+            content=full_content,
             start_date=start_date,
             end_date=end_date,
             cycle=cycle or "Một lần",
@@ -2010,6 +2506,7 @@ async def handle_create_task(client, message: Message, command_name: str) -> Non
             f"Người giao: <b>{assigner_name}</b>\n"
             f"Người nhận: <b>{assignee_name}</b> (Mã NV: <code>{employee_id}</code>)\n"
             f"Nội dung: <i>{content}</i>\n"
+            f"Thời gian: <b>{time_range}</b>\n"
             f"Bắt đầu: <code>{start_date}</code>\n"
             f"Kết thúc: <code>{end_date}</code>\n"
             f"Chu kỳ: <b>{cycle or 'Một lần'}</b>\n"
@@ -2024,9 +2521,28 @@ async def handle_create_task(client, message: Message, command_name: str) -> Non
         db.commit()
 
         LogInfo(
-            f"[CreateTask] {assigner_name} assigned task to {assignee_name}: {content}",
+            f"[CreateTask] {assigner_name} assigned task to {assignee_name}: {full_content}",
             LogType.SYSTEM_STATUS,
         )
+
+        # Notify HR member group
+        from app.models.telegram import TelegramProjectMember
+        from bot.utils.enums import CustomTitle
+        hr_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.project_id == project_id,
+            TelegramProjectMember.role == "member",
+            TelegramProjectMember.custom_title == CustomTitle.MEMBER_HR.value
+        ).first()
+        
+        if hr_member and hr_member.chat_id:
+            try:
+                await client.send_message(
+                    chat_id=int(hr_member.chat_id),
+                    text=f"🔔 <b>CÓ CÔNG VIỆC MỚI ĐƯỢC GIAO</b>\n\n{response}",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                LogError(f"Error forwarding task to HR member group: {e}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()

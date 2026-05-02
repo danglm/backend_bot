@@ -350,44 +350,52 @@ async def approval_reply_handler(client, message: Message) -> None:
                         if employee:
                             old_balance = employee.leave_balance or 0
                             new_balance = old_balance - num_days
-                            employee.leave_balance = new_balance
-                            db.commit()
-                            response += f"\n\n💡 <b>Số ngày nghỉ phép năm còn lại:</b> <code>{new_balance}</code>"
-                            
-                            # --- Record in Attendance table ---
-                            try:
-                                start_dt_parsed = datetime.datetime.strptime(l_dates.split(" - ")[0].strip() if " - " in l_dates else l_dates.strip(), "%d/%m/%Y")
-                                days_vn = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
-                                
-                                for i in range(num_days):
-                                    current_date = start_dt_parsed + datetime.timedelta(days=i)
-                                    d, m, y = current_date.day, current_date.month, current_date.year
-                                    d_str = days_vn[current_date.weekday()]
-                                    
-                                    existing_att = db.query(Attendance).filter(
-                                        Attendance.employee_id == employee.id,
-                                        Attendance.year == y,
-                                        Attendance.month == m,
-                                        Attendance.day == d,
-                                    ).first()
-                                    if existing_att:
-                                        existing_att.error = l_type
-                                        db.add(existing_att)
-                                    else:
-                                        new_att = Attendance(
-                                            employee_id=employee.id,
-                                            year=y,
-                                            month=m,
-                                            day=d,
-                                            date_str=d_str,
-                                            error=l_type
-                                        )
-                                        db.add(new_att)
+                            if new_balance < 0:
+                                response += (
+                                    f"\n\n⚠️ <b>Không thể trừ phép năm!</b>"
+                                    f"\nSố ngày phép còn lại: <code>{old_balance}</code>"
+                                    f"\nSố ngày xin nghỉ: <code>{num_days}</code>"
+                                    f"\n<i>Nhân viên không đủ phép năm. Vui lòng chuyển sang loại nghỉ khác (nghỉ không lương, ...).</i>"
+                                )
+                            else:
+                                employee.leave_balance = new_balance
                                 db.commit()
-                            except Exception as att_err:
-                                db.rollback()
-                                LogError(f"Error recording attendance for leave: {att_err}", LogType.SYSTEM_STATUS)
-                            # ----------------------------------
+                                response += f"\n\n💡 <b>Số ngày nghỉ phép năm còn lại:</b> <code>{new_balance}</code>"
+                            
+                                # --- Record in Attendance table ---
+                                try:
+                                    start_dt_parsed = datetime.datetime.strptime(l_dates.split(" - ")[0].strip() if " - " in l_dates else l_dates.strip(), "%d/%m/%Y")
+                                    days_vn = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
+                                    
+                                    for i in range(num_days):
+                                        current_date = start_dt_parsed + datetime.timedelta(days=i)
+                                        d, m, y = current_date.day, current_date.month, current_date.year
+                                        d_str = days_vn[current_date.weekday()]
+                                        
+                                        existing_att = db.query(Attendance).filter(
+                                            Attendance.employee_id == employee.id,
+                                            Attendance.year == y,
+                                            Attendance.month == m,
+                                            Attendance.day == d,
+                                        ).first()
+                                        if existing_att:
+                                            existing_att.error = l_type
+                                            db.add(existing_att)
+                                        else:
+                                            new_att = Attendance(
+                                                employee_id=employee.id,
+                                                year=y,
+                                                month=m,
+                                                day=d,
+                                                date_str=d_str,
+                                                error=l_type
+                                            )
+                                            db.add(new_att)
+                                    db.commit()
+                                except Exception as att_err:
+                                    db.rollback()
+                                    LogError(f"Error recording attendance for leave: {att_err}", LogType.SYSTEM_STATUS)
+                                # ----------------------------------
                 except Exception as e:
                     LogError(f"Error updating leave balance: {e}", LogType.SYSTEM_STATUS)
                 finally:

@@ -618,8 +618,7 @@ async def checkin_reminder_worker():
 async def recurring_task_worker():
     """
     Background worker that checks for completed tasks with a recurring cycle
-    and restarts them at the right time.
-    For example: 1 month cycle -> restart 1 month after start_date at 09:00.
+    and restarts them at the right time based on updated_at.
     """
     LogInfo("Recurring task worker started.", LogType.SYSTEM_STATUS)
     
@@ -634,106 +633,129 @@ async def recurring_task_worker():
         try:
             now = datetime.datetime.now()
             
-            # Run at exactly 09:00 system time
             cfg = settings.SCHEDULER_RESTART_TASK
             if now.hour == cfg.get('hour', 8) and now.minute == cfg.get('minute', 0):
-                LogInfo("Checking for recurring tasks to restart...", LogType.SYSTEM_STATUS)
                 db = SessionLocal()
                 try:
                     from app.models.task import Task
                     from bot.utils.bot import bot
-
-                    
-                    # We might want to restart tasks that are COMPLETED (or even PENDING/IN_PROGRESS if they missed it, but user mentioned COMPLETED)
+    
                     tasks = db.query(Task).filter(
-                        Task.status == "COMPLETED",
-                        Task.cycle.ilike("%1 tháng%")
+                        Task.status != "CANCELLED",
+                        Task.cycle != None,
+                        Task.cycle != "Một lần",
+                        ~Task.cycle.ilike("%(Đã lặp)%")
                     ).all()
                     
                     client = bot
                     
                     for task in tasks:
-                        if not task.start_date:
+                        if not task.updated_at:
                             continue
                             
-                        # Parse start_date
-                        parts = task.start_date.split("/")
-                        if len(parts) == 3:
+                        cycle_lower = task.cycle.lower()
+                        ref_date = task.updated_at.date()
+                        
+                        should_trigger = False
+                        new_start = None
+                        new_end = None
+                        
+                        if "1 tháng" in cycle_lower or "hằng tháng" in cycle_lower:
+                            target_date = add_months(ref_date, 1)
+                            should_trigger = True
+                            new_start = target_date.strftime("%d/%m/%Y")
                             try:
-                                d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
-                                if len(parts[0]) == 4:
-                                    y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
-                                s_date = datetime.date(y, m, d)
+                                e_date = datetime.datetime.strptime(task.end_date, "%d/%m/%Y").date() if task.end_date else target_date
+                                new_end = add_months(e_date, 1).strftime("%d/%m/%Y")
+                            except Exception:
+                                new_end = new_start
                                 
-                                target_date = add_months(s_date, 1)
+                        elif "hằng tuần" in cycle_lower or "1 tuần" in cycle_lower:
+                            target_date = ref_date + datetime.timedelta(days=7)
+                            should_trigger = True
+                            new_start = target_date.strftime("%d/%m/%Y")
+                            try:
+                                e_date = datetime.datetime.strptime(task.end_date, "%d/%m/%Y").date() if task.end_date else target_date
+                                new_end = (e_date + datetime.timedelta(days=7)).strftime("%d/%m/%Y")
+                            except Exception:
+                                new_end = new_start
                                 
-                                if datetime.date.today() == target_date:
-                                    # Calculate new end date if possible
-                                    new_end = task.end_date
-                                    if task.end_date and "/" in task.end_date:
-                                        e_parts = task.end_date.split("/")
-                                        if len(e_parts) == 3:
-                                            ed, em, ey = int(e_parts[0]), int(e_parts[1]), int(e_parts[2])
-                                            if len(e_parts[0]) == 4:
-                                                ey, em, ed = int(e_parts[0]), int(e_parts[1]), int(e_parts[2])
-                                            e_date = datetime.date(ey, em, ed)
-                                            new_end = add_months(e_date, 1).strftime("%d/%m/%Y")
-                                            
-                                    new_start = target_date.strftime("%d/%m/%Y")
-                                    
-                                    # Create new task
-                                    new_task = Task(
-                                        employee_id=task.employee_id,
-                                        project_id=task.project_id,
-                                        group_chat_id=task.group_chat_id,
-                                        assigner=task.assigner,
-                                        assignee=task.assignee,
-                                        content=task.content,
-                                        start_date=new_start,
-                                        end_date=new_end,
-                                        cycle=task.cycle,
-                                        status="PENDING"
-                                    )
-                                    db.add(new_task)
-                                    db.commit()
-                                    db.refresh(new_task)
-                                    
-                                    # Send notification
-                                    msg_text = (
-                                        f"<b>CÔNG VIỆC ĐƯỢC TÁI KHỞI ĐỘNG KỲ MỚI</b>\n\n"
-                                        f"<b>Ngày bắt đầu:</b> {new_start}\n"
-                                        f"<b>Ngày kết thúc:</b> {new_end}\n"
-                                        f"<b>Chu kỳ:</b> {task.cycle}\n"
-                                        f"<b>Nhân viên:</b> {task.assignee}\n"
-                                        f"<b>Nội dung công việc:</b> {task.content}\n\n"
-                                        f"<i>Task đã được tái khởi động tự động theo chu kỳ.</i>"
-                                    )
-                                    sent_msg = await client.send_message(
-                                        chat_id=int(task.group_chat_id),
-                                        text=msg_text,
-                                        parse_mode=ParseMode.HTML
-                                    )
-                                    
-                                    new_task.message_id = sent_msg.id
-                                    task_code = f"{task.group_chat_id}_{sent_msg.id}"
-                                    
-                                    await client.send_message(
-                                        chat_id=int(task.group_chat_id),
-                                        text=f"<code>[TaskCode: {task_code}]</code>",
-                                        reply_to_message_id=sent_msg.id,
-                                        parse_mode=ParseMode.HTML
-                                    )
-                                    db.commit()
-                                    LogInfo(f"Restarted task {task.id} -> new task {new_task.id}", LogType.SYSTEM_STATUS)
-                            except Exception as e:
-                                LogError(f"Error parsing date for task {task.id}: {e}", LogType.SYSTEM_STATUS)
+                        elif "hằng ngày" in cycle_lower or "1 ngày" in cycle_lower:
+                            target_date = ref_date + datetime.timedelta(days=1)
+                            should_trigger = True
+                            new_start = target_date.strftime("%d/%m/%Y")
+                            try:
+                                e_date = datetime.datetime.strptime(task.end_date, "%d/%m/%Y").date() if task.end_date else target_date
+                                new_end = (e_date + datetime.timedelta(days=1)).strftime("%d/%m/%Y")
+                            except Exception:
+                                new_end = new_start
+                    
+                    if should_trigger:
+                        # Create new task
+                        new_task = Task(
+                            employee_id=task.employee_id,
+                            project_id=task.project_id,
+                            group_chat_id=task.group_chat_id,
+                            assigner=task.assigner,
+                            assignee=task.assignee,
+                            content=task.content,
+                            start_date=new_start,
+                            end_date=new_end,
+                            cycle=task.cycle,
+                            status="PENDING"
+                        )
+                        db.add(new_task)
+                        
+                        # Mark old task as restarted
+                        task.cycle = f"{task.cycle} (Đã lặp)"
+                        db.add(task)
+                        
+                        db.commit()
+                        db.refresh(new_task)
+                        
+                        # Send notification
+                        try:
+                            from app.models.telegram import TelegramProjectMember
+                            from bot.utils.enums import CustomTitle
+                            
+                            # Find MEMBER_HR group
+                            hr_member = db.query(TelegramProjectMember).filter(
+                                TelegramProjectMember.project_id == new_task.project_id,
+                                TelegramProjectMember.role == "member",
+                                TelegramProjectMember.custom_title == CustomTitle.MEMBER_HR.value
+                            ).first()
+                            
+                            if hr_member and hr_member.chat_id:
+                                target_chat_id = int(hr_member.chat_id)
+                                new_task.group_chat_id = str(hr_member.chat_id)
+                            else:
+                                target_chat_id = int(new_task.group_chat_id)
+
+                            msg_text = (
+                                f"<b>CÔNG VIỆC ĐƯỢC TÁI KHỞI ĐỘNG KỲ MỚI</b>\n\n"
+                                f"<b>Ngày bắt đầu:</b> {new_start}\n"
+                                f"<b>Ngày kết thúc:</b> {new_end}\n"
+                                f"<b>Chu kỳ:</b> {new_task.cycle}\n"
+                                f"<b>Nhân viên:</b> {new_task.assignee}\n"
+                                f"<b>Nội dung công việc:</b> {new_task.content}\n\n"
+                                f"<i>Task đã được tái khởi động tự động theo chu kỳ.</i>"
+                            )
+                            sent_msg = await client.send_message(
+                                chat_id=target_chat_id,
+                                text=msg_text,
+                                parse_mode=ParseMode.HTML
+                            )
+                            
+                            new_task.message_id = sent_msg.id
+                            db.commit()
+                            LogInfo(f"Restarted task {task.id} -> new task {new_task.id} in {target_chat_id}", LogType.SYSTEM_STATUS)
+                        except Exception as e:
+                            LogError(f"Error sending notification for restarted task {task.id}: {e}", LogType.SYSTEM_STATUS)
+
                 except Exception as e:
                     LogError(f"Error checking recurring tasks: {e}", LogType.SYSTEM_STATUS)
                 finally:
                     db.close()
-                    
-                # Sleep enough to avoid triggering again at 09:00
-                await asyncio.sleep(61)
             
             # Wait exactly until the next minute
             next_run = (datetime.datetime.now() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
