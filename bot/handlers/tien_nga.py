@@ -6778,6 +6778,8 @@ async def tien_nga_deny_payment_handler(client, message: Message) -> None:
 # In-memory toggle selections keyed by message_id
 _cpd_selections: dict[int, set[str]] = {}
 _cpd_pages: dict[int, int] = {}  # current page per message_id
+_cpd_pending: dict[int, dict] = {}   # msg_id -> {type: "hr"/"sup", selected: set, cp_id: str}
+_cpd_inv_map: dict[int, list] = {}   # msg_id -> [(inv_id_str, inv_name, inv_code), ...]
 CPD_PAGE_SIZE = 10
 
 
@@ -6806,6 +6808,9 @@ async def tien_nga_confirm_payment_debt_handler(client, message: Message) -> Non
 async def cpd_cancel_callback(client, callback_query: CallbackQuery):
     msg_id = callback_query.message.id
     _cpd_selections.pop(msg_id, None)
+    _cpd_pages.pop(msg_id, None)
+    _cpd_pending.pop(msg_id, None)
+    _cpd_inv_map.pop(msg_id, None)
     await callback_query.message.edit_text("❌ Đã hủy xác nhận thanh toán công nợ.")
 
 
@@ -6930,7 +6935,7 @@ async def cpd_tgl_hr_callback(client, callback_query: CallbackQuery):
         db.close()
 
 
-# --- Confirm HR ---
+# --- Confirm HR → Show Investment selection ---
 @bot.on_callback_query(filters.regex(r"^cpd_confirm_hr$"))
 async def cpd_confirm_hr_callback(client, callback_query: CallbackQuery):
     msg_id = callback_query.message.id
@@ -6940,39 +6945,33 @@ async def cpd_confirm_hr_callback(client, callback_query: CallbackQuery):
         await callback_query.answer("⚠️ Chưa chọn nhân sự nào!", show_alert=True)
         return
 
-    from app.models.employee import Employee
+    from app.models.business import Investment
     db = SessionLocal()
     try:
-        success_list = []
-        skip_list = []
+        investments = db.query(Investment).filter(Investment.status == "ACTIVE").order_by(Investment.name).all()
+        if not investments:
+            await callback_query.answer("⚠️ Không có quỹ đầu tư ACTIVE nào!", show_alert=True)
+            return
 
-        for emp_id in selected:
-            emp = db.query(Employee).filter(Employee.id == emp_id).first()
-            if not emp:
-                continue
-            name = f"{emp.last_name or ''} {emp.first_name or ''}".strip() or emp.id
-            old_debt = emp.total_debt or 0
-            if old_debt > 0:
-                emp.total_debt = 0
-                success_list.append(f"• <b>{name}</b> ({emp.id}): <code>{fmt_vn(old_debt)}</code> → <code>0</code>")
-            else:
-                skip_list.append(f"• <b>{name}</b> ({emp.id}): Công nợ = <code>{fmt_vn(old_debt)}</code>")
+        _cpd_pending[msg_id] = {"type": "hr", "selected": selected}
+        _cpd_inv_map[msg_id] = [(str(inv.id), inv.name, inv.investment_code) for inv in investments]
 
-        db.commit()
+        buttons = []
+        for idx, inv in enumerate(investments):
+            label = f"{inv.investment_code} — {inv.name}" if inv.investment_code else inv.name
+            buttons.append([InlineKeyboardButton(label, callback_data=f"cpd_selinv_{idx}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="cpd_cancel")])
 
-        result = "<b>✅ KẾT QUẢ THANH TOÁN CÔNG NỢ NHÂN SỰ</b>\n\n"
-        if success_list:
-            result += "<b>Đã thanh toán:</b>\n" + "\n".join(success_list) + "\n\n"
-        if skip_list:
-            result += "<b>⚠️ Không có công nợ (bỏ qua):</b>\n" + "\n".join(skip_list) + "\n"
-
-        await callback_query.message.edit_text(result, parse_mode=ParseMode.HTML)
-        LogInfo(f"[TienNga] confirm_payments_of_debts HR: {len(success_list)} cleared, {len(skip_list)} skipped by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
-
+        await callback_query.message.edit_text(
+            f"<b>CHỌN QUỸ ĐẦU TƯ</b>\n\n"
+            f"<i>Đã chọn {len(selected)} nhân sự. Vui lòng chọn quỹ để ghi nhận phiếu chi:</i>",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML,
+        )
     except Exception as e:
-        db.rollback()
-        LogError(f"Error in cpd_confirm_hr_callback: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.message.edit_text("❌ Lỗi hệ thống khi thanh toán công nợ nhân sự.")
+        LogError(f"Error showing investments for HR confirm: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+        _cpd_pending.pop(msg_id, None)
     finally:
         db.close()
 
@@ -7202,7 +7201,7 @@ async def cpd_tgl_sup_callback(client, callback_query: CallbackQuery):
         db.close()
 
 
-# --- Confirm Supplier ---
+# --- Confirm Supplier → Show Investment selection ---
 @bot.on_callback_query(filters.regex(r"^cpd_confirm_sup_(.+)$"))
 async def cpd_confirm_sup_callback(client, callback_query: CallbackQuery):
     cp_id = callback_query.matches[0].group(1)
@@ -7213,55 +7212,248 @@ async def cpd_confirm_sup_callback(client, callback_query: CallbackQuery):
         await callback_query.answer("⚠️ Chưa chọn hộ dân nào!", show_alert=True)
         return
 
-    from app.models.business import Customers, CollectionPoint
+    from app.models.business import Investment
     db = SessionLocal()
     try:
-        cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
-        cp_name = cp.collection_name if cp else "N/A"
+        investments = db.query(Investment).filter(Investment.status == "ACTIVE").order_by(Investment.name).all()
+        if not investments:
+            await callback_query.answer("⚠️ Không có quỹ đầu tư ACTIVE nào!", show_alert=True)
+            return
 
-        success_list = []
-        skip_list = []
+        _cpd_pending[msg_id] = {"type": "sup", "selected": selected, "cp_id": cp_id}
+        _cpd_inv_map[msg_id] = [(str(inv.id), inv.name, inv.investment_code) for inv in investments]
 
-        for cust_id in selected:
-            cust = db.query(Customers).filter(Customers.hoursehold_id == cust_id).first()
-            if not cust:
-                continue
-            name = cust.fullname or cust.hoursehold_id
-            old_debt = cust.total_debt or 0
-            if old_debt > 0:
-                cust.total_debt = 0
-                success_list.append(f"• <b>{cust.hoursehold_id}</b> — {name}: <code>{fmt_vn(old_debt)}</code> → <code>0</code>")
-            else:
-                skip_list.append(f"• <b>{cust.hoursehold_id}</b> — {name}: Công nợ = <code>{fmt_vn(old_debt)}</code>")
+        buttons = []
+        for idx, inv in enumerate(investments):
+            label = f"{inv.investment_code} — {inv.name}" if inv.investment_code else inv.name
+            buttons.append([InlineKeyboardButton(label, callback_data=f"cpd_selinv_{idx}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="cpd_cancel")])
 
-        db.commit()
-
-        result = f"<b>✅ KẾT QUẢ THANH TOÁN CÔNG NỢ</b>\n<b>Xưởng:</b> {cp_name}\n\n"
-        if success_list:
-            result += "<b>Đã thanh toán:</b>\n" + "\n".join(success_list) + "\n\n"
-        if skip_list:
-            result += "<b>⚠️ Không có công nợ (bỏ qua):</b>\n" + "\n".join(skip_list) + "\n"
-
-        await callback_query.message.edit_text(result, parse_mode=ParseMode.HTML)
-        LogInfo(f"[TienNga] confirm_payments_of_debts Supplier ({cp_name}): {len(success_list)} cleared, {len(skip_list)} skipped by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
-
+        await callback_query.message.edit_text(
+            f"<b>CHỌN QUỸ ĐẦU TƯ</b>\n\n"
+            f"<i>Đã chọn {len(selected)} hộ dân. Vui lòng chọn quỹ để ghi nhận phiếu chi:</i>",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML,
+        )
     except Exception as e:
-        db.rollback()
-        if "FLOOD_WAIT" in str(e):
-            import asyncio
-            await asyncio.sleep(5)
+        LogError(f"Error showing investments for Supplier confirm: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+        _cpd_pending.pop(msg_id, None)
+    finally:
+        db.close()
+
+
+# --- Investment selected → Process debt clearing + create DailyPayment ---
+@bot.on_callback_query(filters.regex(r"^cpd_selinv_(\d+)$"))
+async def cpd_selinv_callback(client, callback_query: CallbackQuery):
+    idx = int(callback_query.matches[0].group(1))
+    msg_id = callback_query.message.id
+
+    pending = _cpd_pending.pop(msg_id, None)
+    inv_list = _cpd_inv_map.pop(msg_id, None)
+    _cpd_pages.pop(msg_id, None)
+
+    if not pending or not inv_list or idx >= len(inv_list):
+        await callback_query.answer("⚠️ Phiên đã hết hạn, vui lòng thực hiện lại.", show_alert=True)
+        return
+
+    inv_id_str, inv_name, inv_code = inv_list[idx]
+    pending_type = pending["type"]
+    selected = pending["selected"]
+
+    # Executor = Telegram username
+    eu = callback_query.from_user
+    executor = f"@{eu.username}" if eu.username else (eu.first_name or "N/A")
+
+    now = datetime.now()
+    today = now.date()
+    # Tháng trước (for HR purpose)
+    prev_month = 12 if now.month == 1 else now.month - 1
+    prev_year = now.year - 1 if now.month == 1 else now.year
+
+    import uuid as _uuid
+    from app.models.business import Investment, DailyPayment, Projects
+
+    if pending_type == "hr":
+        from app.models.employee import Employee
+        db = SessionLocal()
+        try:
+            inv = db.query(Investment).filter(Investment.id == inv_id_str).first()
+            if not inv:
+                await callback_query.message.edit_text("⚠️ Không tìm thấy quỹ đầu tư.", parse_mode=ParseMode.HTML)
+                return
+
+            success_list = []
+            skip_list = []
+
+            for emp_id in selected:
+                emp = db.query(Employee).filter(Employee.id == emp_id).first()
+                if not emp:
+                    continue
+                name = f"{emp.last_name or ''} {emp.first_name or ''}".strip() or emp.id
+                old_debt = emp.total_debt or 0
+                if old_debt > 0:
+                    # Tạo DailyPayment - phiếu chi
+                    dp = DailyPayment(
+                        id=_uuid.uuid4(),
+                        investment_id=inv.id,
+                        executor=executor,
+                        receiver=name,
+                        payment_type="chi",
+                        purpose=f"Chi trả lương tháng {prev_month}/{prev_year}",
+                        amount=old_debt,
+                        day=today,
+                        status="APPROVED",
+                        notes=f"Tự động từ xác nhận công nợ - {emp.id}",
+                    )
+                    db.add(dp)
+                    inv.total_expense = (inv.total_expense or 0) + old_debt
+                    inv.profit = (inv.total_income or 0) - (inv.total_expense or 0)
+                    emp.total_debt = 0
+                    success_list.append(f"• <b>{name}</b> ({emp.id}): <code>{fmt_vn(old_debt)}</code> → <code>0</code>")
+                else:
+                    skip_list.append(f"• <b>{name}</b> ({emp.id}): Công nợ = <code>{fmt_vn(old_debt)}</code>")
+
+            db.commit()
+
+            result = (
+                f"<b>✅ KẾT QUẢ THANH TOÁN CÔNG NỢ NHÂN SỰ</b>\n"
+                f"<b>Quỹ:</b> {inv_name}\n\n"
+            )
+            if success_list:
+                result += "<b>Đã thanh toán:</b>\n" + "\n".join(success_list) + "\n\n"
+            if skip_list:
+                result += "<b>⚠️ Không có công nợ (bỏ qua):</b>\n" + "\n".join(skip_list) + "\n"
+
+            await callback_query.message.edit_text(result, parse_mode=ParseMode.HTML)
+            LogInfo(f"[TienNga] cpd HR inv={inv_code}: {len(success_list)} cleared, {len(skip_list)} skipped by {eu.id}", LogType.SYSTEM_STATUS)
+
+            # Gửi thông báo xuống nhóm member_hr
+            if success_list:
+                try:
+                    from app.models.telegram import TelegramProjectMember
+                    project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+                    if project:
+                        member_groups = db.query(TelegramProjectMember.chat_id).filter(
+                            TelegramProjectMember.project_id == project.id,
+                            TelegramProjectMember.role == "member",
+                            TelegramProjectMember.custom_title == "member_hr"
+                        ).distinct().all()
+                        notify_text = (
+                            "<b>THÔNG BÁO THANH TOÁN CÔNG NỢ</b>\n\n"
+                            "<b>Đã thanh toán:</b>\n" + "\n".join(success_list) + "\n\n"
+                            "<i>Xác nhận bởi quản lý.</i>"
+                        )
+                        for (m_chat_id,) in member_groups:
+                            try:
+                                await client.send_message(chat_id=int(m_chat_id), text=notify_text, parse_mode=ParseMode.HTML)
+                            except Exception as send_err:
+                                LogError(f"Failed to notify member_hr group {m_chat_id}: {send_err}", LogType.SYSTEM_STATUS)
+                except Exception as notify_err:
+                    LogError(f"Error sending HR payment notification: {notify_err}", LogType.SYSTEM_STATUS)
+
+        except Exception as e:
+            db.rollback()
+            LogError(f"Error in cpd_selinv HR: {e}", LogType.SYSTEM_STATUS)
             try:
-                await callback_query.message.edit_text(result, parse_mode=ParseMode.HTML)
+                await callback_query.message.edit_text("❌ Lỗi hệ thống khi thanh toán công nợ nhân sự.")
             except Exception:
                 pass
-        else:
-            LogError(f"Error in cpd_confirm_sup_callback: {e}", LogType.SYSTEM_STATUS)
+        finally:
+            db.close()
+
+    elif pending_type == "sup":
+        cp_id = pending.get("cp_id", "")
+        from app.models.business import Customers, CollectionPoint
+        db = SessionLocal()
+        try:
+            inv = db.query(Investment).filter(Investment.id == inv_id_str).first()
+            cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
+            cp_name = cp.collection_name if cp else "N/A"
+            if not inv:
+                await callback_query.message.edit_text("⚠️ Không tìm thấy quỹ đầu tư.", parse_mode=ParseMode.HTML)
+                return
+
+            success_list = []
+            skip_list = []
+
+            for cust_id in selected:
+                cust = db.query(Customers).filter(Customers.hoursehold_id == cust_id).first()
+                if not cust:
+                    continue
+                name = cust.fullname or cust.hoursehold_id
+                old_debt = cust.total_debt or 0
+                if old_debt > 0:
+                    # Tạo DailyPayment - phiếu chi
+                    dp = DailyPayment(
+                        id=_uuid.uuid4(),
+                        investment_id=inv.id,
+                        executor=executor,
+                        receiver=name,
+                        payment_type="chi",
+                        purpose="Chi trả công nợ",
+                        amount=old_debt,
+                        day=today,
+                        status="APPROVED",
+                        notes=f"Tự động từ xác nhận công nợ - {cust.hoursehold_id}",
+                    )
+                    db.add(dp)
+                    inv.total_expense = (inv.total_expense or 0) + old_debt
+                    inv.profit = (inv.total_income or 0) - (inv.total_expense or 0)
+                    cust.total_debt = 0
+                    success_list.append(f"• <b>{cust.hoursehold_id}</b> — {name}: <code>{fmt_vn(old_debt)}</code> → <code>0</code>")
+                else:
+                    skip_list.append(f"• <b>{cust.hoursehold_id}</b> — {name}: Công nợ = <code>{fmt_vn(old_debt)}</code>")
+
+            db.commit()
+
+            result = (
+                f"<b>✅ KẾT QUẢ THANH TOÁN CÔNG NỢ</b>\n"
+                f"<b>Xưởng:</b> {cp_name}\n"
+                f"<b>Quỹ:</b> {inv_name}\n\n"
+            )
+            if success_list:
+                result += "<b>Đã thanh toán:</b>\n" + "\n".join(success_list) + "\n\n"
+            if skip_list:
+                result += "<b>⚠️ Không có công nợ (bỏ qua):</b>\n" + "\n".join(skip_list) + "\n"
+
+            await callback_query.message.edit_text(result, parse_mode=ParseMode.HTML)
+            LogInfo(f"[TienNga] cpd Supplier ({cp_name}) inv={inv_code}: {len(success_list)} cleared, {len(skip_list)} skipped by {eu.id}", LogType.SYSTEM_STATUS)
+
+            # Gửi thông báo xuống nhóm member_supplier
+            if success_list:
+                try:
+                    from app.models.telegram import TelegramProjectMember
+                    project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+                    if project:
+                        member_groups = db.query(TelegramProjectMember.chat_id).filter(
+                            TelegramProjectMember.project_id == project.id,
+                            TelegramProjectMember.role == "member",
+                            TelegramProjectMember.custom_title == "member_supplier"
+                        ).distinct().all()
+                        notify_text = (
+                            f"<b>THÔNG BÁO THANH TOÁN CÔNG NỢ</b>\n"
+                            f"<b>Xưởng:</b> {cp_name}\n\n"
+                            "<b>Đã thanh toán:</b>\n" + "\n".join(success_list) + "\n\n"
+                            "<i>Xác nhận bởi quản lý.</i>"
+                        )
+                        for (m_chat_id,) in member_groups:
+                            try:
+                                await client.send_message(chat_id=int(m_chat_id), text=notify_text, parse_mode=ParseMode.HTML)
+                            except Exception as send_err:
+                                LogError(f"Failed to notify member_supplier group {m_chat_id}: {send_err}", LogType.SYSTEM_STATUS)
+                except Exception as notify_err:
+                    LogError(f"Error sending Supplier payment notification: {notify_err}", LogType.SYSTEM_STATUS)
+
+        except Exception as e:
+            db.rollback()
+            LogError(f"Error in cpd_selinv Supplier: {e}", LogType.SYSTEM_STATUS)
             try:
                 await callback_query.message.edit_text("❌ Lỗi hệ thống khi thanh toán công nợ nhà cung cấp.")
             except Exception:
                 pass
-    finally:
-        db.close()
+        finally:
+            db.close()
 
 
 # =========================================================================================
