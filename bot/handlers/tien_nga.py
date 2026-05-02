@@ -3093,11 +3093,12 @@ async def send_message_callback(client, callback_query: CallbackQuery):
     if data == "sm_proj_tiennga":
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("Gửi tất cả nhóm", callback_data="sm_tn_all")],
-            [InlineKeyboardButton("Nhà cung cấp", callback_data="sm_tn_ncc")],
-            [InlineKeyboardButton("Kinh doanh", callback_data="sm_tn_dummy")],
-            [InlineKeyboardButton("Nhân sự", callback_data="sm_tn_dummy")],
-            [InlineKeyboardButton("QL Thành phẩm", callback_data="sm_tn_dummy")],
-            [InlineKeyboardButton("QL Đối tác", callback_data="sm_tn_dummy")],
+            [InlineKeyboardButton("Các Xưởng (Điểm thu mua)", callback_data="sm_tn_xuong")],
+            [InlineKeyboardButton("Nhân sự", callback_data="sm_tn_hr")],
+            [InlineKeyboardButton("QL Thành phẩm", callback_data="sm_tn_product")],
+            [InlineKeyboardButton("QL Đối tác", callback_data="sm_tn_partner")],
+            [InlineKeyboardButton("Kho", callback_data="sm_tn_inventory")],
+            [InlineKeyboardButton("Thu hoạch cao su", callback_data="sm_tn_harvest")],
             [InlineKeyboardButton("Hủy", callback_data="sm_cancel"),
              InlineKeyboardButton("Quay lại", callback_data="sm_back_proj")],
         ])
@@ -3122,49 +3123,39 @@ async def send_message_callback(client, callback_query: CallbackQuery):
             parse_mode=ParseMode.HTML, reply_markup=kb
         )
     
-    # === Nhà cung cấp -> Multi-select sub-categories ===
-    elif data == "sm_tn_ncc":
+    # === Các Xưởng -> Multi-select sub-categories ===
+    elif data == "sm_tn_xuong":
         state["selected"] = set()
-        await _render_ncc_select(callback_query, state)
+        await _render_xuong_select(callback_query, state)
     
-    # === Toggle NCC sub-category ===
-    elif data.startswith("sm_tn_ncc_tog_"):
-        ncc_key = data.replace("sm_tn_ncc_tog_", "")
+    # === Toggle Xưởng sub-category ===
+    elif data.startswith("sm_tn_xuong_tog_"):
+        xuong_key = data.replace("sm_tn_xuong_tog_", "")
         selected = state.get("selected", set())
-        if ncc_key in selected:
-            selected.discard(ncc_key)
+        if xuong_key in selected:
+            selected.discard(xuong_key)
         else:
-            selected.add(ncc_key)
+            selected.add(xuong_key)
         state["selected"] = selected
-        await _render_ncc_select(callback_query, state)
+        await _render_xuong_select(callback_query, state)
     
-    # === Gửi đến NCC đã chọn ===
-    elif data == "sm_tn_ncc_send":
+    # === Gửi đến Xưởng đã chọn ===
+    elif data == "sm_tn_xuong_send":
         selected = state.get("selected", set())
         if not selected:
-            await callback_query.answer("⚠️ Vui lòng chọn ít nhất 1 nhà cung cấp!", show_alert=True)
+            await callback_query.answer("⚠️ Vui lòng chọn ít nhất 1 xưởng!", show_alert=True)
             return
         
-        await callback_query.message.edit_text("⏳ <i>Đang gửi tin nhắn...</i>", parse_mode=ParseMode.HTML)
+        await callback_query.message.edit_text("⏳ <i>Đang tìm kiếm hộ dân và gửi tin nhắn...</i>", parse_mode=ParseMode.HTML)
         
-        # Map NCC keys to custom_titles
-        ncc_map = {
-            "mu": CustomTitle.MEMBER_SUPPLIER,
-            "cui": "member_ncc_cui",
-            "acid": "member_ncc_acid",
-        }
-        
-        target_titles = [ncc_map[k] for k in selected if k in ncc_map]
-        sent, failed = await _do_send_to_groups(client, state, "Tiến Nga", target_titles)
+        sent, failed, total_households = await _do_send_to_customers_by_cp(client, state, list(selected))
         
         _send_msg_state.pop(user_id, None)
         
-        ncc_labels = {"mu": "Mủ", "cui": "Củi", "acid": "Acid"}
-        selected_names = ", ".join(ncc_labels.get(k, k) for k in selected)
-        
         await callback_query.message.edit_text(
             f"✅ <b>ĐÃ GỬI TIN NHẮN</b>\n\n"
-            f"Nhóm: <b>NCC ({selected_names})</b>\n"
+            f"Nhóm: <b>Các Xưởng Đã Chọn</b>\n"
+            f"Tổng số hộ dân tìm thấy: <b>{total_households}</b>\n"
             f"Gửi thành công: <b>{sent}</b> nhóm\n"
             f"Thất bại: <b>{failed}</b> nhóm",
             parse_mode=ParseMode.HTML
@@ -3186,39 +3177,80 @@ async def send_message_callback(client, callback_query: CallbackQuery):
             parse_mode=ParseMode.HTML
         )
     
+    # === Các nhóm Member còn lại ===
+    elif data in ("sm_tn_hr", "sm_tn_product", "sm_tn_partner", "sm_tn_inventory", "sm_tn_harvest"):
+        group_map = {
+            "sm_tn_hr": (CustomTitle.MEMBER_HR.value, "Nhân sự"),
+            "sm_tn_product": (CustomTitle.MEMBER_PRODUCT.value, "QL Thành phẩm"),
+            "sm_tn_partner": (CustomTitle.MEMBER_PARTNER.value, "QL Đối tác"),
+            "sm_tn_inventory": (CustomTitle.MEMBER_INVENTORY.value, "Kho"),
+            "sm_tn_harvest": (CustomTitle.MEMBER_HARVEST.value, "Thu hoạch cao su"),
+        }
+        
+        target_title, group_name = group_map[data]
+        
+        await callback_query.message.edit_text(f"⏳ <i>Đang gửi tin nhắn đến nhóm {group_name}...</i>", parse_mode=ParseMode.HTML)
+        
+        sent, failed = await _do_send_to_groups(client, state, "Tiến Nga", [target_title])
+        
+        _send_msg_state.pop(user_id, None)
+        
+        await callback_query.message.edit_text(
+            f"✅ <b>ĐÃ GỬI TIN NHẮN</b>\n\n"
+            f"Nhóm: <b>{group_name}</b>\n"
+            f"Gửi thành công: <b>{sent}</b> nhóm\n"
+            f"Thất bại: <b>{failed}</b> nhóm",
+            parse_mode=ParseMode.HTML
+        )
+    
     # === Dummy buttons ===
     elif data == "sm_tn_dummy" or data == "sm_proj_dummy":
         await callback_query.answer("🚀 Nhánh này sẽ được phát triển tiếp sau!", show_alert=True)
 
 
-async def _render_ncc_select(callback_query, state):
-    """Render NCC multi-select buttons."""
+async def _render_xuong_select(callback_query, state):
+    """Render Xưởng multi-select buttons."""
+    from app.db.session import SessionLocal
+    from app.models.business import CollectionPoint
+    
+    db = SessionLocal()
+    try:
+        cps = db.query(CollectionPoint).all()
+        xuong_items = [(str(cp.id), cp.collection_name or "Không tên") for cp in cps]
+    except Exception:
+        xuong_items = []
+    finally:
+        db.close()
+        
+    xuong_items.append(("none", "Chưa phân xưởng"))
+    
     selected = state.get("selected", set())
     
-    ncc_items = [
-        ("mu", "Nhà cung cấp Mủ"),
-        ("cui", "Nhà cung cấp Củi"),
-        ("acid", "Nhà cung cấp Acid"),
-    ]
-    
     buttons = []
-    for key, label in ncc_items:
+    for key, label in xuong_items:
         check = "✅" if key in selected else "⬜"
-        buttons.append([InlineKeyboardButton(f"{check} {label}", callback_data=f"sm_tn_ncc_tog_{key}")])
+        buttons.append([InlineKeyboardButton(f"{check} {label}", callback_data=f"sm_tn_xuong_tog_{key}")])
     
-    buttons.append([InlineKeyboardButton("Gửi", callback_data="sm_tn_ncc_send")])
+    buttons.append([InlineKeyboardButton("Gửi", callback_data="sm_tn_xuong_send")])
     buttons.append([
         InlineKeyboardButton("Hủy", callback_data="sm_cancel"),
         InlineKeyboardButton("Quay lại", callback_data="sm_proj_tiennga"),
     ])
     
-    selected_text = ", ".join(
-        {"mu": "Mủ", "cui": "Củi", "acid": "Acid"}.get(k, k) for k in selected
-    ) or "Chưa chọn"
+    # Build selected text for display
+    selected_names = []
+    for k in selected:
+        if k == "none":
+            selected_names.append("Chưa phân xưởng")
+        else:
+            found = next((x[1] for x in xuong_items if x[0] == k), k)
+            selected_names.append(found)
+            
+    selected_text = ", ".join(selected_names) if selected_names else "Chưa chọn"
     
     kb = InlineKeyboardMarkup(buttons)
     await callback_query.message.edit_text(
-        f"<b>NHÀ CUNG CẤP</b>\n\n"
+        f"<b>CÁC XƯỞNG (ĐIỂM THU MUA)</b>\n\n"
         f"Đã chọn: <b>{selected_text}</b>\n\n"
         f"Nhấn để chọn/bỏ chọn, sau đó nhấn <b>Gửi</b>:",
         parse_mode=ParseMode.HTML, reply_markup=kb
@@ -3314,6 +3346,115 @@ async def _do_send_to_groups(client, state, project_name: str, target_titles: li
         db.close()
     
     return sent, failed
+
+
+async def _do_send_to_customers_by_cp(client, state, cp_ids: list):
+    """
+    Gửi tin nhắn/ảnh/video đến tất cả nhóm Telegram của Hộ dân thuộc các Xưởng đã chọn.
+    cp_ids: list of string collection_point_id, or "none" cho chưa phân xưởng.
+    Returns (sent_count, failed_count, total_households).
+    """
+    from app.db.session import SessionLocal
+    from app.models.business import Customers
+    from sqlalchemy import or_, cast, String
+    
+    db = SessionLocal()
+    sent = 0
+    failed = 0
+    total_households = 0
+    
+    try:
+        query = db.query(Customers).filter(Customers.telegram_group.isnot(None), Customers.telegram_group != "")
+        
+        conditions = []
+        for cpid in cp_ids:
+            if cpid == "none":
+                conditions.append(Customers.collection_point_id == None)
+            else:
+                conditions.append(cast(Customers.collection_point_id, String) == cpid)
+                
+        if conditions:
+            query = query.filter(or_(*conditions))
+            
+        customers = query.all()
+        
+        # Extract unique group names from customers
+        customer_group_names = list(set(c.telegram_group for c in customers if c.telegram_group))
+        total_households = len(customers)
+        
+        if not customer_group_names:
+            return 0, 0, total_households
+            
+        # Lookup chat_ids from TelegramProjectMember using group_names
+        from app.models.telegram import TelegramProjectMember
+        members = db.query(TelegramProjectMember).filter(TelegramProjectMember.group_name.in_(customer_group_names)).all()
+        chat_ids = list(set(m.chat_id for m in members if m.chat_id))
+        
+        if not chat_ids:
+            return 0, 0, total_households
+        
+        orig_msg = state.get("orig_msg")
+        reply_msg = state.get("reply_msg")
+        text_content = state.get("text", "")
+        
+        clean_caption = text_content
+        if not clean_caption and orig_msg:
+            raw_caption = orig_msg.caption or ""
+            import re as _re
+            clean_caption = _re.sub(r'/send_message\s*', '', raw_caption).strip()
+            
+        for chat_id in chat_ids:
+            try:
+                # Validate and parse chat_id
+                try:
+                    c_id = int(chat_id)
+                except ValueError:
+                    if chat_id.startswith('@'):
+                        c_id = chat_id
+                    else:
+                        LogError(f"[SendMsgCustomer] Invalid chat_id format: '{chat_id}'", LogType.SYSTEM_STATUS)
+                        failed += 1
+                        continue
+                        
+                if reply_msg:
+                    await reply_msg.forward(c_id)
+                elif orig_msg and orig_msg.photo:
+                    await client.send_photo(
+                        chat_id=c_id,
+                        photo=orig_msg.photo.file_id,
+                        caption=clean_caption,
+                        parse_mode=ParseMode.HTML
+                    )
+                elif orig_msg and orig_msg.video:
+                    await client.send_video(
+                        chat_id=c_id,
+                        video=orig_msg.video.file_id,
+                        caption=clean_caption,
+                        parse_mode=ParseMode.HTML
+                    )
+                elif orig_msg and orig_msg.document:
+                    await client.send_document(
+                        chat_id=c_id,
+                        document=orig_msg.document.file_id,
+                        caption=clean_caption,
+                        parse_mode=ParseMode.HTML
+                    )
+                elif text_content:
+                    await client.send_message(
+                        chat_id=c_id,
+                        text=text_content,
+                        parse_mode=ParseMode.HTML
+                    )
+                sent += 1
+            except Exception as e:
+                LogError(f"[SendMsgCustomer] Failed to send to {chat_id}: {e}", LogType.SYSTEM_STATUS)
+                failed += 1
+    except Exception as e:
+        LogError(f"[SendMsgCustomer] Error: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+        
+    return sent, failed, total_households
 
 
 #############  Củi (Firewood) #############
