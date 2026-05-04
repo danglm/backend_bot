@@ -96,6 +96,10 @@ class PartnerBusinesses(Base):
     unit_price = Column(Float, default=0.0)             # Đơn giá
     total_amount = Column(Float, default=0.0)           # Thành tiền
     notes = Column(String)                              # Ghi chú
+    product_type = Column(String)                       # Loại sản phẩm
+    actual_weight = Column(Float, default=0.0)          # Khối lượng Mủ nước
+    dry_rubber = Column(Float, default=0.0)             # Khối lượng mủ khô
+    degree = Column(Float, default=0.0)                 # Số độ
 
 class Investment(Base):
     __tablename__ = "investments"
@@ -111,6 +115,8 @@ class Investment(Base):
     profit = Column(Float, default=0.0)                 # Lợi nhuận
     notes = Column(String)                              # Ghi chú
     status = Column(String, default="ACTIVE")           # Trạng thái
+    parent_id = Column(UUID(as_uuid=True), nullable=True) # Trỏ đến quỹ Cha
+    role = Column(String, default="MAIN")               # MAIN hoặc MEMBER
 
 class DailyPayment(Base):
     __tablename__ = "daily_payments"
