@@ -2,52 +2,91 @@ import os
 import sys
 import json
 import uvicorn
+import yaml
 from pathlib import Path
-from pyngrok import ngrok
+from urllib.parse import urlparse
+from pyngrok import ngrok, conf
 
-def update_webhook_url(new_url: str):
-    settings_path = Path(__file__).parent / "appsettings.json"
-    
+BASE_DIR = Path(__file__).parent
+
+
+def load_ngrok_config():
+    """Load ngrok authtoken and region from ngrok_token.yml"""
+    ngrok_config_path = BASE_DIR / "ngrok_token.yml"
+    if not ngrok_config_path.exists():
+        print("[Ngrok] Warning: ngrok_token.yml not found. Proceeding without authtoken.")
+        return None, "us"
+
+    with open(ngrok_config_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    authtoken = config.get("authtoken", "")
+    region = config.get("region", "us")
+    return authtoken, region
+
+
+def load_app_settings():
+    """Load appsettings.json and return the full config dict."""
+    settings_path = BASE_DIR / "appsettings.json"
     with open(settings_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-        
-    if "Telegram" not in data:
-        data["Telegram"] = {}
-        
-    data["Telegram"]["Webhook_URL"] = new_url
+        return json.load(f)
+
+
+def get_static_domain(app_config: dict) -> str:
+    """Extract the static ngrok domain from Webhook_URL in appsettings.json.
     
-    with open(settings_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+    E.g. 'https://nonsuggestively-approvable-oswaldo.ngrok-free.dev' -> 
+         'nonsuggestively-approvable-oswaldo.ngrok-free.dev'
+    """
+    webhook_url = app_config.get("Telegram", {}).get("Webhook_URL", "")
+    if not webhook_url:
+        return ""
+    parsed = urlparse(webhook_url)
+    return parsed.hostname or ""
+
 
 def main():
-    # Read port from appsettings.json or use default 8000
-    settings_path = Path(__file__).parent / "appsettings.json"
-    port = 8000
-    if settings_path.exists():
-        with open(settings_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            port = data.get("Service", {}).get("Port", 8000)
+    # ── 0. Load configurations ──────────────────────────────────────
+    app_config = load_app_settings()
+    port = app_config.get("Service", {}).get("Port", 8000)
 
-    print(f"[Ngrok] Opening Webhook Tunnel at Port {port}...")
-    
-    # 1. Start ngrok tunnel
-    # Note: If you have an ngrok authtoken, you can set it via ngrok.set_auth_token("TOKEN") 
-    # or login in your terminal first: ngrok config add-authtoken <YOUR_TOKEN>
+    authtoken, region = load_ngrok_config()
+    static_domain = get_static_domain(app_config)
+
+    # ── 1. Configure pyngrok ────────────────────────────────────────
+    if authtoken:
+        conf.get_default().auth_token = authtoken
+        conf.get_default().region = region
+        print(f"[Ngrok] Authtoken loaded (region: {region})")
+    else:
+        print("[Ngrok] No authtoken configured – static domain will NOT work.")
+
+    # ── 2. Start ngrok tunnel ───────────────────────────────────────
+    print(f"[Ngrok] Opening tunnel at port {port}...")
     try:
-        http_tunnel = ngrok.connect(port)
-        public_url = http_tunnel.public_url
-        print(f"[Ngrok] Tunnel URL opened: {public_url}")
+        if static_domain:
+            # Use the static (free-tier) domain so URL stays the same
+            http_tunnel = ngrok.connect(
+                port,
+                "http",
+                hostname=static_domain,
+            )
+            print(f"[Ngrok] Static domain tunnel opened: {http_tunnel.public_url}")
+        else:
+            # Fallback: let ngrok assign a random URL
+            http_tunnel = ngrok.connect(port)
+            print(f"[Ngrok] Random tunnel opened: {http_tunnel.public_url}")
     except Exception as e:
-        print(f"[Ngrok] Error when creating tunnel: {e}")
-        print("Please make sure you have installed ngrok and set authtoken (if needed).")
+        print(f"[Ngrok] Error creating tunnel: {e}")
+        print("  → Make sure ngrok is installed and your authtoken is valid.")
+        print("  → If using a static domain, verify it exists in your ngrok dashboard.")
         sys.exit(1)
 
-    # 2. Update appsettings.json with the new URL
-    update_webhook_url(public_url)
-    print(f"[Config] Updated Webhook_URL into appsettings.json.")
+    public_url = http_tunnel.public_url
+    print(f"[Ngrok] Webhook URL: {public_url}")
 
-    # 3. Start uvicorn
-    print("[Uvicorn] Starting FastAPI Server...")
+    # ── 3. Start uvicorn (FastAPI) ──────────────────────────────────
+    print(f"[Uvicorn] Starting FastAPI on 127.0.0.1:{port} ...")
     try:
         uvicorn.run("app.main:app", host="127.0.0.1", port=port, reload=True)
     except KeyboardInterrupt:
@@ -57,5 +96,7 @@ def main():
         ngrok.disconnect(http_tunnel.public_url)
         ngrok.kill()
 
+
 if __name__ == "__main__":
     main()
+
