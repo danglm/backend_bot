@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, Date, DateTime
+from sqlalchemy import Column, Integer, String, Float, Boolean, Date, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 import uuid
@@ -36,6 +36,7 @@ class CollectionPoint(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     collection_name = Column(String)
     address = Column(String)
+    code_prefix = Column(String)                            # Tiền tố mã hàng (VD: LT, P, GA)
 
 class DailyPurchases(Base):
     __tablename__ = "daily_purchases"
@@ -43,6 +44,7 @@ class DailyPurchases(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     hoursehold_id = Column(String)
     collection_point_id = Column(UUID(as_uuid=True))
+    product_code = Column(String)                       # Mã hàng (VD: LT20260505)
     week = Column(Integer)
     day = Column(Date)
     is_subsidized = Column(Integer)                     # Trợ Giá
@@ -58,6 +60,23 @@ class DailyPurchases(Base):
     saved_amount = Column(Float)                        # Lưu Sổ
     advance_amount = Column(Float)                      # Tạm Ứng
     is_checked = Column(Boolean, default=False)         # Đã kiểm tra
+
+class LossControls(Base):
+    __tablename__ = "loss_controls"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_code = Column(String, index=True)               # Mã hàng (LT20260505)
+    day = Column(Date)                                       # Ngày thu mua
+    estimated_completion = Column(Date)                      # Dự kiến hoàn thành lô hàng
+    total_wet_rubber = Column(Float)                         # Tổng mủ nước (Kg)
+    total_dry_rubber = Column(Float)                         # Tổng mủ khô (Kg)
+    avg_degree = Column(Float)                               # Số độ trung bình (%)
+    total_amount = Column(Float)                             # Tổng thành tiền (VNĐ)
+    avg_unit_price = Column(Float)                           # Đơn giá trung bình (VNĐ)
+    transaction_count = Column(Integer)                      # Số giao dịch
+    created_at = Column(DateTime, default=func.now())
+    created_by = Column(String, nullable=True)               # User ID tạo
+
 class FirewoodPurchases(Base):
     __tablename__ = "firewood_purchases"
 
@@ -189,6 +208,7 @@ class DailyHarvest(Base):
     household_code = Column(String, index=True)              # Mã hộ dân
     land_code = Column(String, index=True)                   # Mã đất thu hoạch
     tree_count = Column(Integer, default=0)                  # Số lượng cây
+    rubber_weight = Column(Float, default=0.0)               # Khối lượng mủ (Kg)
     unit_price = Column(Float, default=0.0)                  # Đơn giá
     total_amount = Column(Float, default=0.0)                # Thành tiền
     created_at = Column(DateTime, default=lambda: __import__('datetime').datetime.now())

@@ -45,6 +45,7 @@ class ProductTransaction(Base):
     __tablename__ = "product_transactions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_code = Column(String)           # Mã hàng (LT20260505)
     transaction_date = Column(Date)                     # Ngày giao dịch
     customer_id = Column(String)                        # Mã khách hàng
     transaction_type = Column(String)                   # Loại giao dịch (Xuất / Nhập)

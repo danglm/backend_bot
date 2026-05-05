@@ -157,7 +157,7 @@ async def sync_tn_dept_callback(client, callback_query: CallbackQuery):
         buttons = [
             [
                 InlineKeyboardButton("Nhóm Main", callback_data=f"sync_role_{project_id}_main_super_main"),
-                InlineKeyboardButton("Nhóm Member", callback_data=f"sync_role_{project_id}_member_{dept}")
+                InlineKeyboardButton("Nhóm Member", callback_data=f"sm:{project_id}:{dept}")
             ],
             [
                 InlineKeyboardButton("Quay lại", callback_data=f"sync_proj_{project_id}"),
@@ -168,7 +168,7 @@ async def sync_tn_dept_callback(client, callback_query: CallbackQuery):
         buttons = [
             [
                 InlineKeyboardButton("Nhóm Main", callback_data=f"sync_role_{project_id}_main_{dept}"),
-                InlineKeyboardButton("Nhóm Member", callback_data=f"sync_role_{project_id}_member_{dept}")
+                InlineKeyboardButton("Nhóm Member", callback_data=f"sm:{project_id}:{dept}")
             ],
             [
                 InlineKeyboardButton("Quay lại", callback_data=f"sync_proj_{project_id}"),
@@ -182,6 +182,80 @@ async def sync_tn_dept_callback(client, callback_query: CallbackQuery):
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
+
+# --- Step 2c-TN: Member chọn nhóm Main làm parent ---
+# sm = sync member — kiểm tra main tương ứng trước khi cho sync member
+SUBCATEGORY_MAP_SYNC = {"sh": "shareholder"}
+
+@bot.on_callback_query(filters.regex(r"^sm:(.+):(.+)$"))
+async def sync_member_check_parent_callback(client, callback_query: CallbackQuery):
+    project_id = callback_query.matches[0].group(1)
+    dept = callback_query.matches[0].group(2)
+
+    label = TN_DEPT_LABELS.get(dept, dept)
+
+    # Xác định custom_title của nhóm Main tương ứng
+    resolved_dept = SUBCATEGORY_MAP_SYNC.get(dept, dept)
+    if dept == "tong":
+        main_custom_title = "super_main"
+    else:
+        main_custom_title = f"main_{resolved_dept}"
+
+    db = SessionLocal()
+    try:
+        # Tìm tất cả nhóm Main có custom_title tương ứng trong cùng project
+        main_groups = db.query(TelegramProjectMember.chat_id, TelegramProjectMember.group_name).filter(
+            TelegramProjectMember.project_id == project_id,
+            TelegramProjectMember.role == "main",
+            TelegramProjectMember.custom_title == main_custom_title
+        ).distinct().all()
+
+        if not main_groups:
+            await callback_query.message.edit_text(
+                f"⚠️ <b>Chưa syncchat nhóm Main cho {label}!</b>\n\n"
+                f"Vui lòng syncchat nhóm Main (<code>{main_custom_title}</code>) trước, "
+                f"sau đó mới syncchat nhóm Member.\n\n"
+                f"<i>Bước: /syncchat → Tiến Nga → {label} → Nhóm Main</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Hiển thị danh sách nhóm Main để chọn làm parent
+        buttons = []
+        for chat_id_val, group_name in main_groups:
+            display_name = group_name or f"Nhóm {chat_id_val}"
+            # sp = sync parent: sp:{project_id}:{dept}:{main_chat_id}
+            buttons.append([InlineKeyboardButton(
+                f"📌 {display_name}",
+                callback_data=f"sp:{project_id}:{dept}:{chat_id_val}"
+            )])
+        buttons.append([
+            InlineKeyboardButton("Quay lại", callback_data=f"sync_proj_{project_id}"),
+            InlineKeyboardButton("Hủy", callback_data="sync_cancel")
+        ])
+
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await callback_query.message.edit_text(
+            f"<b>{label} — Chọn nhóm Main</b>\n\n"
+            f"Vui lòng chọn nhóm Main mà nhóm Member này sẽ thuộc về:",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in sync_member_check_parent: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+# --- Step 2d-TN: Chọn parent xong → tiến hành sync member ---
+@bot.on_callback_query(filters.regex(r"^sp:(.+):(.+):(.+)$"))
+async def sync_pick_parent_callback(client, callback_query: CallbackQuery):
+    project_id = callback_query.matches[0].group(1)
+    dept = callback_query.matches[0].group(2)
+    parent_chat_id = callback_query.matches[0].group(3)
+
+    # Gọi trực tiếp logic sync với parent_chat_id
+    await _do_sync_role(client, callback_query, project_id, "member", dept, parent_chat_id)
 
 # --- Step 2b: Other project - Select Role after sub-category ---
 @bot.on_callback_query(filters.regex(r"^sync_other_(.+)_(device|vehicle|image)$"))
@@ -215,11 +289,8 @@ async def sync_other_subcategory_callback(client, callback_query: CallbackQuery)
     )
 
 # --- Step 3: Run Sync Logic ---
-@bot.on_callback_query(filters.regex(r"^sync_role_(.+)_(main|member)_(.+)$"))
-async def sync_role_callback(client, callback_query: CallbackQuery):
-    project_id = callback_query.matches[0].group(1)
-    group_role = callback_query.matches[0].group(2)
-    subcategory = callback_query.matches[0].group(3)  # "none" for normal, "device"/"vehicle"/"image" for Other
+async def _do_sync_role(client, callback_query, project_id, group_role, subcategory, parent_chat_id=None):
+    """Core sync logic, reusable from both sync_role_callback and sync_pick_parent_callback."""
     chat_id = callback_query.message.chat.id
     chat_title = callback_query.message.chat.title or ""
 
@@ -231,12 +302,9 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
         if subcategory == "super_main":
             custom_title = CustomTitle.SUPER_MAIN.value
         else:
-            # We map it to matching Enum value if possible, else fallback to string.
-            # But the requirement says these are explicitly the values like "main_device", "member_vehicle"
-            # Expand abbreviated callback keys to full subcategory names
             SUBCATEGORY_MAP = {"sh": "shareholder"}
             resolved = SUBCATEGORY_MAP.get(subcategory, subcategory)
-            custom_title = f"{group_role}_{resolved}"  # e.g. CustomTitle.MAIN_DEVICE.value
+            custom_title = f"{group_role}_{resolved}"
             try:
                 custom_title = CustomTitle(custom_title).value
             except ValueError:
@@ -246,6 +314,8 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
     extra_info = ""
     if custom_title:
         extra_info = f"\nCustom title: <b>{custom_title}</b>"
+    if parent_chat_id:
+        extra_info += f"\nParent (Main): <code>{parent_chat_id}</code>"
     
     await callback_query.message.edit_text(
         f"🔄 Đang bắt đầu đồng bộ nhóm với vai trò <b>{display_role}</b>...{extra_info}",
@@ -258,10 +328,9 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
         project = db.query(Projects).filter(Projects.id == project_id).first()
         project_name = project.project_name if project else "N/A"
         
-        LogInfo(f"[SyncChat] Syncing Project: {project_name}, Role: {group_role}, CustomTitle: {custom_title}, Chat: {chat_id}", LogType.SYSTEM_STATUS)
+        LogInfo(f"[SyncChat] Syncing Project: {project_name}, Role: {group_role}, CustomTitle: {custom_title}, Chat: {chat_id}, Parent: {parent_chat_id}", LogType.SYSTEM_STATUS)
         
         # Clean up ALL old records for this chat_id before re-syncing
-        # This prevents stale data when a group is re-synced with a different project/role/custom_title
         old_records = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.chat_id == str(chat_id)
         ).all()
@@ -321,6 +390,7 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
                 member_status=status.name if hasattr(status, 'name') else str(status),
                 is_bot=False,
                 custom_title=custom_title,
+                parent_id=parent_chat_id if parent_chat_id else None,
                 first_seen_at=datetime.datetime.now(),
                 last_seen_at=datetime.datetime.now()
             )
@@ -335,12 +405,16 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
         custom_title_line = ""
         if custom_title:
             custom_title_line = f"Custom title: <b>{custom_title}</b>\n"
+        parent_line = ""
+        if parent_chat_id:
+            parent_line = f"Nhóm Main: <code>{parent_chat_id}</code>\n"
 
         result_text = (
             f"✅ <b>Đồng bộ hoàn tất!</b>\n\n"
             f"Dự án: <b>{project_name}</b>\n"
             f"Vai trò nhóm: <b>{group_role.upper()}</b>\n"
             f"{custom_title_line}"
+            f"{parent_line}"
             f"Tổng số: <b>{synced_count}</b> hội viên.\n"
             f"- Chủ nhóm: {len(owner_names)} ({', '.join(owner_names)})\n"
             f"- Quản trị viên: {admin_count} ({', '.join(admin_names)})\n"
@@ -356,6 +430,13 @@ async def sync_role_callback(client, callback_query: CallbackQuery):
         await callback_query.message.edit_text(f"❌ Có lỗi xảy ra trong quá trình đồng bộ: {str(e)}")
     finally:
         db.close()
+
+@bot.on_callback_query(filters.regex(r"^sync_role_(.+)_(main|member)_(.+)$"))
+async def sync_role_callback(client, callback_query: CallbackQuery):
+    project_id = callback_query.matches[0].group(1)
+    group_role = callback_query.matches[0].group(2)
+    subcategory = callback_query.matches[0].group(3)  # "none" for normal, "device"/"vehicle"/"image" for Other
+    await _do_sync_role(client, callback_query, project_id, group_role, subcategory)
 
 @bot.on_callback_query(filters.regex(r"^sync_back_to_proj$"))
 async def sync_back_to_proj_callback(client, callback_query: CallbackQuery):

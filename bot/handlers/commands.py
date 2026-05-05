@@ -792,6 +792,8 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_danh_sach_diem_thu_mua", "Danh sách điểm thu mua"),
                     ## Thu mua
                     BotCommand("tien_nga_thu_mua_hang_ngay", "Nhập mua mủ hàng ngày"),
+                    BotCommand("tien_nga_kiem_soat_hao_hut", "Kiểm soát hao hụt"),
+                    BotCommand("tien_nga_kiem_tra_hao_hut", "Kiểm tra hao hụt"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_mua", "Xuất báo cáo mua mủ KH"),
                     ## Báo cáo
                     BotCommand("tien_nga_truy_xuat_thong_tin", "Truy xuất thông tin báo cáo"),
@@ -874,6 +876,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_cap_nhat_ton_kho", "Cập nhật tồn kho"),
                     BotCommand("tien_nga_giao_dich_san_pham", "Giao dịch sản phẩm"),
                     BotCommand("tien_nga_xuat_bao_cao_san_pham", "Xuất báo cáo sản phẩm"),
+                    BotCommand("tien_nga_kiem_tra_hao_hut", "Kiểm tra hao hụt"),
                 ])
 
             if custom_title in ("super_main", "main_harvest"):

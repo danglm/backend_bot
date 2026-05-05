@@ -34,6 +34,7 @@ class TelegramProjectMember(Base):
     is_bot = Column(Boolean, default=False)
     member_status = Column(String) # OWNER, ADMINISTRATOR, MEMBER, LEFT, KICKED
     custom_title = Column(String, nullable=True)
+    parent_id = Column(String, nullable=True)              # Chat ID nhóm Main (liên kết Member → Main)
     first_seen_at = Column(DateTime, default=datetime.datetime.now)
     last_seen_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
     last_seen_by = Column(String, nullable=True)
