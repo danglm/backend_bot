@@ -37,6 +37,9 @@ class CollectionPoint(Base):
     collection_name = Column(String)
     address = Column(String)
     code_prefix = Column(String)                            # Tiền tố mã hàng (VD: LT, P, GA)
+    manager_name = Column(String, nullable=True)            # Người quản lý
+    manager_phone = Column(String, nullable=True)           # SĐT liên lạc
+    notes = Column(String, nullable=True)                   # Ghi chú
 
 class DailyPurchases(Base):
     __tablename__ = "daily_purchases"
@@ -180,6 +183,7 @@ class AgriculturalLand(Base):
     planting_area = Column(Float, default=0.0)               # Diện tích đang trồng (ha)
     harvesting_trees = Column(Integer, default=0)             # Số lượng cây đang thu hoạch
     planting_trees = Column(Integer, default=0)               # Số lượng cây đang trồng
+    affiliation = Column(String, nullable=True)              # Trực thuộc (Vĩnh Hà / Tiến Nga / ...)
     status = Column(String, default="ACTIVE")                # Trạng thái
 
 class Households(Base):

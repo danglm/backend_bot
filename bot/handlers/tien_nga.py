@@ -406,7 +406,10 @@ Vui lòng sao chép form dưới đây, điền đầy đủ thông tin và gử
 <pre>/tien_nga_create_collection_point
 Tên Điểm Thu Mua: 
 Địa Chỉ: 
-Mã Viết Tắt: </pre>
+Mã Viết Tắt: 
+Người Quản Lý: 
+SĐT Liên Lạc: 
+Ghi Chú: </pre>
 
 <i>Mã Viết Tắt dùng để tạo mã hàng tự động.
 Ví dụ: LT (Lạc Tánh), P (Phê), GA (Gia An)
@@ -424,6 +427,9 @@ Ví dụ: LT (Lạc Tánh), P (Phê), GA (Gia An)
     collection_name = data.get("Tên Điểm Thu Mua", "").strip()
     address = data.get("Địa Chỉ", "").strip()
     code_prefix = data.get("Mã Viết Tắt", "").strip().upper()
+    manager_name = data.get("Người Quản Lý", "").strip()
+    manager_phone = data.get("SĐT Liên Lạc", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
 
     if not collection_name or not address:
         await message.reply_text(
@@ -459,7 +465,10 @@ Ví dụ: LT (Lạc Tánh), P (Phê), GA (Gia An)
         new_point = CollectionPoint(
             collection_name=collection_name,
             address=address,
-            code_prefix=code_prefix or None
+            code_prefix=code_prefix or None,
+            manager_name=manager_name or None,
+            manager_phone=manager_phone or None,
+            notes=notes or None
         )
         db.add(new_point)
         db.commit()
@@ -470,7 +479,10 @@ Ví dụ: LT (Lạc Tánh), P (Phê), GA (Gia An)
             f"<b>TẠO ĐIỂM THU MUA THÀNH CÔNG</b>\n\n"
             f"<b>Tên:</b> {collection_name}\n"
             f"<b>Địa Chỉ:</b> {address}\n"
-            f"<b>Mã Viết Tắt:</b> <code>{code_prefix or '—'}</code>\n\n"
+            f"<b>Mã Viết Tắt:</b> <code>{code_prefix or '—'}</code>\n"
+            f"<b>Người Quản Lý:</b> {manager_name or '—'}\n"
+            f"<b>SĐT Liên Lạc:</b> {manager_phone or '—'}\n"
+            f"<b>Ghi Chú:</b> {notes or '—'}\n\n"
             f"<i>Mã hàng mẫu: {code_prefix + '20260505' if code_prefix else '(chưa có)'}</i>",
             parse_mode=ParseMode.HTML
         )
@@ -502,12 +514,172 @@ async def tien_nga_list_collection_point_handler(client, message: Message) -> No
             text += f"<b>{idx}. {p.collection_name}</b>\n"
             text += f"   Mã: <code>{p.id}</code>\n"
             text += f"   Viết tắt: <code>{p.code_prefix or '—'}</code>\n"
-            text += f"   Địa chỉ: {p.address}\n\n"
+            text += f"   Địa chỉ: {p.address}\n"
+            text += f"   Người QL: {p.manager_name or '—'}\n"
+            text += f"   SĐT: {p.manager_phone or '—'}\n"
+            if p.notes:
+                text += f"   Ghi chú: {p.notes}\n"
+            text += "\n"
             
         await message.reply_text(text, parse_mode=ParseMode.HTML)
     except Exception as e:
         LogError(f"Error listing collection points: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra khi tải danh sách Điểm Thu Mua.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_update_collection_point", "tien_nga_cap_nhat_diem_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_collection_point|tien_nga_cap_nhat_diem_thu_mua)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_update_collection_point_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    if len(lines) < 2:
+        from app.db.session import SessionLocal
+        from app.models.business import CollectionPoint
+
+        db = SessionLocal()
+        try:
+            points = db.query(CollectionPoint).all()
+            if not points:
+                await message.reply_text("⚠️ <b>Chưa có Điểm Thu Mua nào.</b>", parse_mode=ParseMode.HTML)
+                return
+
+            buttons = []
+            for p in points:
+                buttons.append([InlineKeyboardButton(p.collection_name, callback_data=f"tn_updcp_{p.id}")])
+            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_updcp_cancel")])
+
+            markup = InlineKeyboardMarkup(buttons)
+            await message.reply_text(
+                "<b>Chọn Điểm Thu Mua cần cập nhật:</b>",
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            LogError(f"Error listing collection points for update: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    cp_id = data.get("Mã Điểm", "").strip()
+    if not cp_id:
+        await message.reply_text("⚠️ <b>Mã Điểm</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    collection_name = data.get("Tên Điểm Thu Mua", "").strip()
+    address = data.get("Địa Chỉ", "").strip()
+    code_prefix = data.get("Mã Viết Tắt", "").strip().upper()
+    manager_name = data.get("Người Quản Lý", "").strip()
+    manager_phone = data.get("SĐT Liên Lạc", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
+
+    from app.db.session import SessionLocal
+    from app.models.business import CollectionPoint
+
+    db = SessionLocal()
+    try:
+        cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
+        if not cp:
+            await message.reply_text(f"⚠️ Không tìm thấy Điểm Thu Mua với mã <b>{cp_id}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        if collection_name and collection_name != cp.collection_name:
+            existing = db.query(CollectionPoint).filter(
+                CollectionPoint.collection_name == collection_name,
+                CollectionPoint.id != cp.id
+            ).first()
+            if existing:
+                await message.reply_text(
+                    f"⚠️ Tên <b>{collection_name}</b> đã được sử dụng bởi điểm thu mua khác.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        if code_prefix and code_prefix != (cp.code_prefix or ""):
+            existing_prefix = db.query(CollectionPoint).filter(
+                CollectionPoint.code_prefix == code_prefix,
+                CollectionPoint.id != cp.id
+            ).first()
+            if existing_prefix:
+                await message.reply_text(
+                    f"⚠️ Mã viết tắt <b>{code_prefix}</b> đã được sử dụng bởi <b>{existing_prefix.collection_name}</b>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        if collection_name: cp.collection_name = collection_name
+        if address: cp.address = address
+        cp.code_prefix = code_prefix or cp.code_prefix
+        cp.manager_name = manager_name or None
+        cp.manager_phone = manager_phone or None
+        cp.notes = notes or None
+
+        db.commit()
+
+        LogInfo(f"[TienNga] Updated collection point '{cp.collection_name}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        await message.reply_text(
+            f"✅ <b>CẬP NHẬT ĐIỂM THU MUA THÀNH CÔNG</b>\n\n"
+            f"<b>Tên:</b> {cp.collection_name}\n"
+            f"<b>Địa Chỉ:</b> {cp.address}\n"
+            f"<b>Mã Viết Tắt:</b> <code>{cp.code_prefix or '—'}</code>\n"
+            f"<b>Người Quản Lý:</b> {cp.manager_name or '—'}\n"
+            f"<b>SĐT Liên Lạc:</b> {cp.manager_phone or '—'}\n"
+            f"<b>Ghi Chú:</b> {cp.notes or '—'}",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error updating collection point: {e}", LogType.SYSTEM_STATUS)
+        db.rollback()
+        await message.reply_text("❌ Có lỗi xảy ra khi cập nhật.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^tn_updcp_(.+)$"))
+async def tien_nga_update_collection_point_callback(client, callback_query):
+    cp_id = callback_query.matches[0].group(1)
+
+    if cp_id == "cancel":
+        await callback_query.message.delete()
+        await callback_query.answer("Đã hủy.")
+        return
+
+    from app.db.session import SessionLocal
+    from app.models.business import CollectionPoint
+
+    db = SessionLocal()
+    try:
+        cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
+        if not cp:
+            await callback_query.answer("⚠️ Không tìm thấy Điểm Thu Mua", show_alert=True)
+            return
+
+        form_template = f"""<b>FORM CẬP NHẬT ĐIỂM THU MUA</b>
+Vui lòng sao chép form dưới đây, sửa thông tin và gửi lại:
+
+<pre>/tien_nga_update_collection_point
+Mã Điểm: {cp.id}
+Tên Điểm Thu Mua: {cp.collection_name}
+Địa Chỉ: {cp.address or ''}
+Mã Viết Tắt: {cp.code_prefix or ''}
+Người Quản Lý: {cp.manager_name or ''}
+SĐT Liên Lạc: {cp.manager_phone or ''}
+Ghi Chú: {cp.notes or ''}</pre>"""
+        await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in update collection point callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống", show_alert=True)
     finally:
         db.close()
 
@@ -12392,6 +12564,7 @@ Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 Mã Đất: 
 Tên Đất: 
 Địa Chỉ: 
+Trực Thuộc: 
 Diện Tích (ha): 0
 DT Khai Thác Cao Su (ha): 0
 DT Trống (ha): 0
@@ -12399,7 +12572,8 @@ DT Đang Trồng (ha): 0
 SL Cây Thu Hoạch: 0
 SL Cây Đang Trồng: 0</pre>
 
-<i>Ghi chú: Mã đất nên viết liền không dấu (VD: DCS001).</i>"""
+<i>Ghi chú: Mã đất nên viết liền không dấu (VD: DCS001).
+Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà, TN... thì là Tiến Nga.</i>"""
         await message.reply_text(form, parse_mode=ParseMode.HTML)
         return
 
@@ -12412,6 +12586,14 @@ SL Cây Đang Trồng: 0</pre>
     land_code = data.get("Mã Đất", "").strip().upper()
     land_name = data.get("Tên Đất", "").strip()
     address = data.get("Địa Chỉ", "").strip()
+    affiliation = data.get("Trực Thuộc", "").strip()
+    
+    if not affiliation and land_code:
+        if land_code.startswith("VH"):
+            affiliation = "Vĩnh Hà"
+        elif land_code.startswith("TN"):
+            affiliation = "Tiến Nga"
+
     total_area = parse_float_vn(data.get("Diện Tích (ha)", "0"))
     rubber_area = parse_float_vn(data.get("DT Khai Thác Cao Su (ha)", "0"))
     empty_area = parse_float_vn(data.get("DT Trống (ha)", "0"))
@@ -12435,7 +12617,8 @@ SL Cây Đang Trồng: 0</pre>
 
         new_land = AgriculturalLand(
             id=uuid_lib.uuid4(), land_code=land_code, land_name=land_name or None,
-            address=address or None, total_area=total_area, rubber_area=rubber_area,
+            address=address or None, affiliation=affiliation or None,
+            total_area=total_area, rubber_area=rubber_area,
             empty_area=empty_area, planting_area=planting_area,
             harvesting_trees=harvesting_trees, planting_trees=planting_trees, status="ACTIVE"
         )
@@ -12447,6 +12630,7 @@ SL Cây Đang Trồng: 0</pre>
             f"<b>Mã Đất:</b> <code>{land_code}</code>\n"
             f"<b>Tên Đất:</b> {land_name or '—'}\n"
             f"<b>Địa Chỉ:</b> {address or '—'}\n"
+            f"<b>Trực Thuộc:</b> {affiliation or '—'}\n"
             f"<b>Diện Tích:</b> {total_area} ha\n"
             f"<b>DT Cao Su:</b> {rubber_area} ha\n"
             f"<b>DT Trống:</b> {empty_area} ha\n"
@@ -12491,6 +12675,7 @@ Sao chép form dưới, chỉnh sửa và gửi lại:
 Mã Đất: {land.land_code}
 Tên Đất: {land.land_name or ''}
 Địa Chỉ: {land.address or ''}
+Trực Thuộc: {land.affiliation or ''}
 Diện Tích (ha): {land.total_area}
 DT Khai Thác Cao Su (ha): {land.rubber_area}
 DT Trống (ha): {land.empty_area}
@@ -12522,11 +12707,21 @@ SL Cây Đang Trồng: {land.planting_trees or 0}</pre>"""
 
         if "Tên Đất" in data: land.land_name = data["Tên Đất"] or None
         if "Địa Chỉ" in data: land.address = data["Địa Chỉ"] or None
+        
+        if "Trực Thuộc" in data:
+            new_affil = data["Trực Thuộc"].strip()
+            if not new_affil and land_code:
+                if land_code.startswith("VH"):
+                    new_affil = "Vĩnh Hà"
+                elif land_code.startswith("TN"):
+                    new_affil = "Tiến Nga"
+            land.affiliation = new_affil or None
+
         if "Diện Tích (ha)" in data: land.total_area = parse_float_vn(data["Diện Tích (ha)"])
         if "DT Khai Thác Cao Su (ha)" in data: land.rubber_area = parse_float_vn(data["DT Khai Thác Cao Su (ha)"])
         if "DT Trống (ha)" in data: land.empty_area = parse_float_vn(data["DT Trống (ha)"])
         if "DT Đang Trồng (ha)" in data: land.planting_area = parse_float_vn(data["DT Đang Trồng (ha)"])
-        if "SL Cây Thu Hoạch" in data: land.harvesting_trees = int(parse_float_vn(data["SL Cây Thu Hoạch"]))
+        if "SL Cây Thu Hoạch" in data: land.harvesting_trees = int(parse_float_vn(data["SL Cây Thu hoạch"])) if "SL Cây Thu hoạch" in data else int(parse_float_vn(data.get("SL Cây Thu Hoạch", "0")))
         if "SL Cây Đang Trồng" in data: land.planting_trees = int(parse_float_vn(data["SL Cây Đang Trồng"]))
         db.commit()
 
@@ -12535,6 +12730,7 @@ SL Cây Đang Trồng: {land.planting_trees or 0}</pre>"""
             f"<b>Mã Đất:</b> <code>{land.land_code}</code>\n"
             f"<b>Tên Đất:</b> {land.land_name or '—'}\n"
             f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
+            f"<b>Trực Thuộc:</b> {land.affiliation or '—'}\n"
             f"<b>Diện Tích:</b> {land.total_area} ha\n"
             f"<b>DT Cao Su:</b> {land.rubber_area} ha\n"
             f"<b>DT Trống:</b> {land.empty_area} ha\n"
@@ -12579,6 +12775,7 @@ async def tien_nga_delete_agricultural_land_handler(client, message: Message) ->
             f"⚠️ <b>Xác nhận xóa đất trồng trọt?</b>\n\n"
             f"<b>Mã Đất:</b> <code>{land_code}</code>\n"
             f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
+            f"<b>Trực Thuộc:</b> {land.affiliation or '—'}\n"
             f"<b>Diện Tích:</b> {land.total_area} ha",
             reply_markup=keyboard, parse_mode=ParseMode.HTML
         )
@@ -12634,6 +12831,7 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
                     f"   Mã: <code>{l.land_code}</code>\n"
                     f"   Tên Đất: {l.land_name or '—'}\n"
                     f"   Địa Chỉ: {l.address or '—'}\n"
+                    f"   Trực Thuộc: {l.affiliation or '—'}\n"
                     f"   DT Tổng: {l.total_area} ha | Cao Su: {l.rubber_area} ha\n"
                     f"   Trống: {l.empty_area} ha | Đang Trồng: {l.planting_area} ha\n"
                     f"   Cây Thu Hoạch: {l.harvesting_trees or 0} | Cây Đang Trồng: {l.planting_trees or 0}\n\n"
@@ -12645,7 +12843,7 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Đất Trồng Trọt"
-            headers = ["STT", "Mã Đất", "Địa Chỉ", "DT Tổng (ha)", "DT Cao Su (ha)", "DT Trống (ha)", "DT Đang Trồng (ha)", "Cây Thu Hoạch", "Cây Đang Trồng"]
+            headers = ["STT", "Mã Đất", "Tên Đất", "Địa Chỉ", "Trực Thuộc", "DT Tổng (ha)", "DT Cao Su (ha)", "DT Trống (ha)", "DT Đang Trồng (ha)", "Cây Thu Hoạch", "Cây Đang Trồng"]
             hdr_font = Font(bold=True, color="FFFFFF")
             hdr_fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid")
             thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
@@ -12656,11 +12854,11 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
                 cell.border = thin_border
                 cell.alignment = Alignment(horizontal="center")
             for row_idx, l in enumerate(lands, 2):
-                vals = [row_idx - 1, l.land_code, l.address or "", l.total_area, l.rubber_area, l.empty_area, l.planting_area, l.harvesting_trees or 0, l.planting_trees or 0]
+                vals = [row_idx - 1, l.land_code, l.land_name or "", l.address or "", l.affiliation or "", l.total_area, l.rubber_area, l.empty_area, l.planting_area, l.harvesting_trees or 0, l.planting_trees or 0]
                 for col_idx, v in enumerate(vals, 1):
                     cell = ws.cell(row=row_idx, column=col_idx, value=v)
                     cell.border = thin_border
-            col_widths = [6, 12, 30, 15, 18, 15, 20, 15, 18]
+            col_widths = [6, 12, 20, 30, 20, 15, 18, 15, 20, 15, 18]
             for i, w in enumerate(col_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -12840,41 +13038,222 @@ async def tien_nga_list_household_handler(client, message: Message) -> None:
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_check_harvest_handler(client, message: Message) -> None:
-    from datetime import datetime, timedelta
-    from app.models.business import Households, DailyPurchases
+    from datetime import datetime
+    from app.models.business import AgriculturalLand
+    from app.db.session import SessionLocal
 
     args = message.text.strip().split(maxsplit=1)
-    if len(args) < 2:
-        today = datetime.now()
-        first_day = today.replace(day=1)
-        await message.reply_text(
-            "<b>KIỂM TRA THU HOẠCH</b>\n\n"
-            "Cú pháp: <code>/tien_nga_kiem_tra_thu_hoach dd/mm/yyyy - dd/mm/yyyy</code>\n\n"
-            f"VD: <code>/tien_nga_kiem_tra_thu_hoach {first_day.strftime('%d/%m/%Y')} - {today.strftime('%d/%m/%Y')}</code>",
-            parse_mode=ParseMode.HTML
-        )
-        return
+    if len(args) >= 2:
+        raw = args[1].strip()
+        land_code = None
 
-    date_str = args[1].strip()
-    try:
-        parts = date_str.split("-")
-        if len(parts) != 2:
-            raise ValueError("Thiếu dấu -")
-        start_date = datetime.strptime(parts[0].strip(), "%d/%m/%Y").date()
-        end_date = datetime.strptime(parts[1].strip(), "%d/%m/%Y").date()
-    except Exception:
-        await message.reply_text("⚠️ Định dạng ngày không hợp lệ.\nVD: <code>/tien_nga_kiem_tra_thu_hoach 01/04/2026 - 30/04/2026</code>", parse_mode=ParseMode.HTML)
-        return
+        import re as _re
+        date_match = _re.search(r'(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})', raw)
+        if not date_match:
+            await message.reply_text(
+                "⚠️ Định dạng không hợp lệ.\n"
+                "VD: <code>/tien_nga_kiem_tra_thu_hoach 01/04/2026 - 30/04/2026</code>\n"
+                "Hoặc: <code>/tien_nga_kiem_tra_thu_hoach D001 01/04/2026 - 30/04/2026</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
 
-    if start_date > end_date:
-        start_date, end_date = end_date, start_date
+        prefix = raw[:date_match.start()].strip()
+        if prefix:
+            land_code = prefix
+
+        try:
+            start_date = datetime.strptime(date_match.group(1).strip(), "%d/%m/%Y").date()
+            end_date = datetime.strptime(date_match.group(2).strip(), "%d/%m/%Y").date()
+        except Exception:
+            await message.reply_text("⚠️ Định dạng ngày không hợp lệ.\nVD: <code>/tien_nga_kiem_tra_thu_hoach 01/04/2026 - 30/04/2026</code>", parse_mode=ParseMode.HTML)
+            return
+        
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+        
+        await _do_check_harvest(client, message, start_date, end_date, land_code=land_code)
+        return
 
     db = SessionLocal()
     try:
+        lands = db.query(AgriculturalLand).filter(AgriculturalLand.status == "ACTIVE").order_by(AgriculturalLand.land_code).all()
+        await _send_harvest_land_buttons(message, lands, page=0)
+    except Exception as e:
+        LogError(f"Error in check_harvest land listing: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+_HARVEST_LAND_PAGE_SIZE = 12
+
+async def _send_harvest_land_buttons(target, lands, page=0, edit=False):
+    total = len(lands)
+    start = page * _HARVEST_LAND_PAGE_SIZE
+    end = start + _HARVEST_LAND_PAGE_SIZE
+    page_lands = lands[start:end]
+
+    buttons = []
+    import re
+    prefixes = set()
+    for land in lands:
+        if land.land_code:
+            match = re.match(r"^([A-Z]+)", land.land_code.upper())
+            if match:
+                prefixes.add(match.group(1))
+    prefixes = sorted(list(prefixes))
+
+    current_row = []
+    for prefix in prefixes:
+        current_row.append(InlineKeyboardButton(f"Nhóm {prefix}", callback_data=f"tn_chkh_land|GRP_{prefix}|0"))
+        if len(current_row) == 2:
+            buttons.append(current_row)
+            current_row = []
+    if current_row:
+        buttons.append(current_row)
+
+    buttons.append([InlineKeyboardButton("Tất cả", callback_data="tn_chkh_land|ALL|0")])
+    for land in page_lands:
+        label = f"{land.land_code} - {land.land_name or land.address or ''}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"tn_chkh_land|{land.land_code}|0")])
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("Trước", callback_data=f"tn_chkh_pg|{page - 1}"))
+    if end < total:
+        nav_row.append(InlineKeyboardButton("Sau", callback_data=f"tn_chkh_pg|{page + 1}"))
+    if nav_row:
+        buttons.append(nav_row)
+
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_chkh_cancel")])
+
+    import datetime
+    today_str = datetime.datetime.now().strftime('%d/%m/%Y')
+    first_day_str = datetime.datetime.now().replace(day=1).strftime('%d/%m/%Y')
+
+    text = (
+        "<b>KIỂM TRA THU HOẠCH</b>\n\n"
+        "Chọn mã đất cần kiểm tra:\n\n"
+        "<i>Hoặc nhập tay:</i>\n"
+        f"<i>• <code>/tien_nga_kiem_tra_thu_hoach {first_day_str} - {today_str}</code></i>\n"
+        f"<i>• <code>/tien_nga_kiem_tra_thu_hoach [Mã Hộ] {first_day_str} - {today_str}</code></i>"
+    )
+
+    markup = InlineKeyboardMarkup(buttons)
+    if edit:
+        await target.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    else:
+        await target.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+
+@bot.on_callback_query(filters.regex(r"^tn_chkh_cancel$"))
+async def _chkh_cancel(client, callback_query):
+    await callback_query.message.delete()
+    await callback_query.answer("Đã hủy.")
+
+@bot.on_callback_query(filters.regex(r"^tn_chkh_pg\|(\d+)$"))
+async def _chkh_page(client, callback_query):
+    page = int(callback_query.matches[0].group(1))
+    from app.models.business import AgriculturalLand
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        lands = db.query(AgriculturalLand).filter(AgriculturalLand.status == "ACTIVE").order_by(AgriculturalLand.land_code).all()
+        await _send_harvest_land_buttons(callback_query.message, lands, page=page, edit=True)
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error paging harvest lands: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi", show_alert=True)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^tn_chkh_land\|(.+)\|(\d+)$"))
+async def _chkh_select_land(client, callback_query):
+    land_code = callback_query.matches[0].group(1)
+
+    buttons = [
+        [InlineKeyboardButton("Hôm nay", callback_data=f"tn_chkh_period|{land_code}|today")],
+        [InlineKeyboardButton("Tuần này", callback_data=f"tn_chkh_period|{land_code}|week")],
+        [InlineKeyboardButton("Tháng này", callback_data=f"tn_chkh_period|{land_code}|month")],
+        [InlineKeyboardButton("Năm nay", callback_data=f"tn_chkh_period|{land_code}|year")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_chkh_cancel")],
+    ]
+
+    land_label = "Tất cả" if land_code == "ALL" else land_code
+    if land_code.startswith("GRP_"):
+        land_label = f"Nhóm {land_code[4:]}"
+    import datetime
+    today_str = datetime.datetime.now().strftime('%d/%m/%Y')
+    first_day_str = datetime.datetime.now().replace(day=1).strftime('%d/%m/%Y')
+
+    land_cmd = f"{land_code} " if land_code != "ALL" and not land_code.startswith("GRP_") else ""
+    text = (
+        f"<b>KIỂM TRA THU HOẠCH</b>\n"
+        f"Mã đất: <b>{land_label}</b>\n\n"
+        f"Chọn chu kỳ thời gian:\n\n"
+        f"<i>Hoặc nhập tay: <code>/tien_nga_kiem_tra_thu_hoach {land_cmd}{first_day_str} - {today_str}</code></i>"
+    )
+
+    await callback_query.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.HTML
+    )
+    await callback_query.answer()
+
+@bot.on_callback_query(filters.regex(r"^tn_chkh_period\|(.+)\|(today|week|month|year)$"))
+async def _chkh_select_period(client, callback_query):
+    from datetime import datetime, timedelta
+
+    land_code = callback_query.matches[0].group(1)
+    period = callback_query.matches[0].group(2)
+    today = datetime.now().date()
+
+    if period == "today":
+        start_date, end_date = today, today
+    elif period == "week":
+        start_date = today - timedelta(days=today.weekday())  # Thứ 2
+        end_date = today
+    elif period == "month":
+        start_date = today.replace(day=1)
+        end_date = today
+    else:  # year
+        start_date = today.replace(month=1, day=1)
+        end_date = today
+
+    lc = None if land_code == "ALL" else land_code
+    land_label = "Tất cả" if land_code == "ALL" else land_code
+    if land_code.startswith("GRP_"):
+        land_label = f"Nhóm {land_code[4:]}"
+
+    await callback_query.message.edit_text(
+        f"⏳ Đang tổng hợp báo cáo thu hoạch...\n"
+        f"Mã đất: <b>{land_label}</b> | "
+        f"Từ <b>{start_date.strftime('%d/%m/%Y')}</b> đến <b>{end_date.strftime('%d/%m/%Y')}</b>",
+        parse_mode=ParseMode.HTML
+    )
+    await callback_query.answer()
+
+    await _do_check_harvest(client, callback_query.message, start_date, end_date, land_code=lc)
+
+async def _do_check_harvest(client, message, start_date, end_date, land_code=None):
+    from app.models.business import Households, DailyPurchases
+    db = SessionLocal()
+    try:
         # Lấy tất cả hộ dân active
-        households = db.query(Households).filter(Households.status == "ACTIVE").order_by(Households.household_code).all()
+        query = db.query(Households).filter(Households.status == "ACTIVE")
+        if land_code:
+            if land_code.startswith("GRP_"):
+                prefix = land_code[4:]
+                query = query.filter(Households.land_code.like(f"{prefix}%"))
+            else:
+                from sqlalchemy import or_
+                query = query.filter(or_(Households.land_code == land_code, Households.household_code == land_code))
+        households = query.order_by(Households.household_code).all()
         if not households:
-            await message.reply_text("📋 Chưa có hộ dân nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            land_label = f" (Mã đất/Hộ: {land_code})" if land_code else ""
+            if land_code and land_code.startswith("GRP_"):
+                land_label = f" (Nhóm {land_code[4:]})"
+            await message.reply_text(f"📋 Chưa có hộ dân nào trong hệ thống{land_label}.", parse_mode=ParseMode.HTML)
             return
 
         import openpyxl, tempfile, os
@@ -13713,62 +14092,208 @@ async def tien_nga_check_household_handler(client, message: Message) -> None:
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_check_daily_harvest_handler(client, message: Message) -> None:
     from datetime import datetime
-    from app.models.business import Households, AgriculturalLand, DailyHarvest
+    from app.models.business import AgriculturalLand
+    from app.db.session import SessionLocal
 
     text = message.text.strip()
-    # Tách command ra
     parts = text.split(None, 1)
-    if len(parts) < 2:
-        await message.reply_text(
-            "<b>KIỂM TRA THU HOẠCH HÀNG NGÀY</b>\n\n"
-            "Cú pháp:\n"
-            "• <code>/tien_nga_kt_thu_hoach_hang_ngay [Mã Hộ] dd/mm/yyyy - dd/mm/yyyy</code>\n"
-            "• <code>/tien_nga_kt_thu_hoach_hang_ngay dd/mm/yyyy - dd/mm/yyyy</code>\n\n"
-            "<i>Nếu không có Mã Hộ, hệ thống sẽ tổng hợp tất cả hộ dân.</i>",
-            parse_mode=ParseMode.HTML
-        )
+    if len(parts) >= 2:
+        args_text = parts[1].strip()
+
+        import re
+        date_pattern = r"(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})"
+        date_match = re.search(date_pattern, args_text)
+
+        if not date_match:
+            await message.reply_text("⚠️ Định dạng không hợp lệ.\nVD: <code>/tien_nga_kt_thu_hoach_hang_ngay 01/04/2026 - 27/04/2026</code>", parse_mode=ParseMode.HTML)
+            return
+
+        try:
+            start_date = datetime.strptime(date_match.group(1), "%d/%m/%Y").date()
+            end_date = datetime.strptime(date_match.group(2), "%d/%m/%Y").date()
+        except Exception:
+            await message.reply_text("⚠️ Định dạng ngày không hợp lệ.", parse_mode=ParseMode.HTML)
+            return
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        land_code = args_text[:date_match.start()].strip().upper() or None
+
+        await _do_check_daily_harvest(client, message, start_date, end_date, land_code=land_code)
         return
 
-    args_text = parts[1].strip()
-
-    # Parse: có thể là [mã hộ] dd/mm/yyyy - dd/mm/yyyy hoặc dd/mm/yyyy - dd/mm/yyyy
-    import re
-    date_pattern = r"(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})"
-    date_match = re.search(date_pattern, args_text)
-
-    if not date_match:
-        await message.reply_text("⚠️ Định dạng ngày không hợp lệ. VD: <code>01/04/2026 - 27/04/2026</code>", parse_mode=ParseMode.HTML)
-        return
-
+    # No arguments -> show land buttons
+    db = SessionLocal()
     try:
-        start_date = datetime.strptime(date_match.group(1), "%d/%m/%Y").date()
-        end_date = datetime.strptime(date_match.group(2), "%d/%m/%Y").date()
-    except Exception:
-        await message.reply_text("⚠️ Định dạng ngày không hợp lệ.", parse_mode=ParseMode.HTML)
-        return
+        lands = db.query(AgriculturalLand).filter(AgriculturalLand.status == "ACTIVE").order_by(AgriculturalLand.land_code).all()
+        await _send_dh_land_buttons(message, lands, page=0)
+    except Exception as e:
+        LogError(f"Error in check_daily_harvest land listing: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
 
-    if start_date > end_date:
-        start_date, end_date = end_date, start_date
+_DH_LAND_PAGE_SIZE = 12
 
-    # Lấy mã hộ (nếu có) — phần trước date_match
-    hh_code_filter = args_text[:date_match.start()].strip().upper() or None
+async def _send_dh_land_buttons(target, lands, page=0, edit=False):
+    total = len(lands)
+    start = page * _DH_LAND_PAGE_SIZE
+    end = start + _DH_LAND_PAGE_SIZE
+    page_lands = lands[start:end]
 
+    buttons = []
+    import re
+    prefixes = set()
+    for land in lands:
+        if land.land_code:
+            match = re.match(r"^([A-Z]+)", land.land_code.upper())
+            if match:
+                prefixes.add(match.group(1))
+    prefixes = sorted(list(prefixes))
+
+    current_row = []
+    for prefix in prefixes:
+        current_row.append(InlineKeyboardButton(f"Nhóm {prefix}", callback_data=f"tn_kdh_land|GRP_{prefix}|0"))
+        if len(current_row) == 2:
+            buttons.append(current_row)
+            current_row = []
+    if current_row:
+        buttons.append(current_row)
+
+    buttons.append([InlineKeyboardButton("Tất cả", callback_data="tn_kdh_land|ALL|0")])
+    for land in page_lands:
+        label = f"{land.land_code} - {land.land_name or land.address or ''}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"tn_kdh_land|{land.land_code}|0")])
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("Trước", callback_data=f"tn_kdh_pg|{page - 1}"))
+    if end < total:
+        nav_row.append(InlineKeyboardButton("Sau", callback_data=f"tn_kdh_pg|{page + 1}"))
+    if nav_row:
+        buttons.append(nav_row)
+
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_kdh_cancel")])
+
+    import datetime
+    today_str = datetime.datetime.now().strftime('%d/%m/%Y')
+    first_day_str = datetime.datetime.now().replace(day=1).strftime('%d/%m/%Y')
+
+    text = (
+        "<b>KIỂM TRA THU HOẠCH HÀNG NGÀY</b>\n\n"
+        "Chọn mã đất cần kiểm tra:\n\n"
+        "<i>Hoặc nhập tay:</i>\n"
+        f"<i>• <code>/tien_nga_kt_thu_hoach_hang_ngay {first_day_str} - {today_str}</code></i>\n"
+        f"<i>• <code>/tien_nga_kt_thu_hoach_hang_ngay [Mã Hộ] {first_day_str} - {today_str}</code></i>"
+    )
+
+    markup = InlineKeyboardMarkup(buttons)
+    if edit:
+        await target.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    else:
+        await target.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+
+@bot.on_callback_query(filters.regex(r"^tn_kdh_cancel$"))
+async def _kdh_cancel(client, cb):
+    await cb.message.delete()
+    await cb.answer("Đã hủy.")
+
+@bot.on_callback_query(filters.regex(r"^tn_kdh_pg\|(\d+)$"))
+async def _kdh_page(client, cb):
+    page = int(cb.matches[0].group(1))
+    from app.models.business import AgriculturalLand
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        lands = db.query(AgriculturalLand).filter(AgriculturalLand.status == "ACTIVE").order_by(AgriculturalLand.land_code).all()
+        await _send_dh_land_buttons(cb.message, lands, page=page, edit=True)
+        await cb.answer()
+    except Exception as e:
+        LogError(f"Error paging dh lands: {e}", LogType.SYSTEM_STATUS)
+        await cb.answer("❌ Lỗi", show_alert=True)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^tn_kdh_land\|(.+)\|(\d+)$"))
+async def _kdh_select_land(client, cb):
+    land_code = cb.matches[0].group(1)
+    
+    buttons = [
+        [InlineKeyboardButton("Hôm nay", callback_data=f"tn_kdh_period|{land_code}|today")],
+        [InlineKeyboardButton("Tuần này", callback_data=f"tn_kdh_period|{land_code}|week")],
+        [InlineKeyboardButton("Tháng này", callback_data=f"tn_kdh_period|{land_code}|month")],
+        [InlineKeyboardButton("Năm nay", callback_data=f"tn_kdh_period|{land_code}|year")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_kdh_cancel")],
+    ]
+    land_label = "Tất cả" if land_code == "ALL" else land_code
+    if land_code.startswith("GRP_"):
+        land_label = f"Nhóm {land_code[4:]}"
+    import datetime
+    today_str = datetime.datetime.now().strftime('%d/%m/%Y')
+    first_day_str = datetime.datetime.now().replace(day=1).strftime('%d/%m/%Y')
+    land_cmd = f"{land_code} " if land_code != "ALL" and not land_code.startswith("GRP_") else ""
+    text = (
+        f"<b>KIỂM TRA THU HOẠCH HÀNG NGÀY</b>\n"
+        f"Mã đất: <b>{land_label}</b>\n\n"
+        f"Chọn chu kỳ thời gian:\n\n"
+        f"<i>Hoặc nhập tay: <code>/tien_nga_kt_thu_hoach_hang_ngay {land_cmd}{first_day_str} - {today_str}</code></i>"
+    )
+    await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+    await cb.answer()
+
+@bot.on_callback_query(filters.regex(r"^tn_kdh_period\|(.+)\|(today|week|month|year)$"))
+async def _kdh_select_period(client, cb):
+    from datetime import datetime, timedelta
+    land_code = cb.matches[0].group(1)
+    period = cb.matches[0].group(2)
+    today = datetime.now().date()
+    if period == "today":
+        start_date, end_date = today, today
+    elif period == "week":
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+    elif period == "month":
+        start_date = today.replace(day=1)
+        end_date = today
+    else:
+        start_date = today.replace(month=1, day=1)
+        end_date = today
+
+    lc = None if land_code == "ALL" else land_code
+    land_label = "Tất cả" if land_code == "ALL" else land_code
+    if land_code.startswith("GRP_"):
+        land_label = f"Nhóm {land_code[4:]}"
+    await cb.message.edit_text(
+        f"⏳ Đang tổng hợp báo cáo thu hoạch hàng ngày...\n"
+        f"Mã đất: <b>{land_label}</b> | "
+        f"Từ <b>{start_date.strftime('%d/%m/%Y')}</b> đến <b>{end_date.strftime('%d/%m/%Y')}</b>",
+        parse_mode=ParseMode.HTML
+    )
+    await cb.answer()
+    await _do_check_daily_harvest(client, cb.message, start_date, end_date, land_code=lc)
+
+async def _do_check_daily_harvest(client, message, start_date, end_date, land_code=None):
+    from app.models.business import Households, DailyHarvest
+    from app.db.session import SessionLocal
     db = SessionLocal()
     try:
         # Lấy danh sách hộ dân
-        if hh_code_filter:
-            households = db.query(Households).filter(
-                Households.household_code == hh_code_filter,
-                Households.status == "ACTIVE"
-            ).all()
-            if not households:
-                await message.reply_text(f"⚠️ Không tìm thấy hộ dân <b>{hh_code_filter}</b>.", parse_mode=ParseMode.HTML)
-                return
-        else:
-            households = db.query(Households).filter(Households.status == "ACTIVE").order_by(Households.household_code).all()
-            if not households:
-                await message.reply_text("📋 Chưa có hộ dân nào.", parse_mode=ParseMode.HTML)
-                return
+        query = db.query(Households).filter(Households.status == "ACTIVE")
+        if land_code:
+            if land_code.startswith("GRP_"):
+                prefix = land_code[4:]
+                query = query.filter(Households.land_code.like(f"{prefix}%"))
+            else:
+                from sqlalchemy import or_
+                query = query.filter(or_(Households.land_code == land_code, Households.household_code == land_code))
+        households = query.order_by(Households.household_code).all()
+        if not households:
+            land_label = f" (Mã đất/Hộ: {land_code})" if land_code else ""
+            if land_code and land_code.startswith("GRP_"):
+                land_label = f" (Nhóm {land_code[4:]})"
+            await message.reply_text(f"📋 Chưa có hộ dân nào{land_label}.", parse_mode=ParseMode.HTML)
+            return
 
         # Lấy data thu hoạch
         hh_codes = [h.household_code for h in households]
