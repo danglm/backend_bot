@@ -1,11 +1,19 @@
 import os
 import sys
 import json
+import socket
 import uvicorn
 import yaml
 from pathlib import Path
 from urllib.parse import urlparse
 from pyngrok import ngrok, conf
+
+# Force IPv4 to avoid IPv6 connectivity issues with ngrok CRL servers
+_original_getaddrinfo = socket.getaddrinfo
+def _ipv4_only_getaddrinfo(*args, **kwargs):
+    responses = _original_getaddrinfo(*args, **kwargs)
+    return [r for r in responses if r[0] == socket.AF_INET] or responses
+socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 BASE_DIR = Path(__file__).parent
 
