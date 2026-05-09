@@ -777,6 +777,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_danh_sach_cong_viec", "Xem công việc của nhân viên"),      
                     BotCommand("tien_nga_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
                     BotCommand("tien_nga_danh_sach_nhan_vien", "Xuất DS nhân viên Excel"),
+                    BotCommand("tien_nga_danh_sach_cham_cong", "Xuất DS chấm công"),
                 ])
             if custom_title in ("super_main", "main_supplier"):
                 if custom_title != "super_main": label = "Tiến Nga (Nhà Cung Cấp)"
@@ -797,7 +798,6 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_kiem_tra_hao_hut", "Kiểm tra hao hụt"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_mua", "Xuất báo cáo mua mủ KH"),
                     ## Báo cáo
-                    # BotCommand("tien_nga_truy_xuat_thong_tin", "Truy xuất thông tin báo cáo"),
                     BotCommand("tien_nga_truy_xuat_tt_thu_mua", "Truy xuất TT thu mua"),
                     BotCommand("tien_nga_bieu_do_thu_mua", "Biểu đồ thu mua mủ"),
                     BotCommand("tien_nga_bao_cao_da_thanh_toan", "Báo cáo đã thanh toán"),

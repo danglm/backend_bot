@@ -593,8 +593,8 @@ async def checkin_reminder_worker():
                             LogInfo(f"Sent check-out reminder to {chat_id} for {len(late_checkout_mentions)} users.", LogType.SYSTEM_STATUS)
 
                     except Exception as e:
-                        if "CHAT_ID_INVALID" in str(e) or "PEER_ID_INVALID" in str(e):
-                            pass # Skip groups the bot is no longer in
+                        if "CHAT_ID_INVALID" in str(e) or "PEER_ID_INVALID" in str(e) or "USERNAME_INVALID" in str(e):
+                            pass # Skip groups the bot is no longer in or invalid usernames
                         else:
                             LogError(f"Error checking group {chat_id}: {e}", LogType.SYSTEM_STATUS)
 
@@ -1415,6 +1415,169 @@ async def monthly_attendance_summary_worker():
             await asyncio.sleep(60)
 
 
+async def send_factory_purchase_report(db, project_id, current_date, client, specific_cp_id=None):
+    from app.models.business import DailyPurchases, CollectionPoint
+    from app.models.telegram import TelegramProjectMember
+    from bot.utils.receipt_generator import fmt_money_vn
+    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from pyrogram.enums import ParseMode
+    from bot.utils.logger import LogInfo, LogError, LogType
+
+    main_groups = db.query(TelegramProjectMember.chat_id, TelegramProjectMember.group_name, TelegramProjectMember.custom_title).filter(
+        TelegramProjectMember.project_id == project_id,
+        TelegramProjectMember.role == "main",
+        TelegramProjectMember.custom_title.in_(["super_main", "main_supplier"])
+    ).distinct().all()
+    
+    if not main_groups:
+        return
+
+    query = db.query(DailyPurchases).filter(DailyPurchases.day == current_date)
+    if specific_cp_id:
+        query = query.filter(DailyPurchases.collection_point_id == specific_cp_id)
+        
+    purchases = query.all()
+    if not purchases:
+        return
+        
+    from collections import defaultdict
+    by_cp = defaultdict(list)
+    for p in purchases:
+        by_cp[p.collection_point_id].append(p)
+        
+    for cp_id, cp_purchases in by_cp.items():
+        cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
+        cp_name = cp.collection_name if cp else str(cp_id)
+        
+        from bot.core.config import settings
+        
+        target_chat_ids = []
+        
+        # Lấy tên group được map cho xưởng này (nếu có)
+        mapped_group_name = settings.FACTORY_GROUP_MAPPING.get(cp_name)
+        
+        if mapped_group_name:
+            for chat_id, group_name in main_groups:
+                if group_name == mapped_group_name:
+                    target_chat_ids.append(chat_id)
+                    
+        if not target_chat_ids:
+            # Fallback nếu không có mapping hoặc không tìm thấy group: gửi cho tất cả các nhóm main, trừ super_main
+            target_chat_ids = [g[0] for g in main_groups if g[2] != "super_main"]
+        else:
+            # Loại bỏ trùng lặp nếu có
+            target_chat_ids = list(set(target_chat_ids))
+            
+        by_product = defaultdict(list)
+        for p in cp_purchases:
+            code = p.product_code or "N/A"
+            by_product[code].append(p)
+            
+        report_text = f"<b>TỔNG HỢP MUA MỦ - {cp_name.upper()}</b>\n"
+        report_text += f"<b>Ngày:</b> {current_date.strftime('%d/%m/%Y')}\n"
+        report_text += f"-----------------------------------\n"
+        
+        total_all_amount = 0
+        
+        for p_code, p_list in by_product.items():
+            t_wet = sum(p.actual_weight or 0 for p in p_list)
+            t_dry = sum(p.dry_rubber or 0 for p in p_list)
+            t_amount = sum(p.total_amount or 0 for p in p_list)
+            total_all_amount += t_amount
+            
+            degrees = [p.degree for p in p_list if p.degree is not None]
+            avg_deg = sum(degrees) / len(degrees) if degrees else 0
+            
+            prices = [p.unit_price for p in p_list if p.unit_price is not None]
+            avg_price = sum(prices) / len(prices) if prices else 0
+            
+            subsidy_prices = [p.subsidy_price for p in p_list if p.subsidy_price is not None]
+            avg_total_price = sum(subsidy_prices) / len(subsidy_prices) if subsidy_prices else 0
+            
+            report_text += f"<b>Mã lô hàng:</b> <code>{p_code}</code>\n"
+            report_text += f" Tổng khối lượng mủ nước: <b>{t_wet:,.2f} kg</b>\n"
+            report_text += f" Tổng số lượng Mủ khô: <b>{t_dry:,.2f} kg</b>\n"
+            report_text += f" Số độ trung bình: <b>{avg_deg:.2f}%</b>\n"
+            report_text += f" Đơn giá: <b>{fmt_money_vn(avg_price)} VNĐ</b>\n"
+            report_text += f" Giá thu mua trung bình: <b>{fmt_money_vn(avg_total_price)} VNĐ</b>\n"
+            report_text += f" Tổng thành tiền: <b>{fmt_money_vn(t_amount)} VNĐ</b>\n\n"
+            
+        report_text += f"-----------------------------------\n"
+        report_text += f"<b>TỔNG THÀNH TIỀN: {fmt_money_vn(total_all_amount)} VNĐ</b>\n\n"
+        report_text += f"<b>Nhắc nhở:</b> Admin vui lòng thực hiện lệnh <code>/tien_nga_kiem_soat_hao_hut</code> nếu đã thấy ok. Nếu chưa thấy ok thì hãy làm các lệnh liên quan để hoàn thiện rồi nhấn vào nút <b>Tạo lại báo cáo</b>."
+        
+        buttons = [
+            [
+                InlineKeyboardButton("Xác nhận", callback_data=f"confirm_fac_rep_{cp_id}_{current_date}"),
+                InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"regen_fac_rep_{cp_id}_{current_date}")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(buttons)
+        
+        for chat_id in target_chat_ids:
+            try:
+                await client.send_message(
+                    chat_id=int(chat_id),
+                    text=report_text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                LogError(f"Error sending factory report to {chat_id}: {e}", LogType.SYSTEM_STATUS)
+
+async def daily_factory_purchase_summary_worker():
+    """
+    Background worker: chạy lúc 17:30 hàng ngày.
+    Tổng hợp kết quả thu mua mủ của Xưởng và gửi vào nhóm main.
+    """
+    from bot.utils.logger import LogInfo, LogError, LogType
+    from bot.core.config import settings
+    from bot.utils.bot import bot
+    import asyncio
+    import datetime
+
+    LogInfo("Daily factory purchase summary worker started.", LogType.SYSTEM_STATUS)
+    last_sent_date = None
+
+    while True:
+        try:
+            now = datetime.datetime.now()
+
+            cfg = settings.SCHEDULER_DAILY_FACTORY_PURCHASE
+            if now.hour == cfg.get('hour', 17) and now.minute == cfg.get('minute', 30):
+                current_date = now.date()
+                if last_sent_date == current_date:
+                    await asyncio.sleep(60)
+                    continue
+
+                LogInfo(f"[DailyFactoryPurchase] Generating summaries for {current_date}...", LogType.SYSTEM_STATUS)
+                from app.db.session import SessionLocal
+                db = SessionLocal()
+                try:
+                    from app.models.business import Projects
+
+                    project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+                    if not project:
+                        LogInfo("[DailyFactoryPurchase] Không tìm thấy project Tiến Nga, bỏ qua.", LogType.SYSTEM_STATUS)
+                        last_sent_date = current_date
+                        continue
+
+                    await send_factory_purchase_report(db, project.id, current_date, bot)
+                    last_sent_date = current_date
+
+                except Exception as e:
+                    LogError(f"Error in daily_factory_purchase_summary_worker inner: {e}", LogType.SYSTEM_STATUS)
+                finally:
+                    db.close()
+            
+            await asyncio.sleep(60)
+
+        except Exception as e:
+            LogError(f"Error in daily_factory_purchase_summary_worker: {e}", LogType.SYSTEM_STATUS)
+            await asyncio.sleep(60)
+
+
 async def daily_purchase_summary_worker():
     """
     Background worker: chạy lúc 20:00 hàng ngày.
@@ -1589,3 +1752,418 @@ async def daily_purchase_summary_worker():
         except Exception as e:
             LogError(f"Critical error in daily_purchase_summary_worker: {e}", LogType.SYSTEM_STATUS)
             await asyncio.sleep(60)
+
+async def daily_fund_summary_worker():
+    """
+    Background worker that runs daily to aggregate fund income and expenses
+    and sends a report to the configured Telegram groups.
+    """
+    LogInfo("Daily fund summary worker started.", LogType.SYSTEM_STATUS)
+    last_sent_date = None
+
+    while True:
+        try:
+            now = datetime.datetime.now()
+            cfg = settings.SCHEDULER_DAILY_FUND
+            
+            if now.hour == cfg.get('hour', 17) and now.minute == cfg.get('minute', 30):
+                current_date = now.date()
+                if last_sent_date == current_date:
+                    await asyncio.sleep(60)
+                    continue
+
+                LogInfo("Generating daily fund summary...", LogType.SYSTEM_STATUS)
+                db = SessionLocal()
+                try:
+                    from app.models.business import Investment, DailyPayment
+                    from app.models.telegram import TelegramProjectMember
+                    from bot.utils.bot import bot
+                    from sqlalchemy import func
+                    from bot.utils.utils import fmt_money
+
+                    for fund_name, group_name in settings.FUND_GROUP_MAPPING.items():
+                        LogInfo(f"Checking fund mapping: {fund_name} -> {group_name}", LogType.SYSTEM_STATUS)
+                        investment = db.query(Investment).filter(Investment.name == fund_name).first()
+                        if not investment:
+                            LogInfo(f"Fund '{fund_name}' not found in DB.", LogType.SYSTEM_STATUS)
+                            continue
+                            
+                        # Find telegram group
+                        tpm = db.query(TelegramProjectMember).filter(TelegramProjectMember.group_name == group_name).first()
+                        if not tpm or not tpm.chat_id:
+                            LogInfo(f"Telegram group '{group_name}' not found or chat_id is missing.", LogType.SYSTEM_STATUS)
+                            continue
+                            
+                        # Calculate today's income/expense
+                        today_payments = db.query(DailyPayment).filter(
+                            DailyPayment.investment_id == investment.id,
+                            DailyPayment.day == current_date,
+                            DailyPayment.status == "APPROVED"
+                        ).all()
+                        
+                        tong_thu = sum(p.amount for p in today_payments if p.payment_type.lower() == 'thu')
+                        tong_chi = sum(p.amount for p in today_payments if p.payment_type.lower() == 'chi')
+                        
+                        so_du = (investment.total_income or 0) - (investment.total_expense or 0) + (investment.initial_capital or 0)
+                        
+                        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                        from pyrogram.enums import ParseMode
+                        markup = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("Xác nhận", callback_data=f"fund_confirm_{investment.id}")],
+                            [InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"fund_regen_{investment.id}")]
+                        ])
+                        
+                        text = (
+                            f"<b>BÁO CÁO TỔNG HỢP THU CHI QUỸ: {fund_name}</b>\n\n"
+                            f"<b>Ngày:</b> {current_date.strftime('%d/%m/%Y')}\n"
+                            f"<b>Tổng Thu (Hôm nay):</b> <code>{fmt_money(tong_thu)}</code> VNĐ\n"
+                            f"<b>Tổng Chi (Hôm nay):</b> <code>{fmt_money(tong_chi)}</code> VNĐ\n"
+                            f"<b>Số tiền trong Quỹ hiện tại:</b> <code>{fmt_money(so_du)}</code> VNĐ\n\n"
+                            f"<i>Vui lòng kiểm tra và xác nhận.</i>"
+                        )
+                        
+                        try:
+                            await bot.send_message(
+                                chat_id=int(tpm.chat_id),
+                                text=text,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=markup
+                            )
+                            LogInfo(f"Successfully sent fund summary to {group_name}", LogType.SYSTEM_STATUS)
+                        except Exception as e:
+                            LogError(f"Failed to send fund summary to {group_name}: {e}", LogType.SYSTEM_STATUS)
+
+                    last_sent_date = current_date
+
+                except Exception as e:
+                    LogError(f"Error generating daily fund summary: {e}", LogType.SYSTEM_STATUS)
+                finally:
+                    db.close()
+                    
+                await asyncio.sleep(61)
+                
+            next_run = (datetime.datetime.now() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+            sleep_time = (next_run - datetime.datetime.now()).total_seconds()
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            LogError(f"Critical error in daily_fund_summary_worker: {e}", LogType.SYSTEM_STATUS)
+            await asyncio.sleep(60)
+
+async def generate_and_send_inventory_report(client, target_date: datetime.date = None, specific_inv_id: str = None):
+    if target_date is None:
+        target_date = datetime.datetime.now().date()
+        
+    db = SessionLocal()
+    try:
+        from app.models.inventory import Inventory, ProductTransaction
+        from app.models.telegram import TelegramProjectMember
+        from bot.core.config import settings
+        from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        from pyrogram.enums import ParseMode
+        
+        query = db.query(Inventory)
+        if specific_inv_id:
+            query = query.filter(Inventory.id == specific_inv_id)
+            
+        inventories = query.all()
+        if not inventories:
+            return
+            
+        main_groups = db.query(TelegramProjectMember.chat_id, TelegramProjectMember.group_name).filter(
+            TelegramProjectMember.role == "main",
+            TelegramProjectMember.is_bot == False
+        ).all()
+        
+        for inv in inventories:
+            inv_name = inv.storage_name or "N/A"
+            inv_id = inv.id
+            
+            transactions = db.query(ProductTransaction).filter(
+                ProductTransaction.storage_id == inv_id,
+                ProductTransaction.transaction_date == target_date
+            ).all()
+            
+            total_export = 0.0
+            total_import = 0.0
+            
+            for txn in transactions:
+                if txn.transaction_type == "Xuất":
+                    total_export += txn.quantity or 0.0
+                elif txn.transaction_type == "Nhập":
+                    total_import += txn.quantity or 0.0
+            
+            current_stock = inv.quantity or 0.0
+            capacity = inv.capacity or 0.0
+            
+            mapped_group_name = settings.INVENTORY_GROUP_MAPPING.get(inv_name)
+            target_chat_ids = []
+            
+            if mapped_group_name:
+                for chat_id, group_name in main_groups:
+                    if group_name == mapped_group_name:
+                        target_chat_ids.append(chat_id)
+                        
+            if not target_chat_ids:
+                inventory_groups = db.query(TelegramProjectMember.chat_id).filter(
+                    TelegramProjectMember.role == "main",
+                    TelegramProjectMember.is_bot == False,
+                    TelegramProjectMember.custom_title.in_(["main_inventory", "main_product"])
+                ).distinct().all()
+                target_chat_ids = [g[0] for g in inventory_groups]
+            
+            target_chat_ids = list(set(target_chat_ids))
+                
+            report_text = f"<b>TỔNG HỢP KẾT QUẢ XUẤT/NHẬP KHO - {inv_name.upper()}</b>\n"
+            report_text += f"<b>Ngày:</b> {target_date.strftime('%d/%m/%Y')}\n"
+            report_text += f"-----------------------------------\n"
+            report_text += f" Tổng nhập kho: <b>{total_import:,.2f} Kg</b>\n"
+            report_text += f" Tổng xuất kho: <b>{total_export:,.2f} Kg</b>\n"
+            report_text += f" Số lượng Tồn kho: <b>{current_stock:,.2f} Kg</b>\n"
+            report_text += f" Sức chứa của kho: <b>{capacity:,.2f} Kg</b>\n\n"
+            report_text += f"<b>Nhắc nhở:</b> Admin vui lòng kiểm tra, nếu đã thấy ok thì nhấn nút <b>Xác nhận</b>. Nếu chưa thấy ok thì hãy làm các lệnh liên quan để hoàn thiện rồi nhấn vào nút <b>Tạo lại báo cáo</b>."
+            
+            buttons = [
+                [
+                    InlineKeyboardButton("Xác nhận", callback_data=f"confirm_inv_rep_{inv_id}_{target_date}"),
+                    InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"regen_inv_rep_{inv_id}_{target_date}")
+                ]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(buttons)
+            
+            from pyrogram.errors import FloodWait
+            import asyncio
+            
+            for chat_id in target_chat_ids:
+                try:
+                    await client.send_message(
+                        chat_id=int(chat_id),
+                        text=report_text,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                    await asyncio.sleep(0.5)
+                except FloodWait as e:
+                    LogError(f"FloodWait hit, sleeping for {e.value} seconds...", LogType.SYSTEM_STATUS)
+                    await asyncio.sleep(e.value + 1)
+                    try:
+                        await client.send_message(
+                            chat_id=int(chat_id),
+                            text=report_text,
+                            reply_markup=reply_markup,
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception as ex:
+                        LogError(f"Error sending inventory report to {chat_id} after retry: {ex}", LogType.SYSTEM_STATUS)
+                except Exception as e:
+                    LogError(f"Error sending inventory report to {chat_id}: {e}", LogType.SYSTEM_STATUS)
+                    
+    except Exception as e:
+        LogError(f"Error generating inventory report: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
+async def daily_inventory_summary_worker():
+    from bot.utils.logger import LogInfo, LogError, LogType
+    from bot.core.config import settings
+    from bot.utils.bot import bot
+    import asyncio
+    import datetime
+
+    LogInfo("Daily inventory summary worker started.", LogType.SYSTEM_STATUS)
+    last_sent_date = None
+
+    while True:
+        try:
+            now = datetime.datetime.now()
+
+            cfg = settings.SCHEDULER_DAILY_INVENTORY
+            if now.hour == cfg.get('hour', 17) and now.minute == cfg.get('minute', 30):
+                current_date = now.date()
+                if last_sent_date == current_date:
+                    await asyncio.sleep(60)
+                    continue
+
+                LogInfo("Generating daily inventory reports...", LogType.SYSTEM_STATUS)
+                
+                await generate_and_send_inventory_report(bot, current_date)
+
+                last_sent_date = current_date
+
+            next_run = (datetime.datetime.now() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+            sleep_time = (next_run - datetime.datetime.now()).total_seconds()
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                await asyncio.sleep(1)
+        except Exception as e:
+            LogError(f"Error in daily_inventory_summary_worker: {e}", LogType.SYSTEM_STATUS)
+            await asyncio.sleep(60)
+
+async def send_harvest_summary_report(db, project_id, current_date, client, specific_affiliation=None):
+    from app.models.business import DailyHarvest, DailyPurchases, AgriculturalLand, Households
+    from app.models.telegram import TelegramProjectMember
+    from bot.core.config import settings
+    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from pyrogram.enums import ParseMode
+    from bot.utils.receipt_generator import fmt_money_vn
+    from sqlalchemy import func
+
+    # Gather data by affiliation
+    affiliations = settings.HARVEST_GROUP_MAPPING.keys()
+    if specific_affiliation:
+        affiliations = [specific_affiliation]
+
+    main_groups = db.query(TelegramProjectMember.chat_id, TelegramProjectMember.group_name).filter(
+        TelegramProjectMember.project_id == project_id,
+        TelegramProjectMember.role == "main",
+        TelegramProjectMember.is_bot == False
+    ).all()
+
+    for aff in affiliations:
+        mapped_group_name = settings.HARVEST_GROUP_MAPPING.get(aff)
+        target_chat_ids = []
+        if mapped_group_name:
+            for chat_id, group_name in main_groups:
+                if group_name == mapped_group_name:
+                    target_chat_ids.append(chat_id)
+                    
+        if not target_chat_ids:
+            continue
+            
+        target_chat_ids = list(set(target_chat_ids))
+
+        # Query lands for this affiliation
+        lands = db.query(AgriculturalLand).filter(AgriculturalLand.affiliation == aff).all()
+        land_codes = [l.land_code for l in lands]
+        
+        # Query households associated with these lands
+        households = db.query(Households).filter(Households.land_code.in_(land_codes)).all()
+        hh_codes = [h.household_code for h in households]
+        purchase_codes = [h.purchase_code for h in households]
+
+        # 1. Total trees harvested
+        harvests = db.query(DailyHarvest).filter(
+            DailyHarvest.day == current_date,
+            DailyHarvest.land_code.in_(land_codes)
+        ).all()
+        
+        total_trees = sum(h.tree_count or 0 for h in harvests)
+        total_harvest_amount = sum(h.total_amount or 0 for h in harvests)
+
+        # 2. Total purchased
+        purchases = db.query(DailyPurchases).filter(
+            DailyPurchases.day == current_date,
+            DailyPurchases.hoursehold_id.in_(purchase_codes)
+        ).all()
+
+        total_actual_weight = sum(p.actual_weight or 0 for p in purchases)
+        total_dry_rubber = sum(p.dry_rubber or 0 for p in purchases)
+        total_purchase_amount = sum(p.total_amount or 0 for p in purchases)
+        
+        # Averages
+        if total_actual_weight > 0:
+            avg_degree = sum((p.degree or 0) * (p.actual_weight or 0) for p in purchases) / total_actual_weight
+        else:
+            avg_degree = 0.0
+
+        prices = [p.unit_price for p in purchases if p.unit_price is not None]
+        avg_unit_price = sum(prices) / len(prices) if prices else 0.0
+
+        report_text = f"<b>TỔNG HỢP KẾT QUẢ THU HOẠCH CAO SU - {aff.upper()}</b>\n"
+        report_text += f"<b>Ngày:</b> {current_date.strftime('%d/%m/%Y')}\n"
+        report_text += f"-----------------------------------\n"
+        report_text += f" Tổng số lượng cây thu hoạch: <b>{total_trees:,.0f} cây</b>\n"
+        report_text += f" Tổng tiền trả cạo mủ: <b>{fmt_money_vn(total_harvest_amount)} VNĐ</b>\n"
+        report_text += f" Tổng SL Mủ nước thu mua: <b>{total_actual_weight:,.2f} kg</b>\n"
+        report_text += f" Tổng SL Mủ khô thu mua: <b>{total_dry_rubber:,.2f} kg</b>\n"
+        report_text += f" Số độ trung bình: <b>{avg_degree:.2f}%</b>\n"
+        report_text += f" Đơn giá trung bình: <b>{fmt_money_vn(avg_unit_price)} VNĐ</b>\n"
+        report_text += f" Tổng thành tiền: <b>{fmt_money_vn(total_purchase_amount)} VNĐ</b>\n\n"
+        report_text += f"<b>Nhắc nhở:</b> Admin vui lòng kiểm tra, nếu đã thấy ok thì nhấn nút <b>Xác nhận</b>. Nếu chưa thấy ok thì hãy làm các lệnh liên quan để hoàn thiện rồi nhấn vào nút <b>Tạo lại báo cáo</b>."
+
+        buttons = [
+            [
+                InlineKeyboardButton("Xác nhận", callback_data=f"confirm_harv_rep_{aff}_{current_date}"),
+                InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"regen_harv_rep_{aff}_{current_date}")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(buttons)
+        
+        from pyrogram.errors import FloodWait
+        import asyncio
+        
+        for chat_id in target_chat_ids:
+            try:
+                await client.send_message(
+                    chat_id=int(chat_id),
+                    text=report_text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
+                await asyncio.sleep(0.5)
+            except FloodWait as e:
+                LogError(f"FloodWait hit, sleeping for {e.value} seconds...", LogType.SYSTEM_STATUS)
+                await asyncio.sleep(e.value + 1)
+                await client.send_message(
+                    chat_id=int(chat_id),
+                    text=report_text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                LogError(f"Error sending harvest report to {chat_id}: {e}", LogType.SYSTEM_STATUS)
+
+
+async def daily_harvest_summary_worker():
+    from bot.utils.logger import LogInfo, LogError, LogType
+    from bot.core.config import settings
+    from bot.utils.bot import bot
+    import asyncio
+    import datetime
+
+    LogInfo("Daily harvest summary worker started.", LogType.SYSTEM_STATUS)
+    last_sent_date = None
+
+    while True:
+        try:
+            now = datetime.datetime.now()
+
+            cfg = settings.SCHEDULER_DAILY_HARVEST
+            if now.hour == cfg.get('hour', 17) and now.minute == cfg.get('minute', 30):
+                current_date = now.date()
+                if last_sent_date == current_date:
+                    await asyncio.sleep(60)
+                    continue
+
+                LogInfo(f"Generating daily harvest reports for {current_date}...", LogType.SYSTEM_STATUS)
+                
+                from app.db.session import SessionLocal
+                from app.models.business import Projects
+                db = SessionLocal()
+                try:
+                    project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+                    if project:
+                        await send_harvest_summary_report(db, project.id, current_date, bot)
+                except Exception as e:
+                    LogError(f"Error in daily harvest summary generation: {e}", LogType.SYSTEM_STATUS)
+                finally:
+                    db.close()
+
+                last_sent_date = current_date
+
+            next_run = (datetime.datetime.now() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+            sleep_time = (next_run - datetime.datetime.now()).total_seconds()
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                await asyncio.sleep(1)
+        except Exception as e:
+            LogError(f"Error in daily_harvest_summary_worker: {e}", LogType.SYSTEM_STATUS)
+            await asyncio.sleep(60)
+

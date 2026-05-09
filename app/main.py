@@ -28,7 +28,11 @@ async def lifespan(app: FastAPI):
         interest_payment_notification_worker, 
         rental_payment_notification_worker,
         monthly_attendance_summary_worker,
-        daily_purchase_summary_worker
+        daily_purchase_summary_worker,
+        daily_factory_purchase_summary_worker,
+        daily_fund_summary_worker,
+        daily_inventory_summary_worker,
+        daily_harvest_summary_worker
     )
     asyncio.create_task(checkin_reminder_worker())
     asyncio.create_task(monthly_attendance_report_worker())
@@ -38,6 +42,10 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(rental_payment_notification_worker())
     asyncio.create_task(monthly_attendance_summary_worker())
     asyncio.create_task(daily_purchase_summary_worker())
+    asyncio.create_task(daily_factory_purchase_summary_worker())
+    asyncio.create_task(daily_fund_summary_worker())
+    asyncio.create_task(daily_inventory_summary_worker())
+    asyncio.create_task(daily_harvest_summary_worker())
 
     yield
     

@@ -4,7 +4,8 @@ Các hàm xử lý dùng chung cho quản lý nhân sự, dùng được cho nhi
 """
 import uuid
 import datetime
-from pyrogram.types import Message
+from io import BytesIO
+from pyrogram.types import Message, InlineKeyboardMarkup
 from bot.utils.enums import CustomTitle
 from pyrogram.enums import ParseMode
 from app.db.session import SessionLocal
@@ -889,10 +890,10 @@ async def handle_check_in(client, message: Message, command_name: str) -> None:
 
         if current_time > shift_time:
             # Tính số phút trễ
-            now_dt = datetime.datetime.combine(today, current_time)
-            shift_dt_full = datetime.datetime.combine(today, shift_time)
+            now_dt = datetime.datetime.combine(today, current_time.replace(second=0, microsecond=0))
+            shift_dt_full = datetime.datetime.combine(today, shift_time.replace(second=0, microsecond=0))
             diff = (now_dt - shift_dt_full).total_seconds() / 60
-            late_minutes = round(diff)
+            late_minutes = int(diff)
             if late_minutes > 0:
                 status = "late"
         elif current_time < shift_time:
@@ -1972,7 +1973,7 @@ def _build_attendance_image(
     month: int,
     year: int,
     records: list,
-) -> "BytesIO":
+) -> BytesIO:
     """
     Tạo ảnh bảng chấm công từ danh sách Attendance records.
     Returns BytesIO chứa ảnh PNG.
@@ -2567,7 +2568,7 @@ TASK_STATUS_MAP = {
 }
 
 
-def _build_task_list_buttons(tasks: list) -> "InlineKeyboardMarkup":
+def _build_task_list_buttons(tasks: list) -> InlineKeyboardMarkup:
     """Tạo inline keyboard cho danh sách task."""
     from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -2581,7 +2582,7 @@ def _build_task_list_buttons(tasks: list) -> "InlineKeyboardMarkup":
     return InlineKeyboardMarkup(buttons)
 
 
-def _build_task_action_buttons(task_id: str) -> "InlineKeyboardMarkup":
+def _build_task_action_buttons(task_id: str) -> InlineKeyboardMarkup:
     """Tạo inline keyboard cho actions của 1 task."""
     from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -3588,5 +3589,133 @@ async def handle_recreate_attendance_report(client, message, command_name: str) 
         except:
              pass
         await message.reply_text("❌ Có lỗi xảy ra trong quá trình tạo lại ảnh bảng chấm công.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# ══════════════════════════════════════════════════════════════
+# LIST ATTENDANCE (EXCEL)
+# ══════════════════════════════════════════════════════════════
+
+async def handle_list_attendance_excel(client, message, command_name: str) -> None:
+    from app.models.employee import Employee
+    from app.models.finance import Attendance
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    import os
+    import tempfile
+    from pyrogram.enums import ParseMode
+
+    args = message.text.split()
+    if len(args) != 3:
+        clean_cmd = command_name.split('@')[0]
+        await message.reply_text(
+            f"⚠️ Lệnh thiếu hoặc sai cú pháp.\nCú pháp: <code>{clean_cmd} [Mã nhân viên] [MM/YYYY]</code>\n"
+            f"VD: <code>{clean_cmd} TN001 04/2026</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    emp_code = args[1]
+    month_year_str = args[2]
+    try:
+        month_str, year_str = month_year_str.split("/")
+        month = int(month_str)
+        year = int(year_str)
+    except:
+        await message.reply_text("⚠️ Định dạng tháng/năm phải là MM/YYYY.", parse_mode=ParseMode.HTML)
+        return
+
+    db = SessionLocal()
+    try:
+        processing_msg = await message.reply_text("⏳ Đang truy xuất thông tin DB và tạo file Excel chấm công...")
+        
+        employee = db.query(Employee).filter(Employee.id == emp_code).first()
+        if not employee:
+            await processing_msg.edit_text(f"⚠️ Không tìm thấy nhân viên mã <code>{emp_code}</code>.", parse_mode=ParseMode.HTML)
+            return
+
+        full_name = f"{employee.last_name or ''} {employee.first_name or ''}".strip()
+
+        records = db.query(Attendance).filter(
+            Attendance.employee_id == emp_code,
+            Attendance.month == month,
+            Attendance.year == year
+        ).order_by(Attendance.day).all()
+
+        if not records:
+            await processing_msg.edit_text(f"⚠️ Không tìm thấy bất kỳ dữ liệu chấm công nào của {full_name} trong tháng {month:02d}/{year}.")
+            return
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"ChamCong_{month:02d}_{year}"
+
+        headers = [
+            "STT", "Ngày", "Check In", "Check Out", "Tăng Ca", "Số Giờ Làm", "Ghi chú/Lỗi"
+        ]
+
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
+        center_align = Alignment(horizontal="center", vertical="center")
+        border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                        top=Side(style='thin'), bottom=Side(style='thin'))
+
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = border
+
+        row_idx = 2
+        for i, att in enumerate(records, 1):
+            ci = att.check_in_time.strftime("%H:%M") if att.check_in_time else "—"
+            co = att.check_out_time.strftime("%H:%M") if att.check_out_time else "—"
+            ot = "—"
+            wh = "—"
+            if att.start_overtime and att.end_overtime:
+                ot = f"{att.start_overtime.strftime('%H:%M')}-{att.end_overtime.strftime('%H:%M')}"
+            elif att.overtime:
+                ot = f"{att.overtime}h"
+            if att.working_time is not None:
+                wh = f"{att.working_time:.1f}h"
+                
+            ws.cell(row=row_idx, column=1, value=i).border = border
+            ws.cell(row=row_idx, column=2, value=att.date_str or f"{att.day:02d}/{att.month:02d}/{att.year}").border = border
+            ws.cell(row=row_idx, column=3, value=ci).border = border
+            ws.cell(row=row_idx, column=4, value=co).border = border
+            ws.cell(row=row_idx, column=5, value=ot).border = border
+            ws.cell(row=row_idx, column=6, value=wh).border = border
+            ws.cell(row=row_idx, column=7, value=att.error or "").border = border
+            
+            row_idx += 1
+
+        widths = [5, 15, 15, 15, 15, 15, 40]
+        for col_num, width in enumerate(widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = width
+
+        file_name = f"bang_cham_cong_{emp_code}_{month:02d}_{year}.xlsx"
+        fd, temp_path = tempfile.mkstemp(suffix=".xlsx", prefix=f"att_{emp_code}_{month:02d}_{year}_")
+        os.close(fd)
+        wb.save(temp_path)
+
+        await client.send_document(
+            chat_id=message.chat.id,
+            document=temp_path,
+            file_name=file_name,
+            caption=f"✅ <b>Bảng Chấm Công tháng {month:02d}/{year}</b>\nNhân viên: <b>{full_name}</b> ({emp_code})",
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=message.id
+        )
+        
+        await processing_msg.delete()
+        os.remove(temp_path)
+            
+    except Exception as e:
+        LogError(f"Error in handle_list_attendance_excel: {e}", LogType.SYSTEM_STATUS)
+        try:
+             await processing_msg.edit_text("❌ Có lỗi xảy ra trong quá trình xuất bảng chấm công.")
+        except:
+             pass
     finally:
         db.close()

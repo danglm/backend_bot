@@ -13,6 +13,13 @@ def load_settings():
 app_config = load_settings()
 
 class Settings:
+    # Read TienNga config
+    tiennga_config = app_config.get("TienNga", {})
+    FACTORY_GROUP_MAPPING = tiennga_config.get("Factory_Group_Mapping", {})
+    FUND_GROUP_MAPPING = tiennga_config.get("Fund_Group_Mapping", {})
+    INVENTORY_GROUP_MAPPING = tiennga_config.get("Inventory_Group_Mapping", {})
+    HARVEST_GROUP_MAPPING = tiennga_config.get("Harvest_Group_Mapping", {})
+
     # Read Telegram config from appsettings.json -> "Telegram"
     telegram_config = app_config.get("Telegram", {})
     BOT_TOKEN = telegram_config.get("Bot_Token", "")
@@ -29,5 +36,9 @@ class Settings:
     SCHEDULER_RENTAL = scheduler_config.get("Rental_Payment_Notification", {"hour": 16, "minute": 2})
     SCHEDULER_MONTHLY_SUMMARY = scheduler_config.get("Monthly_Attendance_Summary", {"day": 1, "hour": 8, "minute": 0})
     SCHEDULER_DAILY_PURCHASE = scheduler_config.get("Daily_Purchase_Summary", {"hour": 20, "minute": 0})
+    SCHEDULER_DAILY_FACTORY_PURCHASE = scheduler_config.get("Daily_Factory_Purchase_Summary", {"hour": 17, "minute": 30})
+    SCHEDULER_DAILY_FUND = scheduler_config.get("Daily_Fund_Summary", {"hour": 17, "minute": 30})
+    SCHEDULER_DAILY_INVENTORY = scheduler_config.get("Daily_Inventory_Summary", {"hour": 17, "minute": 30})
+    SCHEDULER_DAILY_HARVEST = scheduler_config.get("Daily_Harvest_Summary", {"hour": 17, "minute": 30})
 
 settings = Settings()

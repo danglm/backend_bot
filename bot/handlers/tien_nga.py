@@ -389,6 +389,21 @@ async def tien_nga_recreate_attendance_report_handler(client, message: Message) 
     message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
     await handle_recreate_attendance_report(client, message, cmd)
 
+@bot.on_message(filters.command(["tien_nga_list_attendance", "tien_nga_danh_sach_cham_cong"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_attendance|tien_nga_danh_sach_cham_cong)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+async def tien_nga_list_attendance_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_list_attendance", "tien_nga_danh_sach_cham_cong"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_list_attendance_excel
+    import re
+    cmd = args[0] if args else "tien_nga_list_attendance"
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_list_attendance_excel(client, message, cmd)
+
 
 #############  Supplier #############
 @bot.on_message(filters.command(["tien_nga_create_collection_point", "tien_nga_tao_diem_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_collection_point|tien_nga_tao_diem_thu_mua)\b"))
@@ -15689,3 +15704,352 @@ async def tn_txtt_callback(client, callback_query: CallbackQuery):
 async def tn_txtt_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.edit_text("❌ Đã hủy thao tác.", parse_mode=ParseMode.HTML)
 
+
+# ===================== XÁC NHẬN / TẠO LẠI BÁO CÁO XƯỞNG =====================
+@bot.on_callback_query(filters.regex(r"^confirm_fac_rep_(.+)_(.+)$"))
+async def confirm_fac_rep_callback(client, callback_query: CallbackQuery):
+    new_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"✅ Đã xác nhận bởi @{callback_query.from_user.username or callback_query.from_user.id}", callback_data="ignore")]
+    ])
+    
+    await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+    await callback_query.answer("Đã xác nhận báo cáo!")
+    
+    from app.db.session import SessionLocal
+    from app.models.telegram import TelegramProjectMember
+    from app.models.business import Projects
+    from bot.utils.logger import LogError, LogType
+    
+    db = SessionLocal()
+    try:
+        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        if project:
+            super_mains = db.query(TelegramProjectMember.chat_id).filter(
+                TelegramProjectMember.project_id == project.id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title == "super_main"
+            ).distinct().all()
+            
+            for chat_id in super_mains:
+                try:
+                    await client.copy_message(
+                        chat_id=int(chat_id[0]),
+                        from_chat_id=callback_query.message.chat.id,
+                        message_id=callback_query.message.id,
+                        reply_markup=new_markup
+                    )
+                except Exception as e:
+                    LogError(f"Error forwarding factory report to super_main {chat_id}: {e}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        LogError(f"Error handling confirm_fac_rep_callback: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^regen_fac_rep_(.+)_(.+)$"))
+async def regen_fac_rep_callback(client, callback_query: CallbackQuery):
+    cp_id = callback_query.matches[0].group(1)
+    date_str = callback_query.matches[0].group(2)
+    
+    await callback_query.answer("Đang tạo lại báo cáo...", show_alert=False)
+    
+    from datetime import datetime
+    try:
+        report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except Exception:
+        await callback_query.message.reply_text("❌ Lỗi định dạng ngày.")
+        return
+        
+    from app.db.session import SessionLocal
+    from app.models.business import Projects
+    from bot.utils.scheduler import send_factory_purchase_report
+    
+    db = SessionLocal()
+    try:
+        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        if project:
+            # Sẽ gửi báo cáo mới (hoặc đè lên tin nhắn cũ, nhưng vì send_factory_purchase_report dùng send_message nên nó gửi tin nhắn mới)
+            await send_factory_purchase_report(db, project.id, report_date, client, specific_cp_id=cp_id)
+            # Thay đổi nội dung của tin nhắn cũ để biết là đã tạo lại
+            await callback_query.message.edit_text(
+                f"{callback_query.message.text}\n\n"
+                f"<i>Báo cáo đã được tạo lại bởi @{callback_query.from_user.username or callback_query.from_user.id}. Vui lòng xem tin nhắn mới nhất.</i>",
+                parse_mode=ParseMode.HTML
+            )
+    except Exception as e:
+        LogError(f"Error regenerating factory report: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.reply_text("❌ Có lỗi xảy ra khi tạo lại báo cáo.")
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^fund_confirm_(.+)$"))
+async def tien_nga_fund_confirm_callback(client, callback_query: CallbackQuery):
+    investment_id = callback_query.matches[0].group(1)
+    db = SessionLocal()
+    try:
+        from app.models.business import Investment
+        from app.models.telegram import TelegramProjectMember
+        from bot.utils.enums import CustomTitle
+
+        inv = db.query(Investment).filter(Investment.id == investment_id).first()
+        if not inv:
+            await callback_query.answer("⚠️ Không tìm thấy Quỹ.", show_alert=True)
+            return
+
+        # Tính toán lại số liệu để gửi báo cáo đầy đủ
+        from app.models.business import DailyPayment
+        from bot.utils.utils import fmt_money
+        import datetime
+
+        current_date = datetime.datetime.now().date()
+        today_payments = db.query(DailyPayment).filter(
+            DailyPayment.investment_id == inv.id,
+            DailyPayment.day == current_date,
+            DailyPayment.status == "APPROVED"
+        ).all()
+        
+        tong_thu = sum(p.amount for p in today_payments if p.payment_type.lower() == 'thu')
+        tong_chi = sum(p.amount for p in today_payments if p.payment_type.lower() == 'chi')
+        so_du = (inv.total_income or 0) - (inv.total_expense or 0) + (inv.initial_capital or 0)
+
+        # Notify super_main
+        super_main_tpm = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.role == "main",
+            TelegramProjectMember.custom_title == CustomTitle.SUPER_MAIN.value
+        ).first()
+
+        if super_main_tpm and super_main_tpm.chat_id:
+            super_main_text = (
+                f"✅ <b>BÁO CÁO THU CHI QUỸ {inv.name} ĐÃ ĐƯỢC XÁC NHẬN</b>\n\n"
+                f"<b>Người xác nhận:</b> @{callback_query.from_user.username or callback_query.from_user.id}\n"
+                f"<b>Ngày:</b> {current_date.strftime('%d/%m/%Y')}\n"
+                f"<b>Tổng Thu (Hôm nay):</b> <code>{fmt_money(tong_thu)}</code> VNĐ\n"
+                f"<b>Tổng Chi (Hôm nay):</b> <code>{fmt_money(tong_chi)}</code> VNĐ\n"
+                f"<b>Số tiền trong Quỹ hiện tại:</b> <code>{fmt_money(so_du)}</code> VNĐ"
+            )
+            await bot.send_message(
+                chat_id=int(super_main_tpm.chat_id),
+                text=super_main_text,
+                parse_mode=ParseMode.HTML
+            )
+
+        await callback_query.message.edit_text(
+            f"{callback_query.message.text}\n\n✅ <b>Đã xác nhận</b> bởi @{callback_query.from_user.username or callback_query.from_user.id}.",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer("Đã xác nhận thành công.")
+
+    except Exception as e:
+        LogError(f"Error in fund_confirm callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống", show_alert=True)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^fund_regen_(.+)$"))
+async def tien_nga_fund_regen_callback(client, callback_query: CallbackQuery):
+    investment_id = callback_query.matches[0].group(1)
+    db = SessionLocal()
+    try:
+        from app.models.business import Investment, DailyPayment
+        from bot.utils.utils import fmt_money
+        import datetime
+
+        inv = db.query(Investment).filter(Investment.id == investment_id).first()
+        if not inv:
+            await callback_query.answer("⚠️ Không tìm thấy Quỹ.", show_alert=True)
+            return
+
+        current_date = datetime.datetime.now().date()
+        today_payments = db.query(DailyPayment).filter(
+            DailyPayment.investment_id == inv.id,
+            DailyPayment.day == current_date,
+            DailyPayment.status == "APPROVED"
+        ).all()
+        
+        tong_thu = sum(p.amount for p in today_payments if p.payment_type.lower() == 'thu')
+        tong_chi = sum(p.amount for p in today_payments if p.payment_type.lower() == 'chi')
+        so_du = (inv.total_income or 0) - (inv.total_expense or 0) + (inv.initial_capital or 0)
+
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Xác nhận", callback_data=f"fund_confirm_{inv.id}")],
+            [InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"fund_regen_{inv.id}")]
+        ])
+        
+        text = (
+            f"<b>BÁO CÁO TỔNG HỢP THU CHI QUỸ: {inv.name} (Tạo lại)</b>\n\n"
+            f"<b>Ngày:</b> {current_date.strftime('%d/%m/%Y')}\n"
+            f"<b>Tổng Thu (Hôm nay):</b> <code>{fmt_money(tong_thu)}</code> VNĐ\n"
+            f"<b>Tổng Chi (Hôm nay):</b> <code>{fmt_money(tong_chi)}</code> VNĐ\n"
+            f"<b>Số tiền trong Quỹ hiện tại:</b> <code>{fmt_money(so_du)}</code> VNĐ\n\n"
+            f"<i>Vui lòng kiểm tra và xác nhận.</i>"
+        )
+        
+        await bot.send_message(
+            chat_id=callback_query.message.chat.id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup
+        )
+        
+        await callback_query.message.edit_text(
+            f"{callback_query.message.text}\n\n<i>Báo cáo đã được tạo lại bởi @{callback_query.from_user.username or callback_query.from_user.id}. Vui lòng xem tin nhắn mới nhất.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer("Đã tạo lại báo cáo.")
+
+    except Exception as e:
+        LogError(f"Error in fund_regen callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống", show_alert=True)
+    finally:
+        db.close()
+
+# ===================== XÁC NHẬN / TẠO LẠI BÁO CÁO KHO =====================
+@bot.on_callback_query(filters.regex(r"^confirm_inv_rep_(.+)_(.+)$"))
+async def confirm_inv_rep_callback(client, callback_query: CallbackQuery):
+    inv_id = callback_query.matches[0].group(1)
+    date_str = callback_query.matches[0].group(2)
+    
+    new_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"✅ Đã xác nhận bởi @{callback_query.from_user.username or callback_query.from_user.id}", callback_data="ignore")]
+    ])
+    
+    await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+    await callback_query.answer("Đã xác nhận báo cáo!")
+    
+    from app.db.session import SessionLocal
+    from app.models.telegram import TelegramProjectMember
+    from bot.utils.enums import CustomTitle
+    from app.models.business import Projects
+    from bot.utils.logger import LogError, LogType
+    
+    db = SessionLocal()
+    try:
+        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        if project:
+            super_mains = db.query(TelegramProjectMember.chat_id).filter(
+                TelegramProjectMember.project_id == project.id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title == CustomTitle.SUPER_MAIN.value
+            ).distinct().all()
+            
+            for chat_id in super_mains:
+                try:
+                    await client.copy_message(
+                        chat_id=int(chat_id[0]),
+                        from_chat_id=callback_query.message.chat.id,
+                        message_id=callback_query.message.id,
+                        reply_markup=new_markup
+                    )
+                except Exception as e:
+                    LogError(f"Error forwarding inventory report to super_main {chat_id}: {e}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        LogError(f"Error handling confirm_inv_rep_callback: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^regen_inv_rep_(.+)_(.+)$"))
+async def regen_inv_rep_callback(client, callback_query: CallbackQuery):
+    inv_id = callback_query.matches[0].group(1)
+    date_str = callback_query.matches[0].group(2)
+    
+    await callback_query.answer("Đang tạo lại báo cáo...", show_alert=False)
+    
+    from datetime import datetime
+    try:
+        report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except Exception:
+        await callback_query.message.reply_text("❌ Lỗi định dạng ngày.")
+        return
+        
+    from bot.utils.scheduler import generate_and_send_inventory_report
+    
+    try:
+        await generate_and_send_inventory_report(client, target_date=report_date, specific_inv_id=inv_id)
+        # Thay đổi nội dung của tin nhắn cũ để biết là đã tạo lại
+        await callback_query.message.edit_text(
+            f"{callback_query.message.text}\n\n"
+            f"<i>Báo cáo đã được tạo lại bởi @{callback_query.from_user.username or callback_query.from_user.id}. Vui lòng xem tin nhắn mới nhất.</i>",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error regenerating inventory report: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.reply_text("❌ Có lỗi xảy ra khi tạo lại báo cáo.")
+
+# ===================== XÁC NHẬN / TẠO LẠI BÁO CÁO THU HOẠCH =====================
+@bot.on_callback_query(filters.regex(r"^confirm_harv_rep_(.+)_(.+)$"))
+async def confirm_harv_rep_callback(client, callback_query: CallbackQuery):
+    aff = callback_query.matches[0].group(1)
+    date_str = callback_query.matches[0].group(2)
+    
+    new_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"✅ Đã xác nhận bởi @{callback_query.from_user.username or callback_query.from_user.id}", callback_data="ignore")]
+    ])
+    
+    await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+    await callback_query.answer("Đã xác nhận báo cáo!")
+    
+    from app.db.session import SessionLocal
+    from app.models.telegram import TelegramProjectMember
+    from bot.utils.enums import CustomTitle
+    from app.models.business import Projects
+    from bot.utils.logger import LogError, LogType
+    
+    db = SessionLocal()
+    try:
+        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        if project:
+            super_mains = db.query(TelegramProjectMember.chat_id).filter(
+                TelegramProjectMember.project_id == project.id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title == CustomTitle.SUPER_MAIN.value
+            ).distinct().all()
+            
+            for chat_id in super_mains:
+                try:
+                    await client.copy_message(
+                        chat_id=int(chat_id[0]),
+                        from_chat_id=callback_query.message.chat.id,
+                        message_id=callback_query.message.id,
+                        reply_markup=new_markup
+                    )
+                except Exception as e:
+                    LogError(f"Error forwarding harvest report to super_main {chat_id}: {e}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        LogError(f"Error handling confirm_harv_rep_callback: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^regen_harv_rep_(.+)_(.+)$"))
+async def regen_harv_rep_callback(client, callback_query: CallbackQuery):
+    aff = callback_query.matches[0].group(1)
+    date_str = callback_query.matches[0].group(2)
+    
+    await callback_query.answer("Đang tạo lại báo cáo...", show_alert=False)
+    
+    from datetime import datetime
+    try:
+        report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except Exception:
+        await callback_query.message.reply_text("❌ Lỗi định dạng ngày.")
+        return
+        
+    from bot.utils.scheduler import send_harvest_summary_report
+    from app.db.session import SessionLocal
+    from app.models.business import Projects
+    
+    db = SessionLocal()
+    try:
+        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        if project:
+            await send_harvest_summary_report(db, project.id, report_date, client, specific_affiliation=aff)
+            
+            # Thay đổi nội dung của tin nhắn cũ để biết là đã tạo lại
+            await callback_query.message.edit_text(
+                f"{callback_query.message.text}\n\n"
+                f"<i>Báo cáo đã được tạo lại bởi @{callback_query.from_user.username or callback_query.from_user.id}. Vui lòng xem tin nhắn mới nhất.</i>",
+                parse_mode=ParseMode.HTML
+            )
+    except Exception as e:
+        LogError(f"Error regenerating harvest report: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.reply_text("❌ Có lỗi xảy ra khi tạo lại báo cáo.")
+    finally:
+        db.close()
