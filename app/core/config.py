@@ -23,6 +23,7 @@ class DBConfig(BaseModel):
 
 class IMPConfig(BaseModel):
     Enable_API: bool = True
+    Chat_ID_Main: str = ""
 
 class AuthConfig(BaseModel):
     SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7" # Change in production

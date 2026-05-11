@@ -173,12 +173,12 @@ async def ggomoonsin_export_payroll_handler(client, message: Message) -> None:
 
 
 # --- Tạo lại bảng chấm công (Recreate Attendance Report) ---
-@bot.on_message(filters.command(["ggomoonsin_recreate_attendance_report"]) | filters.regex(r"^@\w+\s+/ggomoonsin_recreate_attendance_report\b"))
+@bot.on_message(filters.command(["ggomoonsin_recreate_attendance_report", "ggomoonsin_tao_lai_bang_cham_cong"]) | filters.regex(r"^@\w+\s+/(ggomoonsin_recreate_attendance_report|ggomoonsin_tao_lai_bang_cham_cong)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("GGoMoonSin")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 async def ggomoonsin_recreate_attendance_report_handler(client, message: Message) -> None:
-    args = await check_command_target(client, message.text, ["ggomoonsin_recreate_attendance_report"])
+    args = await check_command_target(client, message.text, ["ggomoonsin_recreate_attendance_report", "ggomoonsin_tao_lai_bang_cham_cong"])
     if args is None: return
 
     from bot.utils.human_resource import handle_recreate_attendance_report
@@ -186,3 +186,127 @@ async def ggomoonsin_recreate_attendance_report_handler(client, message: Message
     cmd = args[0] if args else "ggomoonsin_recreate_attendance_report"
     message.text = f"/{cmd} " + " ".join(args[1:]) if len(args) > 1 else f"/{cmd}"
     await handle_recreate_attendance_report(client, message, f"/{cmd}")
+
+
+# --- Xem danh sách công việc (Admin - Check Tasks) ---
+@bot.on_message(filters.command(["ggomoonsin_check_tasks", "ggomoonsin_danh_sach_cong_viec"]) | filters.regex(r"^@\w+\s+/(ggomoonsin_check_tasks|ggomoonsin_danh_sach_cong_viec)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("GGoMoonSin")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+async def ggomoonsin_check_tasks_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["ggomoonsin_check_tasks", "ggomoonsin_danh_sach_cong_viec"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_check_tasks
+    cmd = args[0] if args else "ggomoonsin_danh_sach_cong_viec"
+    clean_cmd = cmd.split('@')[0]
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_check_tasks(client, message, clean_cmd)
+
+
+# --- Xuất bảng lương Excel (List Payroll Excel) ---
+@bot.on_message(filters.command(["ggomoonsin_list_payroll", "ggomoonsin_xuat_danh_sach_luong"]) | filters.regex(r"^@\w+\s+/(ggomoonsin_list_payroll|ggomoonsin_xuat_danh_sach_luong)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("GGoMoonSin")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+async def ggomoonsin_list_payroll_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["ggomoonsin_list_payroll", "ggomoonsin_xuat_danh_sach_luong"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_list_payroll_excel
+    import re
+    cmd = args[0] if args else "ggomoonsin_list_payroll"
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_list_payroll_excel(client, message, cmd)
+
+
+# --- Xuất danh sách nhân viên Excel (List Employee Excel) ---
+@bot.on_message(filters.command(["ggomoonsin_list_employee", "ggomoonsin_danh_sach_nhan_vien"]) | filters.regex(r"^@\w+\s+/(ggomoonsin_list_employee|ggomoonsin_danh_sach_nhan_vien)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("GGoMoonSin")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+async def ggomoonsin_list_employee_handler(client, message: Message) -> None:
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        from app.models.employee import Employee
+        import tempfile
+        import os
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        employees = db.query(Employee).order_by(Employee.last_name, Employee.first_name).all()
+
+        if not employees:
+            await message.reply_text("⚠️ Không có nhân viên nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "DanhSachNhanVien"
+
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        thin_border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin")
+        )
+
+        headers = ["STT", "Họ", "Tên", "Username TG", "SĐT", "Chức Vụ", "Lương CB", "Trạng Thái"]
+        for col_idx, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+
+        for row_idx, emp in enumerate(employees, 2):
+            ws.cell(row=row_idx, column=1, value=row_idx - 1).alignment = center_align
+            ws.cell(row=row_idx, column=2, value=emp.last_name or "").alignment = left_align
+            ws.cell(row=row_idx, column=3, value=emp.first_name or "").alignment = left_align
+            ws.cell(row=row_idx, column=4, value=emp.telegram_username or "").alignment = left_align
+            ws.cell(row=row_idx, column=5, value=emp.phone or "").alignment = left_align
+            ws.cell(row=row_idx, column=6, value=emp.position or "").alignment = left_align
+            ws.cell(row=row_idx, column=7, value=emp.base_salary or 0).alignment = center_align
+            ws.cell(row=row_idx, column=8, value=emp.status or "").alignment = center_align
+            for c in range(1, 9):
+                ws.cell(row=row_idx, column=c).border = thin_border
+
+        for col in ws.columns:
+            max_length = max(len(str(cell.value or "")) for cell in col)
+            ws.column_dimensions[col[0].column_letter].width = min(max_length + 4, 30)
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx", prefix="ggomoonsin_ds_nv_")
+        wb.save(tmp.name)
+        tmp.close()
+
+        await message.reply_document(
+            document=tmp.name,
+            caption=f"📋 <b>DANH SÁCH NHÂN VIÊN GGOMOONSIN</b>\nTổng: {len(employees)} nhân viên",
+            parse_mode=ParseMode.HTML
+        )
+        os.unlink(tmp.name)
+    except Exception as e:
+        from bot.utils.logger import LogError, LogType
+        LogError(f"Error exporting employee list: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# --- Xuất danh sách chấm công (List Attendance Excel) ---
+@bot.on_message(filters.command(["ggomoonsin_list_attendance", "ggomoonsin_danh_sach_cham_cong"]) | filters.regex(r"^@\w+\s+/(ggomoonsin_list_attendance|ggomoonsin_danh_sach_cham_cong)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("GGoMoonSin")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+async def ggomoonsin_list_attendance_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["ggomoonsin_list_attendance", "ggomoonsin_danh_sach_cham_cong"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_list_attendance_excel
+    import re
+    cmd = args[0] if args else "ggomoonsin_list_attendance"
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_list_attendance_excel(client, message, cmd)

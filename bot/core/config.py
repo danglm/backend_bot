@@ -13,6 +13,10 @@ def load_settings():
 app_config = load_settings()
 
 class Settings:
+    # Read IMP config
+    imp_config = app_config.get("IMP_Config", {})
+    CHAT_ID_MAIN = imp_config.get("Chat_ID_Main", "")
+
     # Read TienNga config
     tiennga_config = app_config.get("TienNga", {})
     FACTORY_GROUP_MAPPING = tiennga_config.get("Factory_Group_Mapping", {})

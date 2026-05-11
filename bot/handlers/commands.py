@@ -944,6 +944,43 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_kiem_tra_ho_dan", "Kiểm tra hộ dân"),
                 ])
 
+        # ===================== GGOMOONSIN =====================
+        elif "ggomoonsin" in project_name:
+            if custom_title == "super_main":
+                label = "GGoMoonSin (Tổng Hợp)"
+
+            # Lệnh chung cho tất cả nhóm main
+            if custom_title and custom_title.startswith("main_") or custom_title == "super_main":
+                commands_to_set.extend([
+                    BotCommand("send_message", "Gửi thông báo"),
+                ])
+            if custom_title in ("super_main", "main_hr"):
+                if custom_title != "super_main": label = "GGoMoonSin (Quản Lý)"
+                commands_to_set.extend([
+                    BotCommand("ggomoonsin_tao_nhan_vien", "Thêm nhân viên"),
+                    BotCommand("ggomoonsin_cap_nhat_nhan_vien", "Cập nhật nhân viên"),
+                    BotCommand("ggomoonsin_xoa_nhan_vien", "Xóa nhân viên"),
+                    BotCommand("ggomoonsin_giao_viec", "Giao việc"),
+                    BotCommand("ggomoonsin_xuat_luong", "Xuất bảng lương"),
+                    BotCommand("ggomoonsin_tao_lai_bang_cham_cong", "Tạo lại báo cáo chấm công"),
+                    BotCommand("ggomoonsin_danh_sach_cong_viec", "Xem công việc của nhân viên"),
+                    BotCommand("ggomoonsin_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
+                    BotCommand("ggomoonsin_danh_sach_nhan_vien", "Xuất DS nhân viên Excel"),
+                    BotCommand("ggomoonsin_danh_sach_cham_cong", "Xuất DS chấm công"),
+                ])
+            ## Member
+            if custom_title == "member_hr":
+                label = "GGoMoonSin (Nhân Viên)"
+                commands_to_set.extend([
+                    BotCommand("ggomoonsin_cham_cong", "Chấm công vào ca"),
+                    BotCommand("ggomoonsin_tan_ca", "Tan ca / Kết thúc ca"),
+                    BotCommand("ggomoonsin_xin_nghi_phep", "Xin nghỉ phép"),
+                    BotCommand("ggomoonsin_dang_ky_tang_ca", "Đăng ký tăng ca"),
+                    BotCommand("ggomoonsin_xem_cham_cong", "Xem chấm công"),
+                    BotCommand("ggomoonsin_xem_nghi_phep", "Xem danh sách nghỉ phép"),
+                    BotCommand("ggomoonsin_xem_cong_viec", "Xem công việc được giao"),
+                ])
+
         if not commands_to_set:
             await message.reply_text(
                 f"⚠️ Không tìm thấy danh sách lệnh cho dự án <b>{project.project_name}</b> "
@@ -971,3 +1008,658 @@ async def register_bot_command_handler(client, message: Message) -> None:
         await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
     finally:
         db.close()
+
+
+# =========================================================================================
+# LỆNH: /list_all_group  /danh_sach_nhom
+# =========================================================================================
+
+_LAG_PAGE_SIZE = 10  # Số nhóm hiển thị mỗi trang
+
+
+@bot.on_message(filters.command(["list_all_group", "danh_sach_nhom"]) | filters.regex(r"^@\w+\s+/(list_all_group|danh_sach_nhom)\b"))
+async def list_all_group_handler(client, message: Message) -> None:
+    """
+    /list_all_group (/danh_sach_nhom) — Chỉ hoạt động trong nhóm Chat_ID_Main.
+    Hiển thị danh sách các dự án để chọn, sau đó hiển thị các nhóm thuộc dự án đó.
+    """
+    from bot.core.config import settings as bot_settings
+    from bot.utils.utils import check_command_target
+
+    args = await check_command_target(client, message.text, ["list_all_group", "danh_sach_nhom"])
+    if args is None:
+        return
+
+    # Kiểm tra Chat_ID_Main
+    chat_id_main = bot_settings.CHAT_ID_MAIN
+    if not chat_id_main or str(message.chat.id) != chat_id_main:
+        await message.reply_text(
+            "⚠️ Lệnh này chỉ được sử dụng trong nhóm <b>Main</b> đã được cấu hình.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.business import Projects
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        projects = db.query(Projects).order_by(Projects.project_name).all()
+
+        if not projects:
+            await message.reply_text("⚠️ Chưa có dự án nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for p in projects:
+            p_id_short = str(p.id).replace("-", "")[:24]  # Rút gọn UUID cho callback_data
+            buttons.append([InlineKeyboardButton(f"{p.project_name}", callback_data=f"lag_proj_{p_id_short}_0")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="lag_cancel")])
+
+        keyboard = InlineKeyboardMarkup(buttons)
+        await message.reply_text(
+            "<b>DANH SÁCH NHÓM THEO DỰ ÁN</b>\n\n"
+            "Vui lòng chọn dự án để xem danh sách các nhóm:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+
+    except Exception as e:
+        LogError(f"Error in list_all_group_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
+    finally:
+        db.close()
+
+
+def _build_lag_group_page(project_name, groups_data, page, page_size, total_pages, project_id_short):
+    """Build text + inline keyboard for a page of groups within a project."""
+    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    start = page * page_size
+    end = start + page_size
+    page_groups = groups_data[start:end]
+    total = len(groups_data)
+
+    text = (
+        f"<b>DANH SÁCH NHÓM — {project_name}</b>\n"
+        f"<i>Tổng: {total} nhóm · Trang {page + 1}/{total_pages}</i>\n"
+        f"{'━' * 30}\n\n"
+    )
+
+    for idx, g in enumerate(page_groups, start=start + 1):
+        group_name = g["group_name"] or "N/A"
+        role = (g["role"] or "—").upper()
+        member_count = g["member_count"]
+        owners = g["owners"] or "—"
+        admins = g["admins"] or "—"
+
+        text += (
+            f"<b>{idx}. {group_name}</b>\n"
+            f"Role: <code>{role}</code>\n"
+            f"Thành viên: <b>{member_count}</b>\n"
+            f"Owner: {owners}\n"
+            f"Admin: {admins}\n\n"
+        )
+
+    # Truncate if too long
+    if len(text) > 3900:
+        text = text[:3850] + "\n\n<i>... (nội dung bị cắt do giới hạn hiển thị)</i>"
+
+    # Build navigation buttons
+    nav_buttons = []
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("Trước", callback_data=f"lag_proj_{project_id_short}_{page - 1}"))
+    nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="lag_noop"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Sau", callback_data=f"lag_proj_{project_id_short}_{page + 1}"))
+    if nav_row:
+        nav_buttons.append(nav_row)
+
+    nav_buttons.append([InlineKeyboardButton("Quay lại", callback_data="lag_back")])
+    nav_buttons.append([InlineKeyboardButton("Đóng", callback_data="lag_cancel")])
+
+    markup = InlineKeyboardMarkup(nav_buttons)
+    return text, markup
+
+
+def _query_groups_for_project(db, project_id):
+    """Query all groups in a project, compute member count, owners, admins per group."""
+    from app.models.telegram import TelegramProjectMember
+    from sqlalchemy import func
+
+    # Get distinct groups in this project
+    group_rows = db.query(
+        TelegramProjectMember.chat_id,
+        TelegramProjectMember.group_name,
+        TelegramProjectMember.role,
+    ).filter(
+        TelegramProjectMember.project_id == project_id
+    ).distinct(
+        TelegramProjectMember.chat_id
+    ).all()
+
+    # Build a set of unique chat_ids
+    seen_chat_ids = set()
+    unique_groups = []
+    for row in group_rows:
+        if row.chat_id not in seen_chat_ids:
+            seen_chat_ids.add(row.chat_id)
+            unique_groups.append(row)
+
+    groups_data = []
+    for row in unique_groups:
+        chat_id = row.chat_id
+
+        # Count members
+        member_count = db.query(func.count(TelegramProjectMember.id)).filter(
+            TelegramProjectMember.project_id == project_id,
+            TelegramProjectMember.chat_id == chat_id
+        ).scalar() or 0
+
+        # Get owners
+        owners_q = db.query(TelegramProjectMember.full_name, TelegramProjectMember.user_name).filter(
+            TelegramProjectMember.project_id == project_id,
+            TelegramProjectMember.chat_id == chat_id,
+            TelegramProjectMember.member_status == "OWNER"
+        ).all()
+        owners_list = []
+        for o in owners_q:
+            name = o.full_name or o.user_name or "N/A"
+            if o.user_name:
+                name += f" (@{o.user_name})"
+            owners_list.append(name)
+        owners_str = ", ".join(owners_list) if owners_list else "—"
+
+        # Get admins
+        admins_q = db.query(TelegramProjectMember.full_name, TelegramProjectMember.user_name).filter(
+            TelegramProjectMember.project_id == project_id,
+            TelegramProjectMember.chat_id == chat_id,
+            TelegramProjectMember.member_status == "ADMINISTRATOR"
+        ).all()
+        admins_list = []
+        for a in admins_q:
+            name = a.full_name or a.user_name or "N/A"
+            if a.user_name:
+                name += f" (@{a.user_name})"
+            admins_list.append(name)
+        admins_str = ", ".join(admins_list) if admins_list else "—"
+
+        groups_data.append({
+            "chat_id": chat_id,
+            "group_name": row.group_name,
+            "role": row.role,
+            "member_count": member_count,
+            "owners": owners_str,
+            "admins": admins_str,
+        })
+
+    # Sort: main groups first, then by group name
+    groups_data.sort(key=lambda g: (0 if g["role"] == "main" else 1, g["group_name"] or ""))
+    return groups_data
+
+
+@bot.on_callback_query(filters.regex(r"^lag_proj_([a-f0-9]+)_(\d+)$"))
+async def lag_project_callback(client, callback_query):
+    """Callback khi chọn dự án hoặc chuyển trang."""
+    from pyrogram.types import CallbackQuery
+    project_id_short = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    from app.models.business import Projects
+
+    db = SessionLocal()
+    try:
+        # Tìm project bằng prefix UUID
+        projects = db.query(Projects).all()
+        project = None
+        for p in projects:
+            if str(p.id).replace("-", "").startswith(project_id_short):
+                project = p
+                break
+
+        if not project:
+            await callback_query.answer("⚠️ Không tìm thấy dự án.", show_alert=True)
+            return
+
+        # Query groups
+        groups_data = _query_groups_for_project(db, project.id)
+
+        if not groups_data:
+            from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Quay lại", callback_data="lag_back")],
+                [InlineKeyboardButton("Đóng", callback_data="lag_cancel")]
+            ])
+            await callback_query.message.edit_text(
+                f"<b>DANH SÁCH NHÓM — {project.project_name}</b>\n\n"
+                f"<i>Chưa có nhóm nào trong dự án này.</i>",
+                reply_markup=kb,
+                parse_mode=ParseMode.HTML
+            )
+            await callback_query.answer()
+            return
+
+        total = len(groups_data)
+        total_pages = max(1, (total + _LAG_PAGE_SIZE - 1) // _LAG_PAGE_SIZE)
+
+        if page < 0 or page >= total_pages:
+            page = 0
+
+        text, markup = _build_lag_group_page(project.project_name, groups_data, page, _LAG_PAGE_SIZE, total_pages, project_id_short)
+        await callback_query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+
+    except Exception as e:
+        LogError(f"Error in lag_project_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^lag_back$"))
+async def lag_back_callback(client, callback_query):
+    """Quay lại danh sách dự án."""
+    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from app.models.business import Projects
+
+    db = SessionLocal()
+    try:
+        projects = db.query(Projects).order_by(Projects.project_name).all()
+
+        buttons = []
+        for p in projects:
+            p_id_short = str(p.id).replace("-", "")[:24]
+            buttons.append([InlineKeyboardButton(f"{p.project_name}", callback_data=f"lag_proj_{p_id_short}_0")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="lag_cancel")])
+
+        keyboard = InlineKeyboardMarkup(buttons)
+        await callback_query.message.edit_text(
+            "<b>DANH SÁCH NHÓM THEO DỰ ÁN</b>\n\n"
+            "Vui lòng chọn dự án để xem danh sách các nhóm:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+
+    except Exception as e:
+        LogError(f"Error in lag_back_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^lag_cancel$"))
+async def lag_cancel_callback(client, callback_query):
+    """Hủy / Đóng tin nhắn."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^lag_noop$"))
+async def lag_noop_callback(client, callback_query):
+    """No-op callback cho nút hiển thị số trang."""
+    await callback_query.answer()
+
+
+# =========================================================================================
+# LỆNH: /create_project  /tao_du_an
+# =========================================================================================
+
+@bot.on_message(filters.command(["create_project", "tao_du_an"]) & ~filters.regex(r"\n"))
+async def create_project_handler(client, message: Message) -> None:
+    """
+    /create_project (/tao_du_an) — Chỉ hoạt động trong nhóm Chat_ID_Main.
+    Hiển thị form để người dùng điền tên dự án.
+    """
+    from bot.core.config import settings as bot_settings
+    from bot.utils.utils import check_command_target
+
+    args = await check_command_target(client, message.text, ["create_project", "tao_du_an"])
+    if args is None:
+        return
+
+    # Kiểm tra Chat_ID_Main
+    chat_id_main = bot_settings.CHAT_ID_MAIN
+    if not chat_id_main or str(message.chat.id) != chat_id_main:
+        await message.reply_text(
+            "⚠️ Lệnh này chỉ được sử dụng trong nhóm <b>Main</b> đã được cấu hình.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    form_text = (
+        "<b>TẠO DỰ ÁN MỚI</b>\n\n"
+        "Sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
+        "<pre>/tao_du_an\n"
+        "Tên Dự Án: </pre>"
+    )
+    await message.reply_text(form_text, parse_mode=ParseMode.HTML)
+
+
+@bot.on_message(filters.regex(r"^/(create_project|tao_du_an)\n") & filters.group)
+async def create_project_form_handler(client, message: Message) -> None:
+    """Xử lý form tạo dự án khi người dùng gửi multi-line."""
+    from bot.core.config import settings as bot_settings
+    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    # Kiểm tra Chat_ID_Main
+    chat_id_main = bot_settings.CHAT_ID_MAIN
+    if not chat_id_main or str(message.chat.id) != chat_id_main:
+        return
+
+    lines = message.text.strip().split("\n")
+    if len(lines) < 2:
+        await message.reply_text(
+            "⚠️ Form không hợp lệ. Vui lòng điền đầy đủ thông tin.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Parse form data
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    project_name = data.get("Tên Dự Án", data.get("Ten Du An", "")).strip()
+
+    if not project_name:
+        await message.reply_text(
+            "⚠️ <b>Tên Dự Án</b> là bắt buộc. Vui lòng điền tên dự án.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Kiểm tra trùng tên
+    db = SessionLocal()
+    try:
+        from app.models.business import Projects
+
+        existing = db.query(Projects).filter(
+            Projects.project_name.ilike(project_name)
+        ).first()
+
+        if existing:
+            await message.reply_text(
+                f"⚠️ Dự án với tên <b>{project_name}</b> đã tồn tại trong hệ thống.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Hiển thị xác nhận
+        # Encode tên dự án vào callback_data (giới hạn 64 bytes)
+        # Dùng message_id để lưu context thay vì encode tên dài
+        import hashlib
+        name_hash = hashlib.md5(project_name.encode()).hexdigest()[:12]
+
+        # Lưu tạm tên dự án vào dict in-memory
+        _pending_projects[name_hash] = project_name
+
+        confirm_text = (
+            "<b>XÁC NHẬN TẠO DỰ ÁN</b>\n"
+            f"{'━' * 20}\n\n"
+            f"<b>Tên Dự Án:</b> {project_name}\n\n"
+            f"Bạn có chắc chắn muốn tạo dự án này?"
+        )
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Xác nhận", callback_data=f"cp_confirm_{name_hash}"),
+                InlineKeyboardButton("Hủy", callback_data="cp_cancel")
+            ]
+        ])
+
+        await message.reply_text(confirm_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error in create_project_form_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
+    finally:
+        db.close()
+
+
+# In-memory dict để lưu tạm tên dự án chờ xác nhận
+_pending_projects = {}
+
+
+@bot.on_callback_query(filters.regex(r"^cp_confirm_([a-f0-9]+)$"))
+async def cp_confirm_callback(client, callback_query):
+    """Xác nhận tạo dự án."""
+    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    import uuid as uuid_lib
+
+    name_hash = callback_query.matches[0].group(1)
+    project_name = _pending_projects.pop(name_hash, None)
+
+    if not project_name:
+        await callback_query.answer("⚠️ Phiên tạo dự án đã hết hạn. Vui lòng thực hiện lại.", show_alert=True)
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.business import Projects
+
+        # Kiểm tra trùng lần nữa
+        existing = db.query(Projects).filter(
+            Projects.project_name.ilike(project_name)
+        ).first()
+
+        if existing:
+            await callback_query.message.edit_text(
+                f"⚠️ Dự án <b>{project_name}</b> đã tồn tại.",
+                parse_mode=ParseMode.HTML
+            )
+            await callback_query.answer()
+            return
+
+        new_project = Projects(
+            id=uuid_lib.uuid4(),
+            project_name=project_name
+        )
+        db.add(new_project)
+        db.commit()
+
+        await callback_query.message.edit_text(
+            f"✅ <b>TẠO DỰ ÁN THÀNH CÔNG!</b>\n"
+            f"{'━' * 20}\n\n"
+            f"<b>Tên Dự Án:</b> {project_name}\n"
+            f"<b>ID:</b> <code>{new_project.id}</code>\n\n"
+            f"<i>Dự án đã được lưu vào hệ thống.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer("Tạo dự án thành công!")
+        LogInfo(f"[CreateProject] Created project '{project_name}' by @{callback_query.from_user.username or callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in cp_confirm_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi tạo dự án.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^cp_cancel$"))
+async def cp_cancel_callback(client, callback_query):
+    """Hủy tạo dự án."""
+    await callback_query.message.edit_text(
+        "❌ Đã hủy tạo dự án.",
+        parse_mode=ParseMode.HTML
+    )
+    await callback_query.answer()
+
+
+# =========================================================================================
+# LỆNH: /delete_project  /xoa_du_an
+# =========================================================================================
+
+@bot.on_message(filters.command(["delete_project", "xoa_du_an"]) | filters.regex(r"^@\w+\s+/(delete_project|xoa_du_an)\b"))
+async def delete_project_handler(client, message: Message) -> None:
+    """
+    /delete_project (/xoa_du_an) — Chỉ hoạt động trong nhóm Chat_ID_Main.
+    Hiển thị danh sách các dự án để chọn xóa.
+    """
+    from bot.core.config import settings as bot_settings
+    from bot.utils.utils import check_command_target
+
+    args = await check_command_target(client, message.text, ["delete_project", "xoa_du_an"])
+    if args is None:
+        return
+
+    # Kiểm tra Chat_ID_Main
+    chat_id_main = bot_settings.CHAT_ID_MAIN
+    if not chat_id_main or str(message.chat.id) != chat_id_main:
+        await message.reply_text(
+            "⚠️ Lệnh này chỉ được sử dụng trong nhóm <b>Main</b> đã được cấu hình.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.business import Projects
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        projects = db.query(Projects).order_by(Projects.project_name).all()
+
+        if not projects:
+            await message.reply_text("⚠️ Chưa có dự án nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for p in projects:
+            p_id_short = str(p.id).replace("-", "")[:24]
+            buttons.append([InlineKeyboardButton(f"{p.project_name}", callback_data=f"dp_sel_{p_id_short}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="dp_cancel")])
+
+        keyboard = InlineKeyboardMarkup(buttons)
+        await message.reply_text(
+            "<b>XÓA DỰ ÁN</b>\n\n"
+            "⚠️ <i>Lưu ý: Việc xóa Dự án có thể ảnh hưởng tới nhiều dữ liệu trong Database. "
+            "Hãy kiểm tra kỹ dữ liệu trước khi xóa Dự án.</i>\n\n"
+            "Vui lòng chọn dự án cần xóa:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+
+    except Exception as e:
+        LogError(f"Error in delete_project_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^dp_sel_([a-f0-9]+)$"))
+async def dp_select_callback(client, callback_query):
+    """Chọn dự án để xóa → hiển thị xác nhận."""
+    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from app.models.business import Projects
+
+    project_id_short = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        projects = db.query(Projects).all()
+        project = None
+        for p in projects:
+            if str(p.id).replace("-", "").startswith(project_id_short):
+                project = p
+                break
+
+        if not project:
+            await callback_query.answer("⚠️ Không tìm thấy dự án.", show_alert=True)
+            return
+
+        # Đếm số nhóm liên quan
+        from app.models.telegram import TelegramProjectMember
+        from sqlalchemy import func
+        group_count = db.query(func.count(func.distinct(TelegramProjectMember.chat_id))).filter(
+            TelegramProjectMember.project_id == project.id
+        ).scalar() or 0
+
+        member_count = db.query(func.count(TelegramProjectMember.id)).filter(
+            TelegramProjectMember.project_id == project.id
+        ).scalar() or 0
+
+        confirm_text = (
+            "<b>XÁC NHẬN XÓA DỰ ÁN</b>\n"
+            f"{'━' * 20}\n\n"
+            f"<b>Tên Dự Án:</b> {project.project_name}\n"
+            f"<b>ID:</b> <code>{project.id}</code>\n"
+            f"<b>Số nhóm liên quan:</b> {group_count}\n"
+            f"<b>Số thành viên liên quan:</b> {member_count}\n\n"
+            f"⚠️ <b>Lưu ý:</b> Việc xóa Dự án có thể ảnh hưởng tới nhiều dữ liệu "
+            f"trong Database. Hãy kiểm tra kỹ dữ liệu trước khi xóa Dự án.\n\n"
+            f"Bạn có chắc chắn muốn xóa dự án <b>{project.project_name}</b>?"
+        )
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Xác nhận xóa", callback_data=f"dp_confirm_{project_id_short}"),
+                InlineKeyboardButton("Hủy", callback_data="dp_cancel")
+            ]
+        ])
+
+        await callback_query.message.edit_text(confirm_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+
+    except Exception as e:
+        LogError(f"Error in dp_select_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^dp_confirm_([a-f0-9]+)$"))
+async def dp_confirm_callback(client, callback_query):
+    """Xác nhận xóa dự án."""
+    from app.models.business import Projects
+
+    project_id_short = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        projects = db.query(Projects).all()
+        project = None
+        for p in projects:
+            if str(p.id).replace("-", "").startswith(project_id_short):
+                project = p
+                break
+
+        if not project:
+            await callback_query.answer("⚠️ Không tìm thấy dự án.", show_alert=True)
+            return
+
+        project_name = project.project_name
+        project_id = str(project.id)
+
+        db.delete(project)
+        db.commit()
+
+        await callback_query.message.edit_text(
+            f"✅ <b>ĐÃ XÓA DỰ ÁN THÀNH CÔNG!</b>\n"
+            f"{'━' * 20}\n\n"
+            f"<b>Tên Dự Án:</b> {project_name}\n"
+            f"<b>ID:</b> <code>{project_id}</code>\n\n"
+            f"<i>Dự án đã được xóa khỏi hệ thống.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer("Xóa dự án thành công!")
+        LogInfo(f"[DeleteProject] Deleted project '{project_name}' (ID: {project_id}) by @{callback_query.from_user.username or callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in dp_confirm_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi xóa dự án.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^dp_cancel$"))
+async def dp_cancel_callback(client, callback_query):
+    """Hủy xóa dự án."""
+    await callback_query.message.edit_text(
+        "❌ Đã hủy xóa dự án.",
+        parse_mode=ParseMode.HTML
+    )
+    await callback_query.answer()
