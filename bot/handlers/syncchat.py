@@ -115,7 +115,7 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
     buttons = [
         [
             InlineKeyboardButton("Nhóm Chính (Main)", callback_data=f"sync_role_{project_id}_main_none"),
-            InlineKeyboardButton("Nhóm Thành viên (Member)", callback_data=f"sync_role_{project_id}_member_none")
+            InlineKeyboardButton("Nhóm Thành viên (Member)", callback_data=f"snm:{project_id}")
         ],
         [
             InlineKeyboardButton("Quay lại", callback_data="sync_back_to_proj"),
@@ -256,6 +256,69 @@ async def sync_pick_parent_callback(client, callback_query: CallbackQuery):
 
     # Gọi trực tiếp logic sync với parent_chat_id
     await _do_sync_role(client, callback_query, project_id, "member", dept, parent_chat_id)
+
+# --- Step 2e: Normal project - Member chọn nhóm Main làm parent ---
+@bot.on_callback_query(filters.regex(r"^snm:(.+)$"))
+async def sync_normal_member_parent_callback(client, callback_query: CallbackQuery):
+    project_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        project = db.query(Projects).filter(Projects.id == project_id).first()
+        project_name = project.project_name if project else "Không xác định"
+
+        # Tìm tất cả nhóm Main trong cùng project
+        main_groups = db.query(TelegramProjectMember.chat_id, TelegramProjectMember.group_name).filter(
+            TelegramProjectMember.project_id == project_id,
+            TelegramProjectMember.role == "main"
+        ).distinct().all()
+
+        if not main_groups:
+            # Chưa có nhóm Main nào → sync member không có parent
+            await callback_query.message.edit_text(
+                f"⚠️ <b>Chưa syncchat nhóm Main cho dự án {project_name}!</b>\n\n"
+                f"Vui lòng syncchat nhóm Main trước, "
+                f"sau đó mới syncchat nhóm Member.\n\n"
+                f"<i>Bước: /syncchat → {project_name} → Nhóm Chính (Main)</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Hiển thị danh sách nhóm Main để chọn làm parent
+        buttons = []
+        for chat_id_val, group_name in main_groups:
+            display_name = group_name or f"Nhóm {chat_id_val}"
+            # snp = sync normal parent: snp:{project_id}:{main_chat_id}
+            buttons.append([InlineKeyboardButton(
+                f"📌 {display_name}",
+                callback_data=f"snp:{project_id}:{chat_id_val}"
+            )])
+        buttons.append([
+            InlineKeyboardButton("Quay lại", callback_data=f"sync_proj_{project_id}"),
+            InlineKeyboardButton("Hủy", callback_data="sync_cancel")
+        ])
+
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await callback_query.message.edit_text(
+            f"<b>{project_name} — Chọn nhóm Main cha</b>\n\n"
+            f"Vui lòng chọn nhóm Main mà nhóm Member này sẽ thuộc về:",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in sync_normal_member_parent: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+# --- Step 2f: Normal project - Chọn parent xong → tiến hành sync member ---
+@bot.on_callback_query(filters.regex(r"^snp:(.+):(.+)$"))
+async def sync_normal_pick_parent_callback(client, callback_query: CallbackQuery):
+    project_id = callback_query.matches[0].group(1)
+    parent_chat_id = callback_query.matches[0].group(2)
+
+    # Gọi trực tiếp logic sync với parent_chat_id, subcategory="none"
+    await _do_sync_role(client, callback_query, project_id, "member", "none", parent_chat_id)
 
 # --- Step 2b: Other project - Select Role after sub-category ---
 @bot.on_callback_query(filters.regex(r"^sync_other_(.+)_(device|vehicle|image)$"))

@@ -816,30 +816,41 @@ async def bad_debt_notification_worker():
                             if not customer:
                                 continue
                                 
+                            from app.models.business import Projects
+                            credit_project = db.query(Projects).filter(Projects.project_name == "Credit").first()
+                            if not credit_project:
+                                continue
+                                
                             member_project_links = db.query(TelegramProjectMember).filter(
+                                TelegramProjectMember.project_id == credit_project.id,
                                 TelegramProjectMember.role == "member",
-                                TelegramProjectMember.slot_name.like("member___")
+                                TelegramProjectMember.slot_name.like("member%")
                             ).all()
 
                             LogInfo(f"Found {len(member_project_links)} member project links.", LogType.SYSTEM_STATUS)
                             
                             target_project_id = None
+                            parent_main_chat_id = None
                             for link in member_project_links:
                                 link_username = f"@{link.user_name}" if link.user_name else ""
                                 link_userid = str(link.user_id)
                                 
                                 if customer.contact_info == link_username or customer.contact_info == link_userid:
                                     target_project_id = link.project_id
+                                    parent_main_chat_id = link.parent_id
                                     break
                                     
                             if not target_project_id:
                                 continue
                                 
-                            main_group = db.query(TelegramProjectMember).filter(
-                                TelegramProjectMember.project_id == target_project_id,
-                                TelegramProjectMember.role == "main"
-                            ).first()
-                            
+                            main_group = None
+                            if parent_main_chat_id:
+                                main_group = db.query(TelegramProjectMember).filter(
+                                    TelegramProjectMember.project_id == target_project_id,
+                                    TelegramProjectMember.role == "main",
+                                    TelegramProjectMember.chat_id == parent_main_chat_id
+                                ).first()
+                                
                             if not main_group:
                                 main_group = db.query(TelegramProjectMember).filter(
                                     TelegramProjectMember.project_id == target_project_id,
@@ -971,14 +982,21 @@ async def interest_payment_notification_worker():
                             if not customer:
                                 continue
                                 
+                            from app.models.business import Projects
+                            credit_project = db.query(Projects).filter(Projects.project_name == "Credit").first()
+                            if not credit_project:
+                                continue
+
                             # Find the target project and member group using target customer contact info
                             customer_links = db.query(TelegramProjectMember).filter(
+                                TelegramProjectMember.project_id == credit_project.id,
                                 TelegramProjectMember.role == "member",
                                 TelegramProjectMember.slot_name.like("member%")
                             ).all()
                             
                             target_project_id = None
                             member_chat_id = None
+                            parent_main_chat_id = None
                             for link in customer_links:
                                 link_username = f"@{link.user_name}" if link.user_name else ""
                                 link_userid = str(link.user_id)
@@ -986,6 +1004,7 @@ async def interest_payment_notification_worker():
                                 if customer.contact_info == link_username or customer.contact_info == link_userid:
                                     target_project_id = link.project_id
                                     member_chat_id = link.chat_id
+                                    parent_main_chat_id = link.parent_id
                                     break
                                     
                             if days_late == 7:
@@ -1001,10 +1020,19 @@ async def interest_payment_notification_worker():
                                 
                                 # Notify main group
                                 if target_project_id:
-                                    main_group = db.query(TelegramProjectMember).filter(
-                                        TelegramProjectMember.project_id == target_project_id,
-                                        TelegramProjectMember.role == "main"
-                                    ).first()
+                                    main_group = None
+                                    if parent_main_chat_id:
+                                        main_group = db.query(TelegramProjectMember).filter(
+                                            TelegramProjectMember.project_id == target_project_id,
+                                            TelegramProjectMember.role == "main",
+                                            TelegramProjectMember.chat_id == parent_main_chat_id
+                                        ).first()
+                                        
+                                    if not main_group:
+                                        main_group = db.query(TelegramProjectMember).filter(
+                                            TelegramProjectMember.project_id == target_project_id,
+                                            TelegramProjectMember.role == "main"
+                                        ).first()
                                     if main_group:
                                         msg_text = (
                                             f"🚨 <b>CẢNH BÁO NỢ XẤU TỰ ĐỘNG (QUÁ HẠN LÃI 7 NGÀY)</b> 🚨\n\n"
@@ -1150,8 +1178,14 @@ async def rental_payment_notification_worker():
                             if (contract.rental_debt or 0) <= 0:
                                 continue
                             
+                            from app.models.business import Projects
+                            rental_project = db.query(Projects).filter(Projects.project_name == "Rental").first()
+                            if not rental_project:
+                                continue
+
                             # Find the member group for this customer
                             customer_links = db.query(TelegramProjectMember).filter(
+                                TelegramProjectMember.project_id == rental_project.id,
                                 TelegramProjectMember.role == "member",
                                 TelegramProjectMember.slot_name.like("member%")
                             ).all()
@@ -1215,20 +1249,31 @@ async def rental_payment_notification_worker():
                             
                             # Day 7: Escalate to main group (admin/owner)
                             if days_late == 7:
-                                # Find project_id from member link
+                                # Find project_id and parent_main_chat_id from member link
                                 target_project_id = None
+                                parent_main_chat_id = None
                                 for link in customer_links:
                                     link_username = f"@{link.user_name}" if link.user_name else ""
                                     link_userid = str(link.user_id)
                                     if customer.contact_info == link_username or customer.contact_info == link_userid:
                                         target_project_id = link.project_id
+                                        parent_main_chat_id = link.parent_id
                                         break
                                 
                                 if target_project_id:
-                                    main_group = db.query(TelegramProjectMember).filter(
-                                        TelegramProjectMember.project_id == target_project_id,
-                                        TelegramProjectMember.role == "main"
-                                    ).first()
+                                    main_group = None
+                                    if parent_main_chat_id:
+                                        main_group = db.query(TelegramProjectMember).filter(
+                                            TelegramProjectMember.project_id == target_project_id,
+                                            TelegramProjectMember.role == "main",
+                                            TelegramProjectMember.chat_id == parent_main_chat_id
+                                        ).first()
+                                        
+                                    if not main_group:
+                                        main_group = db.query(TelegramProjectMember).filter(
+                                            TelegramProjectMember.project_id == target_project_id,
+                                            TelegramProjectMember.role == "main"
+                                        ).first()
                                     
                                     if main_group:
                                         alert_text = (
