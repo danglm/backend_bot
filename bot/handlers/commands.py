@@ -671,43 +671,25 @@ async def register_bot_command_handler(client, message: Message) -> None:
             if role == "main":
                 label = "Credit (Main)"
                 commands_to_set = [
-                    BotCommand("credit_create_customer", "Tạo khách hàng"),
                     BotCommand("credit_tao_khach_hang", "Tạo khách hàng"),
-                    BotCommand("credit_update_customer", "Cập nhật khách hàng"),
                     BotCommand("credit_cap_nhat_khach_hang", "Cập nhật khách hàng"),
-                    BotCommand("credit_check_customer", "Xem thông tin khách hàng"),
                     BotCommand("credit_xem_khach_hang", "Xem thông tin khách hàng"),
-                    BotCommand("credit_create_contract", "Tạo hợp đồng"),
                     BotCommand("credit_tao_hop_dong", "Tạo hợp đồng"),
-                    BotCommand("credit_update_contract", "Cập nhật hợp đồng"),
                     BotCommand("credit_cap_nhat_hop_dong", "Cập nhật hợp đồng"),
-                    BotCommand("credit_check_contract", "Xem hợp đồng"),
                     BotCommand("credit_xem_hop_dong", "Xem hợp đồng"),
-                    BotCommand("credit_cancel_contract", "Hủy hợp đồng"),
                     BotCommand("credit_huy_hop_dong", "Hủy hợp đồng"),
-                    BotCommand("credit_extend_contract", "Gia hạn hợp đồng"),
                     BotCommand("credit_gia_han_hop_dong", "Gia hạn hợp đồng"),
-                    BotCommand("credit_list_contract", "Danh sách hợp đồng"),
                     BotCommand("credit_danh_sach_hop_dong", "Danh sách hợp đồng"),
-                    BotCommand("credit_payment_confirmed", "Xác nhận thanh toán"),
                     BotCommand("credit_xac_nhan_thanh_toan", "Xác nhận thanh toán"),
-                    # BotCommand("credit_paid_interest", "Thanh toán lãi"),
-                    # BotCommand("credit_thanh_toan_lai", "Thanh toán lãi"),
-                    BotCommand("credit_bad_debt", "Xác nhận nợ xấu"),
                     BotCommand("credit_xac_nhan_no_xau", "Xác nhận nợ xấu"),
-                    BotCommand("credit_cashflow_report", "Báo cáo dòng tiền"),
                     BotCommand("credit_bao_cao_dong_tien", "Báo cáo dòng tiền"),
-                    BotCommand("credit_revenue", "Doanh thu"),
                     BotCommand("credit_doanh_thu", "Doanh thu"),
                 ]
             else:
                 label = "Credit (Member)"
                 commands_to_set = [
-                    BotCommand("credit_check_customer", "Xem thông tin khách hàng"),
                     BotCommand("credit_xem_khach_hang", "Xem thông tin khách hàng"),
-                    BotCommand("credit_check_contract", "Xem hợp đồng"),
                     BotCommand("credit_xem_hop_dong", "Xem hợp đồng"),
-                    BotCommand("credit_check_debt", "Xem công nợ"),
                     BotCommand("credit_xem_cong_no", "Xem công nợ"),
                 ]
 
@@ -716,41 +698,25 @@ async def register_bot_command_handler(client, message: Message) -> None:
             if role == "main":
                 label = "Rental (Main)"
                 commands_to_set = [
-                    BotCommand("rental_create_customer", "Tạo khách hàng"),
                     BotCommand("rental_tao_khach_hang", "Tạo khách hàng"),
-                    BotCommand("rental_check_customer", "Kiểm tra khách hàng"),
                     BotCommand("rental_kiem_tra_khach_hang", "Kiểm tra khách hàng"),
-                    BotCommand("rental_create_contract", "Tạo hợp đồng"),
                     BotCommand("rental_tao_hop_dong", "Tạo hợp đồng"),
-                    BotCommand("rental_update_contract", "Cập nhật hợp đồng"),
                     BotCommand("rental_cap_nhat_hop_dong", "Cập nhật hợp đồng"),
-                    BotCommand("rental_check_contract", "Xem hợp đồng"),
                     BotCommand("rental_kiem_tra_hop_dong", "Xem hợp đồng"),
-                    BotCommand("rental_extend_contract", "Gia hạn hợp đồng"),
                     BotCommand("rental_gia_han_hop_dong", "Gia hạn hợp đồng"),
-                    BotCommand("rental_cancel_contract", "Hủy hợp đồng"),
                     BotCommand("rental_huy_hop_dong", "Hủy hợp đồng"),
-                    BotCommand("rental_list_contract", "Danh sách hợp đồng"),
                     BotCommand("rental_danh_sach_hop_dong", "Danh sách hợp đồng"),
-                    BotCommand("rental_payment_confirmed", "Xác nhận thanh toán"),
                     BotCommand("rental_xac_nhan_thanh_toan", "Xác nhận thanh toán"),
-                    BotCommand("rental_bad_debt", "Xác nhận nợ xấu"),
                     BotCommand("rental_xac_nhan_no_xau", "Xác nhận nợ xấu"),
-                    BotCommand("rental_check_debt", "Xem công nợ"),
                     BotCommand("rental_xem_cong_no", "Xem công nợ"),
-                    BotCommand("rental_revenue", "Doanh thu"),
                     BotCommand("rental_doanh_thu", "Doanh thu"),
-                    BotCommand("rental_cashflow_report", "Báo cáo dòng tiền"),
                     BotCommand("rental_bao_cao_dong_tien", "Báo cáo dòng tiền"),
                 ]
             else:
                 label = "Rental (Member)"
                 commands_to_set = [
-                    BotCommand("rental_check_customer", "Kiểm tra khách hàng"),
                     BotCommand("rental_kiem_tra_khach_hang", "Kiểm tra khách hàng"),
-                    BotCommand("rental_check_contract", "Xem hợp đồng"),
                     BotCommand("rental_kiem_tra_hop_dong", "Xem hợp đồng"),
-                    BotCommand("rental_check_debt", "Xem công nợ"),
                     BotCommand("rental_xem_cong_no", "Xem công nợ"),
                 ]
 

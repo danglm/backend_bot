@@ -15,6 +15,7 @@ class CreditCustomer(Base):
     __tablename__ = "credit_customers"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(String, unique=True)  # Mã khách hàng (unique identifier)
     group_name = Column(String)
     customer_name = Column(String)
     contact_info = Column(String)  # telegram_username / contact_info

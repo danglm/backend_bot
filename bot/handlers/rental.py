@@ -23,13 +23,14 @@ async def rental_create_customer_handler(client, message: Message) -> None:
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
 <pre>/rental_create_customer
+Mã Khách Hàng: 
 Tên Nhóm: 
 Tên Khách Hàng: 
 Liên Hệ Khách Hàng: 
 Số Điện Thoại: 
 </pre>
 
-<i>Ví dụ liên hệ: @username hoặc ID số. Tên nhóm (tuỳ chọn)</i>"""
+<i>Mã Khách Hàng là mã duy nhất để định danh khách hàng (ví dụ: KH001)</i>"""
         await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         return
 
@@ -40,13 +41,18 @@ Số Điện Thoại:
             key, val = line.split(":", 1)
             data[key.strip()] = val.strip()
 
+    customer_id_str = data.get("Mã Khách Hàng", "")
     group_name = data.get("Tên Nhóm", "")
     customer_name = data.get("Tên Khách Hàng", "")
     contact_info = data.get("Liên Hệ Khách Hàng", "")
     number_phone = data.get("Số Điện Thoại", "")
 
-    if not customer_name or not contact_info:
-        await message.reply_text("⚠️ <b>Tên Khách Hàng</b> và <b>Liên Hệ Khách Hàng</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+    if not customer_id_str:
+        await message.reply_text("⚠️ <b>Mã Khách Hàng</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    if not customer_name:
+        await message.reply_text("⚠️ <b>Tên Khách Hàng</b> là bắt buộc.", parse_mode=ParseMode.HTML)
         return
 
     db = SessionLocal()
@@ -72,23 +78,23 @@ Số Điện Thoại:
             TelegramProjectMember.slot_name.like("member%")
         ).all()
 
-        valid_contacts = []
+        valid_groups = []
         for m in valid_members:
-            if m.user_name:
-                valid_contacts.append(f"@{m.user_name}")
-            valid_contacts.append(str(m.user_id))
+            if m.group_name:
+                valid_groups.append(m.group_name)
             
-        if contact_info not in valid_contacts:
-            await message.reply_text(f"⚠️ Khách hàng <b>{contact_info}</b> chưa có mặt trong nhóm thành viên (member) của dự án. Vui lòng mời họ vào nhóm member và dùng lệnh /syncchat để hệ thống cập nhật trước khi tạo khách.", parse_mode=ParseMode.HTML)
+        if not group_name or group_name not in valid_groups:
+            await message.reply_text(f"⚠️ Tên Nhóm <b>{group_name}</b> không hợp lệ hoặc chưa có mặt trong dự án. Vui lòng kiểm tra lại Tên Nhóm và dùng lệnh /syncchat để đồng bộ trước.", parse_mode=ParseMode.HTML)
             return
 
-        # Check duplicate
-        existing = db.query(RentalCustomer).filter(RentalCustomer.contact_info == contact_info).first()
+        # Check duplicate by customer_id
+        existing = db.query(RentalCustomer).filter(RentalCustomer.customer_id == customer_id_str).first()
         if existing:
-            await message.reply_text(f"⚠️ Khách hàng cho thuê có thông tin liên hệ <b>{contact_info}</b> đã tồn tại trong hệ thống.", parse_mode=ParseMode.HTML)
+            await message.reply_text(f"⚠️ Mã Khách Hàng <b>{customer_id_str}</b> đã tồn tại trong hệ thống.", parse_mode=ParseMode.HTML)
             return
 
         new_customer = RentalCustomer(
+            customer_id=customer_id_str,
             group_name=group_name,
             customer_name=customer_name,
             contact_info=contact_info,
@@ -97,8 +103,8 @@ Số Điện Thoại:
         db.add(new_customer)
         db.commit()
 
-        await message.reply_text(f"✅ Đã tạo khách hàng cho thuê <b>{customer_name}</b> thành công!", parse_mode=ParseMode.HTML)
-        LogInfo(f"[RentalCreateCustomer] Created rental customer {customer_name} ({contact_info}) by {message.from_user.id}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"✅ Đã tạo khách hàng cho thuê <b>{customer_name}</b> (Mã: {customer_id_str}) thành công!", parse_mode=ParseMode.HTML)
+        LogInfo(f"[RentalCreateCustomer] Created rental customer {customer_name} (ID: {customer_id_str}) by {message.from_user.id}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
         LogError(f"Error in rental_create_customer_handler: {e}", LogType.SYSTEM_STATUS)
@@ -150,22 +156,26 @@ async def rental_create_contract_handler(client, message: Message) -> None:
         lines = message.text.strip().split("\n")
         if len(lines) < 3:
             if len(args) < 2:
-                await message.reply_text("⚠️ Vui lòng cung cấp thông tin liên hệ của khách hàng. Lệnh ví dụ: <code>/rental_create_contract @username</code>", parse_mode=ParseMode.HTML)
+                await message.reply_text("⚠️ Vui lòng cung cấp Mã Khách Hàng. Lệnh ví dụ: <code>/rental_create_contract KH001</code>", parse_mode=ParseMode.HTML)
                 return
 
-            contact_info = args[1]
-            customer = db.query(RentalCustomer).filter(RentalCustomer.contact_info == contact_info).first()
+            target = args[1]
+            from sqlalchemy import or_
+            customer = db.query(RentalCustomer).filter(
+                or_(RentalCustomer.customer_id == target, RentalCustomer.group_name == target)
+            ).first()
             if not customer:
-                await message.reply_text(f"⚠️ Khách hàng <b>{contact_info}</b> chưa tồn tại trong hệ thống cho thuê. Vui lòng tạo khách hàng bằng lệnh /rental_create_customer trước.", parse_mode=ParseMode.HTML)
+                await message.reply_text(f"⚠️ Khách hàng <b>{target}</b> chưa tồn tại trong hệ thống cho thuê. Vui lòng tạo khách hàng bằng lệnh /rental_create_customer trước.", parse_mode=ParseMode.HTML)
                 return
 
             form_template = f"""<b>FORM TẠO HỢP ĐỒNG CHO THUÊ</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<pre>/rental_create_contract {customer.contact_info}
+<pre>/rental_create_contract {customer.customer_id}
+Mã Khách Hàng: {customer.customer_id or ""}
 Tên Nhóm: {customer.group_name or ""}
 Tên Khách Hàng: {customer.customer_name or ""}
-Liên Hệ Khách Hàng: {customer.contact_info}
+Liên Hệ Khách Hàng: {customer.contact_info or ""}
 Mã Hợp Đồng: 
 Mã Bất Động Sản: 
 Loại Hợp Đồng: 
@@ -187,13 +197,24 @@ Công Nợ: 0
                 key, val = line.split(":", 1)
                 data[key.strip()] = val.strip()
 
-        contact_info = data.get("Liên Hệ Khách Hàng", "")
-        if not contact_info and len(args) > 1:
-            contact_info = args[1]
+        customer_id_input = data.get("Mã Khách Hàng", "")
+        group_name = data.get("Tên Nhóm", "")
 
-        customer = db.query(RentalCustomer).filter(RentalCustomer.contact_info == contact_info).first()
+        if customer_id_input:
+            customer = db.query(RentalCustomer).filter(RentalCustomer.customer_id == customer_id_input).first()
+        elif group_name:
+            customer = db.query(RentalCustomer).filter(RentalCustomer.group_name == group_name).first()
+        elif len(args) > 1:
+            target = args[1]
+            from sqlalchemy import or_
+            customer = db.query(RentalCustomer).filter(
+                or_(RentalCustomer.customer_id == target, RentalCustomer.group_name == target)
+            ).first()
+        else:
+            customer = None
+
         if not customer:
-            await message.reply_text(f"⚠️ Khách hàng <b>{contact_info}</b> chưa tồn tại trong hệ thống cho thuê. Vui lòng tạo khách trước.", parse_mode=ParseMode.HTML)
+            await message.reply_text(f"⚠️ Khách hàng chưa tồn tại trong hệ thống cho thuê. Vui lòng tạo khách trước.", parse_mode=ParseMode.HTML)
             return
 
         parse_float = _parse_float_rental
@@ -261,10 +282,10 @@ async def rental_check_customer_handler(client, message: Message) -> None:
     if args is None: return
 
     if len(args) < 2:
-        await message.reply_text("⚠️ Vui lòng cung cấp thông tin liên hệ. Lệnh ví dụ: <code>/rental_check_customer @username</code>", parse_mode=ParseMode.HTML)
+        await message.reply_text("⚠️ Vui lòng cung cấp Mã Khách Hàng hoặc Tên Nhóm. Lệnh ví dụ: <code>/rental_check_customer KH001</code>", parse_mode=ParseMode.HTML)
         return
 
-    contact_info = args[1]
+    lookup_key = args[1]
     db = SessionLocal()
     try:
         from app.models.telegram import TelegramProjectMember
@@ -282,19 +303,21 @@ async def rental_check_customer_handler(client, message: Message) -> None:
             TelegramProjectMember.slot_name.like("member%")
         ).all()
 
-        valid_contacts = []
+        valid_groups = []
         for m in valid_members:
-            if m.user_name:
-                valid_contacts.append(f"@{m.user_name}")
-            valid_contacts.append(str(m.user_id))
+            if m.group_name:
+                valid_groups.append(m.group_name)
 
-        if contact_info not in valid_contacts:
-            await message.reply_text(f"⚠️ Không tìm thấy <b>{contact_info}</b> trong nhóm thành viên (member) của dự án này.", parse_mode=ParseMode.HTML)
-            return
-
-        customer = db.query(RentalCustomer).filter(RentalCustomer.contact_info == contact_info).first()
+        from sqlalchemy import or_
+        customer = db.query(RentalCustomer).filter(
+            or_(RentalCustomer.customer_id == lookup_key, RentalCustomer.group_name == lookup_key)
+        ).first()
         if not customer:
-            await message.reply_text(f"⚠️ Khách hàng <b>{contact_info}</b> chưa tồn tại trong hệ thống cho thuê.", parse_mode=ParseMode.HTML)
+            await message.reply_text(f"⚠️ Khách hàng <b>{lookup_key}</b> chưa tồn tại trong hệ thống cho thuê.", parse_mode=ParseMode.HTML)
+            return
+            
+        if not customer.group_name or customer.group_name not in valid_groups:
+            await message.reply_text(f"⚠️ Không tìm thấy nhóm <b>{customer.group_name}</b> trong dự án này.", parse_mode=ParseMode.HTML)
             return
 
         def fmt_num(val):
@@ -307,6 +330,7 @@ async def rental_check_customer_handler(client, message: Message) -> None:
 
         reply_lines = [
             f"<b>THÔNG TIN KHÁCH HÀNG CHO THUÊ</b>",
+            f"Mã Khách Hàng: <b>{customer.customer_id or 'N/A'}</b>",
             f"Tên Nhóm: <b>{customer.group_name or 'N/A'}</b>",
             f"Tên Khách Hàng: <b>{customer.customer_name}</b>",
             f"Liên Hệ: <b>{customer.contact_info}</b>",
@@ -383,11 +407,10 @@ async def rental_check_contract_handler(client, message: Message) -> None:
             TelegramProjectMember.slot_name.like("member%")
         ).all()
 
-        valid_contacts = []
+        valid_groups = []
         for m in valid_members:
-            if m.user_name:
-                valid_contacts.append(f"@{m.user_name}")
-            valid_contacts.append(str(m.user_id))
+            if m.group_name:
+                valid_groups.append(m.group_name)
 
         contract = db.query(Rental).filter(Rental.contract_id == contract_code).first()
         if not contract:
@@ -396,8 +419,8 @@ async def rental_check_contract_handler(client, message: Message) -> None:
 
         # Find customer for this contract
         customer = db.query(RentalCustomer).filter(RentalCustomer.id == contract.customer_id).first()
-        if not customer or customer.contact_info not in valid_contacts:
-            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về khách hàng trong dự án hiện tại.", parse_mode=ParseMode.HTML)
+        if not customer or not customer.group_name or customer.group_name not in valid_groups:
+            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về nhóm hợp lệ trong dự án hiện tại (Nhóm: {customer.group_name if customer else 'N/A'}).", parse_mode=ParseMode.HTML)
             return
 
         def fmt_num(val):
@@ -423,6 +446,7 @@ async def rental_check_contract_handler(client, message: Message) -> None:
             f"<b>THÔNG TIN HỢP ĐỒNG CHO THUÊ: {contract.contract_id}</b>",
             f"Trạng thái: <b>{status_label}</b>",
             f"Loại hợp đồng: <b>{contract.type_contract or 'N/A'}</b>",
+            f"Mã Khách Hàng: <b>{customer.customer_id or 'N/A'}</b>",
             f"Tên: <b>{customer.customer_name}</b>",
             f"Liên hệ: <b>{customer.contact_info}</b>",
             f"Số Điện Thoại: <b>{customer.number_phone or 'N/A'}</b>",
@@ -456,18 +480,17 @@ async def rental_check_debt_handler(client, message: Message) -> None:
     try:
         from app.models.rental import RentalCustomer, Rental, RentalStatus
 
-        # Lấy @username của người gọi lệnh
-        username = message.from_user.username
-        if not username:
-            await message.reply_text("⚠️ Tài khoản của bạn chưa có username Telegram. Vui lòng cài đặt username trước.", parse_mode=ParseMode.HTML)
+        # Lấy Mã Khách Hàng từ đầu vào
+        if len(args) < 2:
+            await message.reply_text("⚠️ Vui lòng cung cấp Mã Khách Hàng. Lệnh ví dụ: <code>/rental_check_debt KH001</code>", parse_mode=ParseMode.HTML)
             return
 
-        contact_info = f"@{username}"
+        customer_id_input = args[1]
 
-        # Tìm khách hàng theo contact_info
-        customer = db.query(RentalCustomer).filter(RentalCustomer.contact_info == contact_info).first()
+        # Tìm khách hàng theo customer_id
+        customer = db.query(RentalCustomer).filter(RentalCustomer.customer_id == customer_id_input).first()
         if not customer:
-            await message.reply_text(f"ℹ️ Không tìm thấy thông tin khách hàng cho <b>{contact_info}</b>.", parse_mode=ParseMode.HTML)
+            await message.reply_text(f"ℹ️ Không tìm thấy thông tin khách hàng cho Mã <b>{customer_id_input}</b>.", parse_mode=ParseMode.HTML)
             return
 
         # Lấy các hợp đồng đang thuê / hết hạn (chưa hủy)
@@ -504,7 +527,7 @@ async def rental_check_debt_handler(client, message: Message) -> None:
 
         reply_lines = [
             f"<b>CÔNG NỢ HIỆN TẠI</b>",
-            f"Khách hàng: <b>{customer.customer_name}</b> ({contact_info})",
+            f"Khách hàng: <b>{customer.customer_name}</b> (Mã: {customer.customer_id})",
             f"---------------------------",
             f"Tổng hợp đồng: <b>{len(active_rentals)}</b>",
             f"Tổng tiền thuê: <b>{fmt_num(total_monthly):,}</b>/tháng",
@@ -513,7 +536,7 @@ async def rental_check_debt_handler(client, message: Message) -> None:
         ] + contract_lines
 
         await message.reply_text("\n".join(reply_lines), parse_mode=ParseMode.HTML)
-        LogInfo(f"[RentalCheckDebt] {contact_info} checked their debt: {len(active_rentals)} contracts, total: {total_debt}", LogType.SYSTEM_STATUS)
+        LogInfo(f"[RentalCheckDebt] {customer.customer_id} checked their debt: {len(active_rentals)} contracts, total: {total_debt}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         LogError(f"Error in rental_check_debt_handler: {e}", LogType.SYSTEM_STATUS)
@@ -639,18 +662,16 @@ async def rental_extend_contract_confirm_callback(client, callback_query: Callba
         customer = db.query(RentalCustomer).filter(RentalCustomer.id == contract.customer_id).first()
 
         # Find member group for notification
-        customer_contact = customer.contact_info if customer else ""
+        customer_group = customer.group_name if customer else ""
         member_chat_id = None
 
-        if customer_contact:
+        if customer_group:
             customer_links = db.query(TelegramProjectMember).filter(
                 TelegramProjectMember.role == "member",
                 TelegramProjectMember.slot_name.like("member%")
             ).all()
             for link in customer_links:
-                link_username = f"@{link.user_name}" if link.user_name else ""
-                link_userid = str(link.user_id)
-                if customer_contact == link_username or customer_contact == link_userid:
+                if link.group_name == customer_group:
                     member_chat_id = link.chat_id
                     break
 
@@ -728,11 +749,10 @@ async def rental_cancel_contract_handler(client, message: Message) -> None:
             TelegramProjectMember.slot_name.like("member%")
         ).all()
 
-        valid_contacts = []
+        valid_groups = []
         for m in valid_members:
-            if m.user_name:
-                valid_contacts.append(f"@{m.user_name}")
-            valid_contacts.append(str(m.user_id))
+            if m.group_name:
+                valid_groups.append(m.group_name)
 
         contract = db.query(Rental).filter(Rental.contract_id == contract_code).first()
         if not contract:
@@ -740,8 +760,8 @@ async def rental_cancel_contract_handler(client, message: Message) -> None:
             return
 
         customer = db.query(RentalCustomer).filter(RentalCustomer.id == contract.customer_id).first()
-        if not customer or customer.contact_info not in valid_contacts:
-            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về khách hàng nào trong dự án hiện tại.", parse_mode=ParseMode.HTML)
+        if not customer or not customer.group_name or customer.group_name not in valid_groups:
+            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về nhóm hợp lệ nào trong dự án hiện tại.", parse_mode=ParseMode.HTML)
             return
 
         if contract.status == RentalStatus.CANCELLED.value:
@@ -959,11 +979,10 @@ async def rental_update_contract_handler(client, message: Message) -> None:
             TelegramProjectMember.slot_name.like("member%")
         ).all()
 
-        valid_contacts = []
+        valid_groups = []
         for m in valid_members:
-            if m.user_name:
-                valid_contacts.append(f"@{m.user_name}")
-            valid_contacts.append(str(m.user_id))
+            if m.group_name:
+                valid_groups.append(m.group_name)
 
         contract = db.query(Rental).filter(Rental.contract_id == contract_code).first()
         if not contract:
@@ -971,8 +990,8 @@ async def rental_update_contract_handler(client, message: Message) -> None:
             return
 
         customer = db.query(RentalCustomer).filter(RentalCustomer.id == contract.customer_id).first()
-        if not customer or customer.contact_info not in valid_contacts:
-            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về khách hàng nào trong dự án hiện tại.", parse_mode=ParseMode.HTML)
+        if not customer or not customer.group_name or customer.group_name not in valid_groups:
+            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về nhóm hợp lệ nào trong dự án hiện tại.", parse_mode=ParseMode.HTML)
             return
 
         if contract.status == RentalStatus.CANCELLED.value:
@@ -999,6 +1018,7 @@ async def rental_update_contract_handler(client, message: Message) -> None:
 Vui lòng sao chép toàn bộ form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
 <pre>/rental_update_contract {contract.contract_id}
+Mã Khách Hàng: {customer.customer_id or ""}
 Tên Nhóm: {customer.group_name or ""}
 Tên Khách Hàng: {customer.customer_name or ""}
 Liên Hệ Khách Hàng: {customer.contact_info or ""}
@@ -1045,7 +1065,12 @@ Trạng Thái (active/expired/cancelled): {contract.status or 'active'}
                 return
 
         # Update customer info
-        customer.group_name = data.get("Tên Nhóm", customer.group_name)
+        group_name = data.get("Tên Nhóm", customer.group_name)
+        if not group_name or group_name not in valid_groups:
+            await message.reply_text(f"⚠️ Nhóm mới <b>{group_name}</b> không hợp lệ hoặc chưa được đồng bộ.", parse_mode=ParseMode.HTML)
+            return
+            
+        customer.group_name = group_name
         customer.customer_name = data.get("Tên Khách Hàng", customer.customer_name)
         customer.contact_info = data.get("Liên Hệ Khách Hàng", customer.contact_info)
         customer.number_phone = data.get("Số Điện Thoại", customer.number_phone)
@@ -1092,13 +1117,12 @@ async def generate_rental_revenue_report(client, message, project_id, start_date
             TelegramProjectMember.slot_name.like("member%")
         ).all()
         
-        valid_contacts = []
+        valid_groups = []
         for m in valid_members:
-            if m.user_name:
-                valid_contacts.append(f"@{m.user_name}")
-            valid_contacts.append(str(m.user_id))
+            if m.group_name:
+                valid_groups.append(m.group_name)
             
-        customers = db.query(RentalCustomer).filter(RentalCustomer.contact_info.in_(valid_contacts)).all()
+        customers = db.query(RentalCustomer).filter(RentalCustomer.group_name.in_(valid_groups)).all()
         if not customers:
             await message.reply_text("⚠️ Không có khách hàng nào trong dự án cập nhật thông tin trên hệ thống.", parse_mode=ParseMode.HTML)
             return
@@ -1262,13 +1286,12 @@ async def rental_cashflow_report_handler(client, message: Message) -> None:
             TelegramProjectMember.role == "member"
         ).all()
         
-        valid_contacts = []
+        valid_groups = []
         for m in valid_members:
-            if m.user_name:
-                valid_contacts.append(f"@{m.user_name}")
-            valid_contacts.append(str(m.user_id))
+            if m.group_name:
+                valid_groups.append(m.group_name)
             
-        customers = db.query(RentalCustomer).filter(RentalCustomer.contact_info.in_(valid_contacts)).all()
+        customers = db.query(RentalCustomer).filter(RentalCustomer.group_name.in_(valid_groups)).all()
         
         if not customers:
             await message.reply_text("⚠️ Không có khách hàng nào trong dự án này.", parse_mode=ParseMode.HTML)
@@ -1327,7 +1350,7 @@ async def rental_cashflow_report_handler(client, message: Message) -> None:
                 continue
             
             customer_lines.append(
-                f"\n<b>{customer.customer_name}</b> ({customer.contact_info})\n"
+                f"\n<b>{customer.customer_name}</b> (Mã: {customer.customer_id})\n"
                 f"   Hợp đồng: {cust_contracts} | Tiền Cọc: <b>{fmt_num(cust_deposit):,}</b> | Công Nợ: <b>{fmt_num(cust_debt):,}</b>\n"
                 f"   Đã đóng: {cust_paid_str}"
             )
@@ -1407,13 +1430,12 @@ async def rental_list_contract_handler(client, message: Message) -> None:
             TelegramProjectMember.slot_name.like("member%")
         ).all()
 
-        valid_contacts = []
+        valid_groups = []
         for m in valid_members:
-            if m.user_name:
-                valid_contacts.append(f"@{m.user_name}")
-            valid_contacts.append(str(m.user_id))
+            if m.group_name:
+                valid_groups.append(m.group_name)
 
-        customers = db.query(RentalCustomer).filter(RentalCustomer.contact_info.in_(valid_contacts)).all()
+        customers = db.query(RentalCustomer).filter(RentalCustomer.group_name.in_(valid_groups)).all()
         if not customers:
             await message.reply_text("ℹ️ Không có khách hàng nào trong dự án này.", parse_mode=ParseMode.HTML)
             return
@@ -1539,11 +1561,10 @@ async def rental_bad_debt_handler(client, message: Message) -> None:
             TelegramProjectMember.slot_name.like("member%")
         ).all()
 
-        valid_contacts = []
+        valid_groups = []
         for m in valid_members:
-            if m.user_name:
-                valid_contacts.append(f"@{m.user_name}")
-            valid_contacts.append(str(m.user_id))
+            if m.group_name:
+                valid_groups.append(m.group_name)
 
         contract = db.query(Rental).filter(Rental.contract_id == contract_code).first()
         if not contract:
@@ -1551,8 +1572,8 @@ async def rental_bad_debt_handler(client, message: Message) -> None:
             return
 
         customer = db.query(RentalCustomer).filter(RentalCustomer.id == contract.customer_id).first()
-        if not customer or customer.contact_info not in valid_contacts:
-            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về khách hàng nào trong dự án hiện tại.", parse_mode=ParseMode.HTML)
+        if not customer or not customer.group_name or customer.group_name not in valid_groups:
+            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về nhóm hợp lệ nào trong dự án hiện tại.", parse_mode=ParseMode.HTML)
             return
 
         if contract.status == RentalStatus.BAD_DEBT.value:

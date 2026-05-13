@@ -832,10 +832,7 @@ async def bad_debt_notification_worker():
                             target_project_id = None
                             parent_main_chat_id = None
                             for link in member_project_links:
-                                link_username = f"@{link.user_name}" if link.user_name else ""
-                                link_userid = str(link.user_id)
-                                
-                                if customer.contact_info == link_username or customer.contact_info == link_userid:
+                                if customer.group_name and link.group_name == customer.group_name:
                                     target_project_id = link.project_id
                                     parent_main_chat_id = link.parent_id
                                     break
@@ -868,6 +865,7 @@ async def bad_debt_notification_worker():
                                     f"🚨 <b>CẢNH BÁO NỢ XẤU (QUÁ HẠN {days_overdue} NGÀY)</b> 🚨\n\n"
                                     f"<b>Mã Hợp Đồng:</b> <code>{contract.contract_id}</code>\n"
                                     f"<b>Khách hàng:</b> {customer.customer_name}\n"
+                                    f"<b>Mã Khách Hàng:</b> {customer.customer_id or 'N/A'}\n"
                                     f"<b>Liên hệ:</b> {customer.contact_info}\n"
                                     f"<b>Còn nợ gốc:</b> {fmt_num(contract.remaining_principal):,} VND\n"
                                     f"<b>Ngày đáo hạn gốc:</b> {contract.due_date.strftime('%d/%m/%Y')}\n\n"
@@ -998,10 +996,7 @@ async def interest_payment_notification_worker():
                             member_chat_id = None
                             parent_main_chat_id = None
                             for link in customer_links:
-                                link_username = f"@{link.user_name}" if link.user_name else ""
-                                link_userid = str(link.user_id)
-                                
-                                if customer.contact_info == link_username or customer.contact_info == link_userid:
+                                if customer.group_name and link.group_name == customer.group_name:
                                     target_project_id = link.project_id
                                     member_chat_id = link.chat_id
                                     parent_main_chat_id = link.parent_id
@@ -1038,6 +1033,7 @@ async def interest_payment_notification_worker():
                                             f"🚨 <b>CẢNH BÁO NỢ XẤU TỰ ĐỘNG (QUÁ HẠN LÃI 7 NGÀY)</b> 🚨\n\n"
                                             f"<b>Mã Hợp Đồng:</b> <code>{contract.contract_id}</code>\n"
                                             f"<b>Khách hàng:</b> {customer.customer_name}\n"
+                                            f"<b>Mã Khách Hàng:</b> {customer.customer_id or 'N/A'}\n"
                                             f"<b>Liên hệ:</b> {customer.contact_info}\n"
                                             f"<b>Trạng thái:</b> Hệ thống đã tự động chuyển khách hàng vào BLACKLIST NỢ XẤU!"
                                         )
@@ -1064,6 +1060,7 @@ async def interest_payment_notification_worker():
                                 msg_text = (
                                     f"🔔 <b>THÔNG BÁO ĐÓNG TIỀN LÃI {days_text}</b> 🔔\n\n"
                                     f"<b>Khách hàng:</b> {customer.customer_name}\n"
+                                    f"<b>Mã Khách Hàng:</b> {customer.customer_id or 'N/A'}\n"
                                     f"<b>Liên hệ:</b> {customer.contact_info}\n"
                                     f"<b>Mã Hợp Đồng:</b> <code>{contract.contract_id}</code>\n"
                                     f"<b>Số tiền lãi cần đóng:</b> <b>{current_interest_debt:,} VND</b>\n"
@@ -1192,10 +1189,7 @@ async def rental_payment_notification_worker():
                             
                             member_chat_id = None
                             for link in customer_links:
-                                link_username = f"@{link.user_name}" if link.user_name else ""
-                                link_userid = str(link.user_id)
-                                
-                                if customer.contact_info == link_username or customer.contact_info == link_userid:
+                                if customer.group_name and link.group_name == customer.group_name:
                                     member_chat_id = link.chat_id
                                     break
                                     
@@ -1224,6 +1218,7 @@ async def rental_payment_notification_worker():
                             msg_text = (
                                 f"🔔 <b>THÔNG BÁO ĐÓNG TIỀN THUÊ ({days_text})</b> 🔔\n\n"
                                 f"<b>Khách hàng:</b> {customer.customer_name}\n"
+                                f"<b>Mã Khách Hàng:</b> {customer.customer_id or 'N/A'}\n"
                                 f"<b>Liên hệ:</b> {customer.contact_info}\n"
                                 f"<b>Mã Hợp Đồng:</b> <code>{contract.contract_id}</code>\n"
                                 f"<b>Loại Hợp Đồng:</b> {contract.type_contract or 'N/A'}\n"
@@ -1253,9 +1248,7 @@ async def rental_payment_notification_worker():
                                 target_project_id = None
                                 parent_main_chat_id = None
                                 for link in customer_links:
-                                    link_username = f"@{link.user_name}" if link.user_name else ""
-                                    link_userid = str(link.user_id)
-                                    if customer.contact_info == link_username or customer.contact_info == link_userid:
+                                    if customer.group_name and link.group_name == customer.group_name:
                                         target_project_id = link.project_id
                                         parent_main_chat_id = link.parent_id
                                         break
@@ -1279,6 +1272,7 @@ async def rental_payment_notification_worker():
                                         alert_text = (
                                             f"🚨 <b>CẢNH BÁO: KHÁCH HÀNG CHƯA ĐÓNG TIỀN THUÊ (QUÁ HẠN 7 NGÀY)</b> 🚨\n\n"
                                             f"<b>Khách hàng:</b> {customer.customer_name}\n"
+                                            f"<b>Mã Khách Hàng:</b> {customer.customer_id or 'N/A'}\n"
                                             f"<b>Liên hệ:</b> {customer.contact_info}\n"
                                             f"<b>Mã Hợp Đồng:</b> <code>{contract.contract_id}</code>\n"
                                             f"<b>Loại Hợp Đồng:</b> {contract.type_contract or 'N/A'}\n"

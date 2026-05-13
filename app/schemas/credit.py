@@ -4,6 +4,7 @@ from typing import Optional
 from app.models.credit import CreditStatus
 
 class CreditCustomerBase(BaseModel):
+    customer_id: Optional[str] = None
     group_name: Optional[str] = None
     customer_name: Optional[str] = None
     contact_info: Optional[str] = None

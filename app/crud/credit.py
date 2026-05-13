@@ -4,6 +4,7 @@ from app.schemas.credit import CreditCreate, CreditInterestCreate, CreditCustome
 
 def create_credit_customer(db: Session, obj_in: CreditCustomerCreate):
     db_obj = CreditCustomer(
+        customer_id=obj_in.customer_id,
         group_name=obj_in.group_name,
         customer_name=obj_in.customer_name,
         contact_info=obj_in.contact_info,
