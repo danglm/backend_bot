@@ -16,6 +16,33 @@ from bot.utils.enums import CustomTitle
 from bot.utils.bot import bot
 from bot.core.config import settings
 
+
+def _is_working_day(weekday: int, work_type: int = 3) -> bool:
+    """
+    Kiểm tra ngày có phải ngày làm việc hay không dựa vào work_type.
+    weekday: 0=Mon, 1=Tue, ..., 5=Sat, 6=Sun
+    work_type: 1=T2-T6, 2=T2-T7(nửa buổi sáng), 3=T2-T7, 4=T2-CN
+    """
+    if work_type == 1:
+        return weekday < 5  # Mon-Fri
+    elif work_type == 2:
+        return weekday < 6  # Mon-Sat (Sat nửa buổi sáng, vẫn tính ngày công)
+    elif work_type == 3:
+        return weekday < 6  # Mon-Sat
+    elif work_type == 4:
+        return True  # Mon-Sun
+    return weekday < 6  # default: Mon-Sat
+
+def _get_off_day_note(weekday: int, work_type: int = 3) -> str:
+    """Trả về ghi chú cho ngày nghỉ dựa vào work_type."""
+    day_names = {5: "Thứ 7", 6: "Chủ nhật"}
+    day_name = day_names.get(weekday, "")
+    if work_type == 1 and weekday >= 5:
+        return f"Nghỉ {day_name}"
+    elif work_type in (2, 3) and weekday == 6:
+        return "Nghỉ Chủ nhật"
+    return "Nghỉ"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Helper: build an Excel workbook for one month's attendance
 # ──────────────────────────────────────────────────────────────────────────────
@@ -29,7 +56,8 @@ def _build_attendance_excel(
     Each sheet contains the daily attendance rows for the given month.
 
     employee_records: list of dicts with keys:
-        full_name, employee_id, rows (list of Attendance ORM objects)
+        full_name, employee_id, rows (list of Attendance ORM objects),
+        work_type (int, optional - default 3)
     """
     wb = openpyxl.Workbook()
     wb.remove(wb.active)  # remove default empty sheet
@@ -54,6 +82,7 @@ def _build_attendance_excel(
 
     for record in employee_records:
         full_name = record["full_name"]
+        work_type = record.get("work_type", 3)
         attendance_map: dict[int, Attendance] = {a.day: a for a in record["rows"]}
 
         # Sheet name limited to 31 chars (Excel limit)
@@ -104,12 +133,12 @@ def _build_attendance_excel(
                 
                 note = att.error or ""
             else:
-                # Weekend = CN / Thứ 7 - mark as "Nghỉ"
-                if date_obj.weekday() >= 5:
+                # Ngày nghỉ theo work_type
+                if not _is_working_day(date_obj.weekday(), work_type):
                     check_in = check_out = "—"
                     working = late = overtime = 0.0
                     is_annual_leave = ""
-                    note = "Nghỉ cuối tuần"
+                    note = _get_off_day_note(date_obj.weekday(), work_type)
                 else:
                     check_in = check_out = "—"
                     working = late = overtime = 0.0
@@ -233,11 +262,14 @@ def get_payroll_data(db: Session, employee_id: str, month: int, year: int) -> di
     
     full_name = f"{employee.last_name} {employee.first_name}".strip()
     
-    # Calculate Standard Working Days (Mon-Fri)
+    # Lấy work_type của nhân viên
+    emp_work_type = employee.work_type if employee.work_type else 3
+    
+    # Calculate Standard Working Days based on work_type
     num_days = calendar.monthrange(year, month)[1]
     standard_days = 0
     for day in range(1, num_days + 1):
-        if datetime.date(year, month, day).weekday() < 5: # 0-4 is Mon-Fri
+        if _is_working_day(datetime.date(year, month, day).weekday(), emp_work_type):
             standard_days += 1
             
     # Aggregate Attendance
@@ -248,7 +280,7 @@ def get_payroll_data(db: Session, employee_id: str, month: int, year: int) -> di
     
     attended_days = {a.day: a for a in attendances}
     for day in range(1, num_days + 1):
-        is_weekday = datetime.date(year, month, day).weekday() < 5
+        is_workday = _is_working_day(datetime.date(year, month, day).weekday(), emp_work_type)
         att = attended_days.get(day)
         
         if att:
@@ -257,8 +289,8 @@ def get_payroll_data(db: Session, employee_id: str, month: int, year: int) -> di
             total_overtime += (att.overtime or 0.0)
             if att.error and "nghỉ phép năm" in att.error.lower():
                 leave_days += 1
-        elif is_weekday:
-            # Weekday but no attendance record = Unpaid leave?
+        elif is_workday:
+            # Ngày công nhưng không có record = Unpaid leave
             unpaid_leave += 1
             
     base_salary = salary.monthly_salary if salary else None
@@ -372,6 +404,7 @@ async def generate_and_send_attendance_report(
         employee_records = [{
             "full_name": full_name,
             "employee_id": employee.id,
+            "work_type": employee.work_type or 3,
             "rows": rows,
         }]
 
@@ -823,8 +856,7 @@ async def bad_debt_notification_worker():
                                 
                             member_project_links = db.query(TelegramProjectMember).filter(
                                 TelegramProjectMember.project_id == credit_project.id,
-                                TelegramProjectMember.role == "member",
-                                TelegramProjectMember.slot_name.like("member%")
+                                TelegramProjectMember.role == "member"
                             ).all()
 
                             LogInfo(f"Found {len(member_project_links)} member project links.", LogType.SYSTEM_STATUS)
@@ -988,8 +1020,7 @@ async def interest_payment_notification_worker():
                             # Find the target project and member group using target customer contact info
                             customer_links = db.query(TelegramProjectMember).filter(
                                 TelegramProjectMember.project_id == credit_project.id,
-                                TelegramProjectMember.role == "member",
-                                TelegramProjectMember.slot_name.like("member%")
+                                TelegramProjectMember.role == "member"
                             ).all()
                             
                             target_project_id = None
@@ -1183,8 +1214,7 @@ async def rental_payment_notification_worker():
                             # Find the member group for this customer
                             customer_links = db.query(TelegramProjectMember).filter(
                                 TelegramProjectMember.project_id == rental_project.id,
-                                TelegramProjectMember.role == "member",
-                                TelegramProjectMember.slot_name.like("member%")
+                                TelegramProjectMember.role == "member"
                             ).all()
                             
                             member_chat_id = None
@@ -2206,3 +2236,228 @@ async def daily_harvest_summary_worker():
             LogError(f"Error in daily_harvest_summary_worker: {e}", LogType.SYSTEM_STATUS)
             await asyncio.sleep(60)
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Auto-Attendance Worker
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Timezone Việt Nam (UTC+7)
+_VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
+
+_DAY_NAMES_VN = {
+    0: "Thứ 2", 1: "Thứ 3", 2: "Thứ 4",
+    3: "Thứ 5", 4: "Thứ 6", 5: "Thứ 7", 6: "Chủ Nhật"
+}
+
+_WORK_TYPE_LABELS = {
+    1: "T2 - T6",
+    2: "T2 - T7 (sáng)",
+    3: "T2 - T7",
+    4: "T2 - CN",
+}
+
+
+async def auto_attendance_worker():
+    """
+    Background worker tự động chấm công cho nhân viên có auto_attendance = True.
+
+    Mỗi phút kiểm tra:
+    - Nếu hôm nay là ngày làm việc (theo work_type) của NV
+    - Nếu đúng giờ start_time → tạo record check-in + gửi thông báo lên nhóm TG
+    - Nếu đúng giờ end_time → cập nhật record check-out + gửi thông báo lên nhóm TG
+    """
+    LogInfo("Auto attendance worker started.", LogType.SYSTEM_STATUS)
+
+    while True:
+        try:
+            now_vn = datetime.datetime.now(_VN_TZ)
+            today = now_vn.date()
+            weekday = today.weekday()  # 0=Mon ... 6=Sun
+
+            # Wait for bot client to be ready
+            client = bot
+            if not client.is_connected:
+                await asyncio.sleep(30)
+                continue
+
+            db = SessionLocal()
+            try:
+                from app.models.employee import Employee
+                from app.models.finance import Attendance
+                from app.models.telegram import TelegramProjectMember
+
+                # Lấy tất cả NV có auto_attendance = True, đang active, có telegram_group
+                employees = db.query(Employee).filter(
+                    Employee.auto_attendance == True,
+                    Employee.status != "inactive",
+                    Employee.telegram_group != None,
+                    Employee.telegram_group != "",
+                    Employee.start_time != None,
+                    Employee.end_time != None,
+                ).all()
+
+                for emp in employees:
+                    try:
+                        work_type = emp.work_type or 3
+
+                        # Bỏ qua nếu hôm nay không phải ngày làm việc
+                        if not _is_working_day(weekday, work_type):
+                            continue
+
+                        # Lấy giờ vào/tan ca
+                        start_t = emp.start_time.time() if isinstance(emp.start_time, datetime.datetime) else emp.start_time
+                        end_t = emp.end_time.time() if isinstance(emp.end_time, datetime.datetime) else emp.end_time
+
+                        # Resolve chat_id từ telegram_group
+                        tg_group = emp.telegram_group.strip()
+                        chat_id = None
+                        try:
+                            chat_id = int(tg_group)
+                        except ValueError:
+                            # Tìm chat_id từ TelegramProjectMember theo group_name
+                            tpm = db.query(TelegramProjectMember).filter(
+                                TelegramProjectMember.group_name == tg_group
+                            ).first()
+                            if tpm and tpm.chat_id:
+                                try:
+                                    chat_id = int(tpm.chat_id)
+                                except (ValueError, TypeError):
+                                    pass
+
+                        if not chat_id:
+                            continue
+
+                        full_name = f"{emp.last_name or ''} {emp.first_name or ''}".strip() or emp.username or emp.id
+                        day_name = _DAY_NAMES_VN.get(weekday, "")
+
+                        current_time_obj = now_vn.time().replace(second=0, microsecond=0)
+
+                        # ── AUTO CHECK-IN ──────────────────────────────────────
+                        # Kích hoạt khi current_time >= start_time (chỉ 1 lần/ngày)
+                        if current_time_obj >= start_t:
+                            # Kiểm tra đã có record check-in hôm nay chưa
+                            existing = db.query(Attendance).filter(
+                                Attendance.employee_id == emp.id,
+                                Attendance.year == today.year,
+                                Attendance.month == today.month,
+                                Attendance.day == today.day,
+                                Attendance.check_in_time.isnot(None)
+                            ).first()
+
+                            if not existing:
+                                checkin_time = datetime.datetime(
+                                    today.year, today.month, today.day,
+                                    start_t.hour, start_t.minute, 0
+                                )
+
+                                new_att = Attendance(
+                                    employee_id=emp.id,
+                                    year=today.year,
+                                    month=today.month,
+                                    day=today.day,
+                                    date_str=day_name,
+                                    check_in_time=checkin_time,
+                                    late_time=0.0,
+                                )
+                                db.add(new_att)
+                                db.commit()
+
+                                # Gửi thông báo lên nhóm Telegram
+                                msg_text = (
+                                    f"<b>AUTO CHECK-IN</b>\n\n"
+                                    f"<b>Nhân viên:</b> {full_name}"
+                                    f"{' (@' + emp.username + ')' if emp.username else ''}\n"
+                                    f"<b>Mã NV:</b> <code>{emp.id}</code>\n"
+                                    f"<b>Ngày:</b> {day_name}, {today.strftime('%d-%m-%Y')}\n"
+                                    f"<b>Giờ check-in:</b> {start_t.strftime('%H:%M')}\n"
+                                    f"<b>Loại công:</b> {_WORK_TYPE_LABELS.get(work_type, 'T2-T7')}\n\n"
+                                    f"<i>✅ Chấm công tự động bởi hệ thống.</i>"
+                                )
+                                try:
+                                    await client.send_message(
+                                        chat_id=chat_id,
+                                        text=msg_text,
+                                        parse_mode=ParseMode.HTML
+                                    )
+                                except Exception as send_err:
+                                    LogError(f"[AutoAtt] Failed to send check-in msg for {emp.id} to {chat_id}: {send_err}", LogType.SYSTEM_STATUS)
+
+                                LogInfo(f"[AutoAtt] Check-in {emp.id} ({full_name}) at {start_t.strftime('%H:%M')}", LogType.SYSTEM_STATUS)
+
+                        # ── AUTO CHECK-OUT ─────────────────────────────────────
+                        # Kích hoạt khi current_time >= end_time (chỉ 1 lần/ngày)
+                        if current_time_obj >= end_t:
+                            # Tìm record check-in hôm nay (chưa check-out)
+                            attendance = db.query(Attendance).filter(
+                                Attendance.employee_id == emp.id,
+                                Attendance.year == today.year,
+                                Attendance.month == today.month,
+                                Attendance.day == today.day,
+                                Attendance.check_in_time.isnot(None),
+                                Attendance.check_out_time.is_(None)
+                            ).first()
+
+                            if attendance:
+                                checkout_time = datetime.datetime(
+                                    today.year, today.month, today.day,
+                                    end_t.hour, end_t.minute, 0
+                                )
+
+                                attendance.check_out_time = checkout_time
+
+                                # Tính working_time (giờ)
+                                if attendance.check_in_time:
+                                    diff_seconds = (checkout_time - attendance.check_in_time).total_seconds()
+                                    working_hours = round(diff_seconds / 3600, 2)
+                                    attendance.working_time = working_hours
+                                else:
+                                    working_hours = 0.0
+
+                                attendance.overtime = 0.0  # Auto = đúng giờ, không tăng ca
+                                db.commit()
+
+                                # Gửi thông báo lên nhóm Telegram
+                                checkin_str = attendance.check_in_time.strftime('%H:%M') if attendance.check_in_time else "N/A"
+                                msg_text = (
+                                    f"<b>AUTO CHECK-OUT</b>\n\n"
+                                    f"<b>Nhân viên:</b> {full_name}"
+                                    f"{' (@' + emp.username + ')' if emp.username else ''}\n"
+                                    f"<b>Mã NV:</b> <code>{emp.id}</code>\n"
+                                    f"<b>Ngày:</b> {day_name}, {today.strftime('%d-%m-%Y')}\n"
+                                    f"<b>Giờ check-in:</b> {checkin_str}\n"
+                                    f"<b>Giờ check-out:</b> {end_t.strftime('%H:%M')}\n"
+                                    f"<b>Tổng giờ làm:</b> {working_hours:.1f}h\n"
+                                    f"<b>Loại công:</b> {_WORK_TYPE_LABELS.get(work_type, 'T2-T7')}\n\n"
+                                    f"<i>✅ Chấm công tự động bởi hệ thống.</i>"
+                                )
+                                try:
+                                    await client.send_message(
+                                        chat_id=chat_id,
+                                        text=msg_text,
+                                        parse_mode=ParseMode.HTML
+                                    )
+                                except Exception as send_err:
+                                    LogError(f"[AutoAtt] Failed to send check-out msg for {emp.id} to {chat_id}: {send_err}", LogType.SYSTEM_STATUS)
+
+                                LogInfo(f"[AutoAtt] Check-out {emp.id} ({full_name}) at {end_t.strftime('%H:%M')} - {working_hours:.1f}h", LogType.SYSTEM_STATUS)
+
+                    except Exception as emp_err:
+                        LogError(f"[AutoAtt] Error processing employee {emp.id}: {emp_err}", LogType.SYSTEM_STATUS)
+                        continue
+
+            except Exception as e:
+                LogError(f"[AutoAtt] Error in auto attendance loop: {e}", LogType.SYSTEM_STATUS)
+            finally:
+                db.close()
+
+            # Chờ đến phút tiếp theo
+            next_run = (datetime.datetime.now() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+            sleep_time = (next_run - datetime.datetime.now()).total_seconds()
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            LogError(f"Critical error in auto_attendance_worker: {e}", LogType.SYSTEM_STATUS)
+            await asyncio.sleep(60)

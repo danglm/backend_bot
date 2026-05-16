@@ -63,6 +63,8 @@ class EmployeeBase(BaseModel):
     overtime_salary: Optional[float] = None
     rate_bhxh: Optional[float] = None
     leave_balance: Optional[int] = None
+    auto_attendance: Optional[bool] = None
+    work_type: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
 
@@ -111,6 +113,8 @@ class EmployeeUpdate(BaseModel):
     overtime_salary: Optional[float] = None
     rate_bhxh: Optional[float] = None
     leave_balance: Optional[int] = None
+    auto_attendance: Optional[bool] = None
+    work_type: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
 

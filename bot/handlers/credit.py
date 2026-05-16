@@ -119,8 +119,7 @@ Tổng Nợ Gốc Hiện Tại: 0
         # Check if contact is in the valid member list
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_contacts = []
@@ -192,8 +191,7 @@ async def check_customer_handler(client, message: Message) -> None:
 
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -289,8 +287,7 @@ async def check_contract_handler(client, message: Message) -> None:
         project_id = current_project_member.project_id
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -544,8 +541,7 @@ Tổng Nợ Gốc Hiện Tại: {fmt_num(customer.total_principal_outstanding)}
             project_id = current_project_member.project_id
             valid_members = db.query(TelegramProjectMember).filter(
                 TelegramProjectMember.project_id == project_id,
-                TelegramProjectMember.role == "member",
-                TelegramProjectMember.slot_name.like("member%")
+                TelegramProjectMember.role == "member"
             ).all()
 
             valid_groups = [m.group_name for m in valid_members if m.group_name]
@@ -787,8 +783,7 @@ async def update_contract_handler(client, message: Message) -> None:
         # Get all valid group names from member groups of this project
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -1001,8 +996,7 @@ async def cancel_contract_handler(client, message: Message) -> None:
         # Get all valid contact_info (usernames) from member groups of this project
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -1113,8 +1107,7 @@ async def credit_list_contract_handler(client, message: Message) -> None:
 
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -1513,7 +1506,6 @@ async def extend_contract_confirm_callback(client, callback_query: CallbackQuery
         if customer_group_name:
             customer_links = db.query(TelegramProjectMember).filter(
                 TelegramProjectMember.role == "member",
-                TelegramProjectMember.slot_name.like("member%"),
                 TelegramProjectMember.group_name == customer_group_name
             ).first()
             if customer_links:

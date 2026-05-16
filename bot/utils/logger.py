@@ -52,7 +52,11 @@ def _write_log(level: str, content: str, message_log: LogType):
         f.write(log_line)
         
     # Print to console for direct monitoring
-    print(f"[{time_str}] [{level}] | {filename}:{lineno} | {content}")
+    try:
+        print(f"[{time_str}] [{level}] | {filename}:{lineno} | {content}")
+    except UnicodeEncodeError:
+        safe_content = str(content).encode('ascii', 'replace').decode('ascii')
+        print(f"[{time_str}] [{level}] | {filename}:{lineno} | {safe_content}")
 
 def LogInfo(content: str, message_log: LogType = LogType.MAIN_LOG):
     _write_log("INFO", content, message_log)

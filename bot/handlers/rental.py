@@ -74,8 +74,7 @@ Số Điện Thoại:
         # Check if contact is in the valid member list
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -299,8 +298,7 @@ async def rental_check_customer_handler(client, message: Message) -> None:
 
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -403,8 +401,7 @@ async def rental_check_contract_handler(client, message: Message) -> None:
         # Get valid contacts for project isolation
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -667,8 +664,7 @@ async def rental_extend_contract_confirm_callback(client, callback_query: Callba
 
         if customer_group:
             customer_links = db.query(TelegramProjectMember).filter(
-                TelegramProjectMember.role == "member",
-                TelegramProjectMember.slot_name.like("member%")
+                TelegramProjectMember.role == "member"
             ).all()
             for link in customer_links:
                 if link.group_name == customer_group:
@@ -745,8 +741,7 @@ async def rental_cancel_contract_handler(client, message: Message) -> None:
         # Get valid contacts for project isolation
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -975,8 +970,7 @@ async def rental_update_contract_handler(client, message: Message) -> None:
         # Get valid contacts for project isolation
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -1113,8 +1107,7 @@ async def generate_rental_revenue_report(client, message, project_id, start_date
         
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
         
         valid_groups = []
@@ -1426,8 +1419,7 @@ async def rental_list_contract_handler(client, message: Message) -> None:
 
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []
@@ -1557,8 +1549,7 @@ async def rental_bad_debt_handler(client, message: Message) -> None:
 
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.slot_name.like("member%")
+            TelegramProjectMember.role == "member"
         ).all()
 
         valid_groups = []

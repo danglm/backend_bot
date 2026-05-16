@@ -50,6 +50,8 @@ class Employee(Base):
     overtime_salary = Column(Float)
     rate_bhxh = Column(Float)
     leave_balance = Column(Integer)
+    auto_attendance = Column(Boolean, default=True)  ## Auto chấm công
+    work_type = Column(Integer, default=3)  ## Loại công: 1=T2-T6, 2=T2-T7(sáng), 3=T2-T7, 4=T2-CN
     total_debt = Column(Integer, default=0)   ## Công nợ nhân sự
     start_time = Column(DateTime) ## Thời gian checkin
     end_time = Column(DateTime) ## Thời gian checkout

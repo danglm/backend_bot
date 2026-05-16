@@ -32,7 +32,8 @@ async def lifespan(app: FastAPI):
         daily_factory_purchase_summary_worker,
         daily_fund_summary_worker,
         daily_inventory_summary_worker,
-        daily_harvest_summary_worker
+        daily_harvest_summary_worker,
+        auto_attendance_worker
     )
     asyncio.create_task(checkin_reminder_worker())
     asyncio.create_task(monthly_attendance_report_worker())
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(daily_fund_summary_worker())
     asyncio.create_task(daily_inventory_summary_worker())
     asyncio.create_task(daily_harvest_summary_worker())
+    asyncio.create_task(auto_attendance_worker())
 
     yield
     

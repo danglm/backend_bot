@@ -60,10 +60,13 @@ Ngân hàng:
 Số tài khoản: 
 Mã thanh toán: 
 SĐT khẩn cấp: 
-Người liên hệ khẩn cấp: </pre>
+Người liên hệ khẩn cấp: 
+Auto chấm công (có/không): có
+Loại công (1-4): 3</pre>
 
 <i>Các trường không bắt buộc có thể để trống.
-Bắt buộc: <b>Mã NV</b>, <b>Họ</b>, <b>Tên</b>, <b>Username</b> (Telegram)</i>"""
+Bắt buộc: <b>Mã NV</b>, <b>Họ</b>, <b>Tên</b>, <b>Username</b> (Telegram)
+Loại công: 1=T2-T6, 2=T2-T7(sáng), 3=T2-T7, 4=T2-CN</i>"""
 
 # Danh sách các field label chứa dấu ":" → cần match đặc biệt khi parse form
 _KNOWN_FIELD_LABELS = [
@@ -78,6 +81,8 @@ _KNOWN_FIELD_LABELS = [
     "Lương làm thêm giờ (VNĐ)",
     "Tiền thưởng (VNĐ)",
     "Tỷ lệ BHXH (%)",
+    "Auto chấm công (có/không)",
+    "Loại công (1-4)",
 ]
 
 
@@ -188,6 +193,7 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
         rate_bhxh = await _parse_float_or_reply(message, "Tỷ lệ BHXH", data.get("Tỷ lệ BHXH (%)", data.get("Tỷ lệ BHXH", "")).strip())
         working_hours = await _parse_float_or_reply(message, "Số giờ làm việc", data.get("Số giờ làm việc (giờ/ngày)", data.get("Số giờ làm việc", "")).strip())
         leave_balance = await _parse_int_or_reply(message, "Số ngày phép năm", data.get("Số ngày phép năm", "").strip())
+        work_type = await _parse_int_or_reply(message, "Loại công", data.get("Loại công (1-4)", data.get("Loại công", "")).strip())
         
         start_time = await _parse_time_or_reply(message, "Giờ vào ca", data.get("Giờ vào ca (hh:mm)", data.get("Giờ vào ca", "")).strip())
         end_time = await _parse_time_or_reply(message, "Giờ tan ca", data.get("Giờ tan ca (hh:mm)", data.get("Giờ tan ca", "")).strip())
@@ -274,6 +280,8 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
             hourly_salary=hourly_salary,
             overtime_salary=overtime_salary,
             rate_bhxh=rate_bhxh,
+            auto_attendance=data.get("Auto chấm công (có/không)", "có").strip().lower() in ("có", "co", "yes", "true", "1"),
+            work_type=work_type if work_type and 1 <= work_type <= 4 else 3,
             total_debt=0,
             start_time=start_time,
             end_time=end_time,
@@ -436,6 +444,8 @@ Số tài khoản: {emp.bank_account_number or ''}
 Mã thanh toán: {emp.code_payment or ''}
 SĐT khẩn cấp: {emp.emergency_phone or ''}
 Người liên hệ khẩn cấp: {emp.emergency_contact or ''}
+Auto chấm công (có/không): {'có' if emp.auto_attendance else 'không'}
+Loại công (1-4): {emp.work_type if emp.work_type is not None else 3}
 Trạng thái: {emp.status or ''}</pre>
 
 <i>Mã NV: <b>{emp.id}</b> | Chỉ sửa trường cần thay đổi.</i>"""
@@ -601,6 +611,23 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
             if leave_str:
                 employee.leave_balance = await _parse_int_or_reply(message, "Số ngày phép năm", leave_str)
                 updated_fields.append("Số ngày phép năm")
+
+            # Xử lý riêng: Auto chấm công
+            auto_att_str = data.get("Auto chấm công (có/không)", "").strip()
+            if auto_att_str:
+                employee.auto_attendance = auto_att_str.lower() in ("có", "co", "yes", "true", "1")
+                updated_fields.append("Auto chấm công")
+
+            # Xử lý riêng: Loại công
+            work_type_str = data.get("Loại công (1-4)", data.get("Loại công", "")).strip()
+            if work_type_str:
+                wt = await _parse_int_or_reply(message, "Loại công", work_type_str)
+                if wt and 1 <= wt <= 4:
+                    employee.work_type = wt
+                    updated_fields.append("Loại công")
+                else:
+                    await message.reply_text("⚠️ <b>Loại công</b> phải từ 1 đến 4 (1=T2-T6, 2=T2-T7 sáng, 3=T2-T7, 4=T2-CN).", parse_mode=ParseMode.HTML)
+                    return
         except ValueError:
             return
 
@@ -3137,10 +3164,11 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
             Attendance.year == year
         ).all()
 
-        # Calculate standard days (Mon - Sat => 6 days? Let's assume Mon-Sat = weekday() < 6 or Mon-Fri < 5)
-        # We will assume Mon-Sat.
+        # Calculate standard days based on employee's work_type
+        from bot.utils.scheduler import _is_working_day
+        emp_work_type = employee.work_type if employee.work_type else 3
         num_days_in_month = calendar.monthrange(year, month)[1]
-        standard_days = sum(1 for d in range(1, num_days_in_month + 1) if datetime.date(year, month, d).weekday() < 6)
+        standard_days = sum(1 for d in range(1, num_days_in_month + 1) if _is_working_day(datetime.date(year, month, d).weekday(), emp_work_type))
 
         actual_working_days = 0
         total_overtime = 0.0
