@@ -887,6 +887,16 @@ async def bad_debt_notification_worker():
                                 ).first()
                                 
                             if main_group:
+                                if contract.interest_start_date:
+                                    interest_day = contract.interest_start_date.day
+                                    if current_date.day >= interest_day:
+                                        due_year, due_month = current_date.year, current_date.month
+                                    else:
+                                        due_year, due_month = (current_date.year, current_date.month - 1) if current_date.month > 1 else (current_date.year - 1, 12)
+                                    skip_tag = f"[SKIP_INTEREST: {due_month:02d}/{due_year}]"
+                                    if contract.notes and skip_tag in contract.notes:
+                                        continue
+
                                 days_overdue = (current_date - contract.due_date).days
                                 
                                 def fmt_num(val):
@@ -901,7 +911,8 @@ async def bad_debt_notification_worker():
                                     f"<b>Liên hệ:</b> {customer.contact_info}\n"
                                     f"<b>Còn nợ gốc:</b> {fmt_num(contract.remaining_principal):,} VND\n"
                                     f"<b>Ngày đáo hạn gốc:</b> {contract.due_date.strftime('%d/%m/%Y')}\n\n"
-                                    f"<i>=> Admin/Owner hãy <b>Reply</b> tin nhắn này với lệnh <code>/bad_debt</code> để đưa vào BLACKLIST!</i>"
+                                    f"<i>=> Admin/Owner hãy <b>Reply</b> tin nhắn này với lệnh <code>/bad_debt</code> để đưa vào BLACKLIST!</i>\n"
+                                    f"<i>=> Hoặc nhập lệnh <code>/remind_next_period {contract.contract_id}</code> để dời thông báo sang tháng sau.</i>"
                                 )
                                 
                                 try:
@@ -1008,6 +1019,11 @@ async def interest_payment_notification_worker():
                             if contract.interest_debt is not None and contract.interest_debt <= 0:
                                 continue
                                 
+                            skip_tag = f"[SKIP_INTEREST: {due_month:02d}/{due_year}]"
+                            if contract.notes and skip_tag in contract.notes:
+                                continue
+
+                                
                             customer = contract.customer
                             if not customer:
                                 continue
@@ -1098,7 +1114,8 @@ async def interest_payment_notification_worker():
                                     f"---------------------------\n"
                                     f"<i>Quý khách vui lòng thanh toán đúng hạn. Cảm ơn Quý Khách Hàng.</i>\n"
                                     f"<i>Sau khi Quý Khách Hàng đã thanh toán, vui lòng gửi lại biên lai thanh toán để Admin được xác nhận.</i>\n"
-                                    f"<i>Admin vui lòng nhập <pre>/credit_payment_confirmed [Số tiền thanh toán]</pre> để xác nhận thanh toán.</i>"
+                                    f"<i>Admin vui lòng nhập <pre>/credit_payment_confirmed [Số tiền thanh toán]</pre> để xác nhận thanh toán.</i>\n"
+                                    f"<i>Hoặc nhập lệnh <pre>/remind_next_period {contract.contract_id}</pre> để dời thông báo sang tháng sau (lãi tháng này đã được cộng vào nợ lãi).</i>"
                                 )
                                 
                                 try:

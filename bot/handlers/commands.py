@@ -3,7 +3,7 @@ import asyncio
 import re
 from bot.utils.logger import LogType, LogInfo, LogError
 from pyrogram import filters
-from pyrogram.types import Message
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
 from bot.utils.bot import bot
 from bot.utils.db_logger import log_member_activity
@@ -820,6 +820,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_chi", "Xuất báo cáo thu chi Excel"),
                     BotCommand("tien_nga_xuat_bc_tong_hop", "Báo cáo tổng hợp tài chính"),
+                    BotCommand("tien_nga_cash_advance", "Ứng tiền"),
                     BotCommand("confirm_payment", "Duyệt phiếu chi"),
                     BotCommand("deny_payment", "Huỷ phiếu chi"),
                 ])
@@ -1629,3 +1630,321 @@ async def dp_cancel_callback(client, callback_query):
         parse_mode=ParseMode.HTML
     )
     await callback_query.answer()
+
+
+@bot.on_message(filters.command("kick_user") | filters.regex(r"^@\w+\s+/kick_user\b"))
+async def kick_user_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, "kick_user")
+    if args is None: return
+
+    from app.core.config import settings
+    main_chat_id = settings.IMP_Config.Chat_ID_Main
+
+    if str(message.chat.id) != str(main_chat_id):
+        await message.reply_text("⚠️ Lệnh này chỉ được phép thực hiện trong nhóm main.", parse_mode=ParseMode.HTML)
+        return
+
+    # Check if admin/owner
+    try:
+        from pyrogram.enums import ChatMemberStatus
+        member = await client.get_chat_member(message.chat.id, message.from_user.id)
+        if member.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+            await message.reply_text("⚠️ Chỉ Admin hoặc Owner mới được sử dụng lệnh này.", parse_mode=ParseMode.HTML)
+            return
+    except Exception as e:
+        LogError(f"Error checking admin status for /kick_user: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Không thể xác thực quyền của bạn.")
+        return
+
+    if len(args) < 2:
+        await message.reply_text("⚠️ Cú pháp không hợp lệ. Vui lòng sử dụng: <code>/kick_user [username]</code>", parse_mode=ParseMode.HTML)
+        return
+
+    target_username = args[1]
+    if target_username.startswith("@"):
+        target_username = target_username[1:]
+
+    try:
+        user = await client.get_users(target_username)
+        target_user_id = str(user.id)
+        target_display = f"@{user.username}" if user.username else f"{user.first_name}"
+    except Exception as e:
+        target_user_id = target_username
+        target_display = f"@{target_username}"
+
+    db = SessionLocal()
+    try:
+        from app.models.business import Projects
+        projects = db.query(Projects).all()
+        
+        buttons = []
+        buttons.append([InlineKeyboardButton("Tất cả các nhóm trong các dự án", callback_data=f"ku_all_{target_user_id}")])
+        
+        for p in projects:
+            p_id_short = str(p.id).replace("-", "")[:8]
+            buttons.append([InlineKeyboardButton(p.project_name, callback_data=f"ku_p_{p_id_short}_{target_user_id}")])
+            
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="ku_cancel")])
+        
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await message.reply_text(
+            f"<b>XÓA NGƯỜI DÙNG</b>\n\nBạn muốn xóa <b>{target_display}</b> khỏi dự án nào?",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in kick_user_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra khi lấy danh sách dự án.")
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ku_all_(.+)$"))
+async def kick_user_all_callback(client, callback_query):
+    target_user_id = callback_query.matches[0].group(1)
+    target_uid = int(target_user_id) if target_user_id.isdigit() else target_user_id
+    
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        from pyrogram.enums import ChatMemberStatus
+        groups = db.query(TelegramProjectMember.chat_id, TelegramProjectMember.group_name).distinct().all()
+        
+        await callback_query.message.edit_text(f"⏳ Đang kiểm tra thông tin thành viên trên {len(groups)} nhóm...")
+        
+        kickable_chats = []
+        admin_chats = []
+        last_ex = None
+        
+        for chat_id_val, group_name in groups:
+            chat_id = int(chat_id_val)
+            try:
+                member = await client.get_chat_member(chat_id, target_uid)
+                chat_title = group_name if group_name else str(chat_id)
+                
+                if member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+                    admin_chats.append(chat_title)
+                else:
+                    kickable_chats.append(chat_title)
+            except Exception as ex:
+                last_ex = ex
+                from pyrogram.errors import UserNotParticipant
+                if not isinstance(ex, UserNotParticipant):
+                    LogError(f"Error checking member {target_uid} in chat {chat_id}: {ex}", LogType.SYSTEM_STATUS)
+                
+        if not kickable_chats and not admin_chats:
+            await callback_query.message.edit_text("⚠️ Người dùng này hiện không có mặt trong bất kỳ nhóm nào trên hệ thống.", parse_mode=ParseMode.HTML)
+            return
+            
+        text = "<b>THÔNG TIN NHÓM ĐÃ THAM GIA:</b>\n\n"
+        if kickable_chats:
+            text += "✅ <b>Có thể xóa khỏi các nhóm sau:</b>\n"
+            for t in kickable_chats:
+                text += f"- {t}\n"
+            text += "\n"
+        if admin_chats:
+            text += "❌ <b>Không thể xóa (vì là Admin/Owner):</b>\n"
+            for t in admin_chats:
+                text += f"- {t}\n"
+            text += "\n"
+            
+        if not kickable_chats:
+            text += "⚠️ <i>Thành viên này không có nhóm nào có thể bị xóa.</i>"
+            await callback_query.message.edit_text(text, parse_mode=ParseMode.HTML)
+            return
+            
+        text += "❓ Bạn có chắc chắn muốn xóa thành viên này khỏi các nhóm hợp lệ không?"
+        
+        buttons = [
+            [InlineKeyboardButton("Xác nhận", callback_data=f"ku_c_a_{target_user_id}")],
+            [InlineKeyboardButton("Hủy", callback_data="ku_cancel")]
+        ]
+        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+    except Exception as e:
+        LogError(f"Error in kick_user_all: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text("❌ Có lỗi xảy ra trong quá trình kiểm tra.")
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ku_c_a_(.+)$"))
+async def kick_user_all_confirm(client, callback_query):
+    target_user_id = callback_query.matches[0].group(1)
+    target_uid = int(target_user_id) if target_user_id.isdigit() else target_user_id
+    
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        from pyrogram.enums import ChatMemberStatus
+        groups = db.query(TelegramProjectMember.chat_id).distinct().all()
+        
+        await callback_query.message.edit_text("⏳ Đang tiến hành xóa người dùng...")
+        
+        kicked_count = 0
+        for (chat_id_val,) in groups:
+            chat_id = int(chat_id_val)
+            try:
+                member = await client.get_chat_member(chat_id, target_uid)
+                if member.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+                    await client.ban_chat_member(chat_id, target_uid)
+                    await client.unban_chat_member(chat_id, target_uid)
+                    kicked_count += 1
+                    await asyncio.sleep(5)
+            except Exception as ex:
+                from pyrogram.errors import UserNotParticipant
+                if not isinstance(ex, UserNotParticipant):
+                    LogError(f"Error kicking member {target_uid} in chat {chat_id}: {ex}", LogType.SYSTEM_STATUS)
+                
+        await callback_query.message.edit_text(
+            f"✅ <b>HOÀN TẤT!</b>\n\nĐã xóa người dùng khỏi <b>{kicked_count}</b> nhóm.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in kick_user_all_confirm: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text("❌ Có lỗi xảy ra trong quá trình xóa.")
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ku_p_([a-f0-9]+)_(.+)$"))
+async def kick_user_project_callback(client, callback_query):
+    project_id_short = callback_query.matches[0].group(1)
+    target_user_id = callback_query.matches[0].group(2)
+    target_uid = int(target_user_id) if target_user_id.isdigit() else target_user_id
+    
+    db = SessionLocal()
+    try:
+        from app.models.business import Projects
+        from app.models.telegram import TelegramProjectMember
+        from pyrogram.enums import ChatMemberStatus
+        
+        projects = db.query(Projects).all()
+        target_project = None
+        for p in projects:
+            if str(p.id).replace("-", "")[:8] == project_id_short:
+                target_project = p
+                break
+                
+        if not target_project:
+            await callback_query.answer("⚠️ Không tìm thấy dự án.", show_alert=True)
+            return
+            
+        groups = db.query(TelegramProjectMember.chat_id, TelegramProjectMember.group_name).filter(
+            TelegramProjectMember.project_id == target_project.id
+        ).distinct().all()
+        
+        await callback_query.message.edit_text(f"⏳ Đang kiểm tra thông tin trên {len(groups)} nhóm thuộc dự án {target_project.project_name}...")
+        
+        kickable_chats = []
+        admin_chats = []
+        last_ex = None
+        
+        for chat_id_val, group_name in groups:
+            chat_id = int(chat_id_val)
+            try:
+                member = await client.get_chat_member(chat_id, target_uid)
+                chat_title = group_name if group_name else str(chat_id)
+                
+                if member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+                    admin_chats.append(chat_title)
+                else:
+                    kickable_chats.append(chat_title)
+            except Exception as ex:
+                last_ex = ex
+                from pyrogram.errors import UserNotParticipant
+                if not isinstance(ex, UserNotParticipant):
+                    LogError(f"Error checking member {target_uid} in chat {chat_id}: {ex}", LogType.SYSTEM_STATUS)
+                
+        if not kickable_chats and not admin_chats:
+            await callback_query.message.edit_text(f"⚠️ Người dùng này hiện không có mặt trong bất kỳ nhóm nào thuộc dự án {target_project.project_name}.", parse_mode=ParseMode.HTML)
+            return
+            
+        text = f"<b>THÔNG TIN NHÓM ĐÃ THAM GIA ({target_project.project_name}):</b>\n\n"
+        if kickable_chats:
+            text += "✅ <b>Có thể xóa khỏi các nhóm sau:</b>\n"
+            for t in kickable_chats:
+                text += f"- {t}\n"
+            text += "\n"
+        if admin_chats:
+            text += "❌ <b>Không thể xóa (vì là Admin/Owner):</b>\n"
+            for t in admin_chats:
+                text += f"- {t}\n"
+            text += "\n"
+            
+        if not kickable_chats:
+            text += "⚠️ <i>Thành viên này không có nhóm nào có thể bị xóa.</i>"
+            await callback_query.message.edit_text(text, parse_mode=ParseMode.HTML)
+            return
+            
+        text += "❓ Bạn có chắc chắn muốn xóa thành viên này khỏi các nhóm hợp lệ không?"
+        
+        buttons = [
+            [InlineKeyboardButton("Xác nhận", callback_data=f"ku_c_p_{project_id_short}_{target_user_id}")],
+            [InlineKeyboardButton("Hủy", callback_data="ku_cancel")]
+        ]
+        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+    except Exception as e:
+        LogError(f"Error in kick_user_project: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text("❌ Có lỗi xảy ra trong quá trình kiểm tra.")
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ku_c_p_([a-f0-9]+)_(.+)$"))
+async def kick_user_project_confirm(client, callback_query):
+    project_id_short = callback_query.matches[0].group(1)
+    target_user_id = callback_query.matches[0].group(2)
+    target_uid = int(target_user_id) if target_user_id.isdigit() else target_user_id
+    
+    db = SessionLocal()
+    try:
+        from app.models.business import Projects
+        from app.models.telegram import TelegramProjectMember
+        from pyrogram.enums import ChatMemberStatus
+        
+        projects = db.query(Projects).all()
+        target_project = None
+        for p in projects:
+            if str(p.id).replace("-", "")[:8] == project_id_short:
+                target_project = p
+                break
+                
+        if not target_project:
+            await callback_query.answer("⚠️ Không tìm thấy dự án.", show_alert=True)
+            return
+            
+        groups = db.query(TelegramProjectMember.chat_id).filter(
+            TelegramProjectMember.project_id == target_project.id
+        ).distinct().all()
+        
+        await callback_query.message.edit_text(f"⏳ Đang tiến hành xóa người dùng trong dự án {target_project.project_name}...")
+        
+        kicked_count = 0
+        for (chat_id_val,) in groups:
+            chat_id = int(chat_id_val)
+            try:
+                member = await client.get_chat_member(chat_id, target_uid)
+                if member.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+                    await client.ban_chat_member(chat_id, target_uid)
+                    await client.unban_chat_member(chat_id, target_uid)
+                    kicked_count += 1
+                    await asyncio.sleep(5)
+            except Exception as ex:
+                from pyrogram.errors import UserNotParticipant
+                if not isinstance(ex, UserNotParticipant):
+                    LogError(f"Error kicking member {target_uid} in chat {chat_id}: {ex}", LogType.SYSTEM_STATUS)
+                
+        await callback_query.message.edit_text(
+            f"✅ <b>HOÀN TẤT!</b>\n\nĐã xóa người dùng khỏi <b>{kicked_count}</b> nhóm trong dự án <b>{target_project.project_name}</b>.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in kick_user_project_confirm: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text("❌ Có lỗi xảy ra trong quá trình xóa.")
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ku_cancel$"))
+async def kick_user_cancel_callback(client, callback_query):
+    await callback_query.message.edit_text("❌ Đã hủy thao tác xóa người dùng.")

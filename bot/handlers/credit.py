@@ -739,6 +739,7 @@ Nội Dung Tin Nhắn:
             notes=notes,
             send_message_arise=send_msg,
             message_content=msg_content,
+            interest_debt=0.0,
             credit_status=CreditStatus.ACTIVE
         )
         
@@ -825,6 +826,7 @@ async def update_contract_handler(client, message: Message) -> None:
             monthly_amount = fmt_num(contract.monthly_interest_amount)
             total_paid = fmt_num(contract.total_principal_paid)
             remaining_principal = fmt_num(contract.remaining_principal)
+            current_interest_debt = fmt_num(contract.interest_debt or 0)
             send_msg = "Có" if contract.send_message_arise else "Không"
 
             form_template = f"""<b>FORM CẬP NHẬT HỢP ĐỒNG TÍN DỤNG</b>
@@ -848,6 +850,7 @@ Lãi Suất / Tháng (%): {interest_rate}
 Số Tiền Lãi / Tháng: {monthly_amount}
 Tổng Số Tiền Trả Gốc: {total_paid}
 Tiền Nợ Gốc Còn Lại: {remaining_principal}
+Tổng Nợ Lãi: {current_interest_debt}
 Ghi Chú: {contract.notes or ""}
 Gửi Tin Nhắn Phát Sinh (Có/Không): {send_msg}
 Nội Dung Tin Nhắn: {contract.message_content or ""}
@@ -919,6 +922,7 @@ Nội Dung Tin Nhắn: {contract.message_content or ""}
         else:
             remaining_principal = provided_remaining
 
+        interest_debt_val = parse_float(data.get("Tổng Nợ Lãi", ""))
         notes = data.get("Ghi Chú", "")
         send_msg_str = data.get("Gửi Tin Nhắn Phát Sinh (Có/Không)", "").lower()
         send_msg = True if "có" in send_msg_str else False
@@ -954,6 +958,7 @@ Nội Dung Tin Nhắn: {contract.message_content or ""}
         contract.notes = notes
         contract.send_message_arise = send_msg
         contract.message_content = msg_content
+        contract.interest_debt = interest_debt_val
         
         db.commit()
         await message.reply_text(f"✅ Đã cập nhật hợp đồng <b>{new_contract_id}</b> thành công!", parse_mode=ParseMode.HTML)
@@ -1948,5 +1953,68 @@ async def revenue_callback_handler(client, callback_query: CallbackQuery):
     except Exception as e:
         LogError(f"Error in revenue_callback_handler: {e}", LogType.SYSTEM_STATUS)
         await callback_query.message.reply_text("❌ Có lỗi xảy ra.")
+    finally:
+        db.close()
+
+# --- Remind Next Period ---
+@bot.on_message(filters.command(["remind_next_period"]) | filters.regex(r"^@\w+\s+/remind_next_period\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Credit")
+@require_group_role("main")
+async def remind_next_period_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["remind_next_period"])
+    if args is None: return
+
+    if len(args) < 2:
+        await message.reply_text("⚠️ Vui lòng cung cấp mã hợp đồng. Lệnh ví dụ: <pre>/remind_next_period HD123</pre>", parse_mode=ParseMode.HTML)
+        return
+
+    contract_code = args[1]
+    db = SessionLocal()
+    try:
+        from app.models.credit import Credit, CreditStatus
+        contract = db.query(Credit).filter(Credit.contract_id == contract_code).first()
+        if not contract:
+            await message.reply_text(f"⚠️ Không tìm thấy hợp đồng <b>{contract_code}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        if contract.credit_status != CreditStatus.ACTIVE.value:
+            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không ở trạng thái ACTIVE (Đang vay).", parse_mode=ParseMode.HTML)
+            return
+            
+        if not contract.interest_start_date:
+            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không có ngày bắt đầu tính lãi.", parse_mode=ParseMode.HTML)
+            return
+
+        import datetime
+        now = datetime.datetime.now()
+        current_date = now.date()
+        interest_day = contract.interest_start_date.day
+        
+        if current_date.day >= interest_day:
+            due_year, due_month = current_date.year, current_date.month
+        else:
+            due_year, due_month = (current_date.year, current_date.month - 1) if current_date.month > 1 else (current_date.year - 1, 12)
+            
+        skip_tag = f"[SKIP_INTEREST: {due_month:02d}/{due_year}]"
+        
+        if contract.notes and skip_tag in contract.notes:
+            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> đã được dời thông báo cho chu kỳ này trước đó rồi.", parse_mode=ParseMode.HTML)
+            return
+            
+        # Append skip tag
+        if contract.notes:
+            contract.notes = f"{contract.notes}\n{skip_tag}"
+        else:
+            contract.notes = skip_tag
+            
+        db.commit()
+        
+        await message.reply_text(f"✅ Đã dời thông báo đóng lãi của hợp đồng <b>{contract_code}</b> sang chu kỳ sau.\n\n<i>Lãi của chu kỳ này đã được cộng vào tổng nợ lãi. Bot sẽ ngưng nhắc nhở và không đưa khách hàng vào Nợ Xấu (Blacklist) trong chu kỳ này.</i>", parse_mode=ParseMode.HTML)
+        LogInfo(f"Remind next period applied to {contract_code} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        LogError(f"Error in remind_next_period_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra trong quá trình dời thông báo.")
     finally:
         db.close()

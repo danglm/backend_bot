@@ -36,6 +36,8 @@ class CreditBase(BaseModel):
     notes: Optional[str] = None
     send_message_arise: Optional[bool] = False
     message_content: Optional[str] = None
+    interest_debt: Optional[float] = 0.0
+    last_interest_charged_date: Optional[date] = None
     credit_status: Optional[CreditStatus] = CreditStatus.ACTIVE
 
 class CreditCreate(CreditBase):

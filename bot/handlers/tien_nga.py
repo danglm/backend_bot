@@ -16053,3 +16053,102 @@ async def regen_harv_rep_callback(client, callback_query: CallbackQuery):
         await callback_query.message.reply_text("❌ Có lỗi xảy ra khi tạo lại báo cáo.")
     finally:
         db.close()
+
+# ===================== ỨNG TIỀN MÙA MỚI =====================
+@bot.on_message(filters.command(["tien_nga_cash_advance", "tien_nga_ung_tien"]) | filters.regex(r"^@\w+\s+/(tien_nga_cash_advance|tien_nga_ung_tien)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_cash_advance_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_cash_advance", "tien_nga_ung_tien"])
+    if args is None: return
+
+    if len(args) < 3:
+        await message.reply_text("⚠️ <b>Cú pháp:</b> /tien_nga_cash_advance [mã hộ dân] [số tiền ứng]", parse_mode=ParseMode.HTML)
+        return
+
+    hoursehold_id = args[1].strip()
+    try:
+        # Hỗ trợ format số tiền có phẩy hoặc chấm
+        cash_advance_str = args[2].strip().replace(",", "").replace(".", "")
+        cash_advance_requested = float(cash_advance_str)
+    except ValueError:
+        await message.reply_text("⚠️ Số tiền ứng không hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    from app.db.session import SessionLocal
+    from app.models.business import Customers, DailyPurchases
+    from app.core.config import settings
+    from datetime import date
+    import calendar
+    from sqlalchemy import func
+
+    db = SessionLocal()
+    try:
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            await message.reply_text(f"⚠️ Không tìm thấy hộ dân có mã <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        current_date = date.today()
+        if current_date.month >= 5:
+            start_year = current_date.year - 1
+        else:
+            start_year = current_date.year - 2
+
+        start_date = date(start_year, 5, 1)
+        end_year = start_year + 1
+        end_month = 2
+        last_day = calendar.monthrange(end_year, end_month)[1]
+        end_date = date(end_year, end_month, last_day)
+
+        total_sales = db.query(func.sum(DailyPurchases.total_amount)).filter(
+            DailyPurchases.hoursehold_id == hoursehold_id,
+            DailyPurchases.day >= start_date,
+            DailyPurchases.day <= end_date
+        ).scalar() or 0.0
+
+        max_cash_advance_rate = settings.IMP_Config.MaxCashAdvance
+        max_cash_advance = total_sales * max_cash_advance_rate
+        current_advance = customer.cash_advance or 0
+        total_after_advance = current_advance + cash_advance_requested
+
+        if total_after_advance > max_cash_advance:
+            reason = (
+                f"Theo quy định, tổng số tiền ứng tối đa bằng {max_cash_advance_rate * 100:.0f}% tổng số tiền bán mủ mùa vụ trước.\n"
+                f"Mùa vụ trước (từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}):\n"
+                f"Tổng số tiền bán mủ: <b>{fmt_money(total_sales)}</b>\n"
+                f"Hạn mức ứng tối đa: <b>{fmt_money(max_cash_advance)}</b>\n"
+            )
+            if current_advance > 0:
+                reason += f"Đã ứng trước đó: <b>{fmt_money(current_advance)}</b>\n"
+                reason += f"Còn lại có thể ứng: <b>{fmt_money(max_cash_advance - current_advance)}</b>"
+
+            await message.reply_text(
+                f"⚠️ <b>SỐ TIỀN ỨNG VƯỢT QUÁ HẠN MỨC CHO PHÉP</b>\n\n"
+                f"Số tiền yêu cầu ứng: <b>{fmt_money(cash_advance_requested)}</b>\n\n"
+                f"{reason}",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        customer.cash_advance = total_after_advance
+        db.commit()
+
+        LogInfo(f"[TienNga] User {message.from_user.id} gave cash advance {cash_advance_requested} to household {hoursehold_id}", LogType.SYSTEM_STATUS)
+
+        await message.reply_text(
+            f"✅ <b>ỨNG TIỀN THÀNH CÔNG</b>\n\n"
+            f"<b>Mã Hộ:</b> {customer.hoursehold_id}\n"
+            f"<b>Tên KH:</b> {customer.fullname}\n"
+            f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
+            f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(customer.cash_advance)}</code>\n\n"
+            f"<i>Gợi ý: Cần thực hiện thêm lệnh /tien_nga_yeu_cau_thu_chi để ghi nhận chi quỹ.</i>",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error handling tien_nga_cash_advance: {e}", LogType.SYSTEM_STATUS)
+        db.rollback()
+        await message.reply_text("❌ Có lỗi xảy ra khi thực hiện ứng tiền.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
