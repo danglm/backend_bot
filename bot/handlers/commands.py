@@ -912,7 +912,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                 ])
 
         # ===================== GGOMOONSIN =====================
-        elif "ggomoonsin" in project_name:
+        elif "ggomoonsin" in project_name.lower():
             if custom_title == "super_main":
                 label = "GGoMoonSin (Tổng Hợp)"
 
@@ -929,7 +929,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("ggomoonsin_xoa_nhan_vien", "Xóa nhân viên"),
                     BotCommand("ggomoonsin_giao_viec", "Giao việc"),
                     BotCommand("ggomoonsin_xuat_luong", "Xuất bảng lương"),
-                    BotCommand("ggomoonsin_tao_lai_bang_cham_cong", "Tạo lại báo cáo chấm công"),
+                    BotCommand("ggomoonsin_tao_lai_cham_cong", "Tạo lại báo cáo chấm công"),
                     BotCommand("ggomoonsin_danh_sach_cong_viec", "Xem công việc của nhân viên"),
                     BotCommand("ggomoonsin_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
                     BotCommand("ggomoonsin_danh_sach_nhan_vien", "Xuất DS nhân viên Excel"),

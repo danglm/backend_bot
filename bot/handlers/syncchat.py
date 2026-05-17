@@ -82,19 +82,40 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
             )
             return
 
+        # --- GGoMoonSin project sub-menu ---
+        if project and "ggomoonsin" in project.project_name.lower():
+            buttons = [
+                [InlineKeyboardButton("Nhóm tổng", callback_data=f"sync_dept_{project_id}_tong")],
+                [InlineKeyboardButton("Nhân sự", callback_data=f"sync_dept_{project_id}_hr")],
+                [InlineKeyboardButton("Thành phẩm", callback_data=f"sync_dept_{project_id}_product")],
+                [InlineKeyboardButton("Tài chính", callback_data=f"sync_dept_{project_id}_finance")],
+                [InlineKeyboardButton("Kinh doanh", callback_data=f"sync_dept_{project_id}_sales")],
+                [
+                    InlineKeyboardButton("Trở lại", callback_data="sync_back_to_proj"),
+                    InlineKeyboardButton("Hủy", callback_data="sync_cancel")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(buttons)
+            await callback_query.message.edit_text(
+                "<b>DỰ ÁN GGOMOONSIN</b>\n\nVui lòng chọn phòng ban / loại nhóm:",
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
+            return
+
         # --- Tiến Nga project sub-menu ---
         if project and "tiến nga" in project.project_name.lower():
             buttons = [
-                [InlineKeyboardButton("Nhóm tổng", callback_data=f"sync_tn_{project_id}_tong")],
-                [InlineKeyboardButton("Nhà cung cấp", callback_data=f"sync_tn_{project_id}_supplier")],
-                [InlineKeyboardButton("Kinh doanh", callback_data=f"sync_tn_{project_id}_sales")],
-                [InlineKeyboardButton("Nhân sự", callback_data=f"sync_tn_{project_id}_hr")],
-                [InlineKeyboardButton("Tài chính", callback_data=f"sync_tn_{project_id}_finance")],
-                [InlineKeyboardButton("Quản lý hàng thành phẩm", callback_data=f"sync_tn_{project_id}_product")],
-                [InlineKeyboardButton("Quản lý đối tác", callback_data=f"sync_tn_{project_id}_partner")],
-                [InlineKeyboardButton("Quản lý kho", callback_data=f"sync_tn_{project_id}_inventory")],
-                [InlineKeyboardButton("Quản lý Cổ Đông", callback_data=f"sync_tn_{project_id}_sh")],
-                [InlineKeyboardButton("Thu hoạch cao su", callback_data=f"sync_tn_{project_id}_harvest")],
+                [InlineKeyboardButton("Nhóm tổng", callback_data=f"sync_dept_{project_id}_tong")],
+                [InlineKeyboardButton("Nhà cung cấp", callback_data=f"sync_dept_{project_id}_supplier")],
+                [InlineKeyboardButton("Kinh doanh", callback_data=f"sync_dept_{project_id}_sales")],
+                [InlineKeyboardButton("Nhân sự", callback_data=f"sync_dept_{project_id}_hr")],
+                [InlineKeyboardButton("Tài chính", callback_data=f"sync_dept_{project_id}_finance")],
+                [InlineKeyboardButton("Quản lý hàng thành phẩm", callback_data=f"sync_dept_{project_id}_product")],
+                [InlineKeyboardButton("Quản lý đối tác", callback_data=f"sync_dept_{project_id}_partner")],
+                [InlineKeyboardButton("Quản lý kho", callback_data=f"sync_dept_{project_id}_inventory")],
+                [InlineKeyboardButton("Quản lý Cổ Đông", callback_data=f"sync_dept_{project_id}_sh")],
+                [InlineKeyboardButton("Thu hoạch cao su", callback_data=f"sync_dept_{project_id}_harvest")],
                 [
                     InlineKeyboardButton("Trở lại", callback_data="sync_back_to_proj"),
                     InlineKeyboardButton("Hủy", callback_data="sync_cancel")
@@ -131,26 +152,26 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
     )
 
 
-# --- Step 2b-TN: Tiến Nga - Select Role after department ---
-TN_DEPT_LABELS = {
+# --- Step 2b-TN/Ggo: Select Role after department ---
+DEPT_LABELS = {
     "tong": "Nhóm Tổng",
     "supplier": "Nhà cung cấp",
     "sales": "Kinh doanh",
     "hr": "Nhân sự",
     "finance": "Tài chính",
-    "product": "Quản lý hàng thành phẩm",
+    "product": "Thành phẩm / Hàng hóa",
     "inventory": "Quản lý kho",
     "partner": "Quản lý đối tác",
     "sh": "Quản lý Cổ Đông",
     "harvest": "Thu hoạch cao su",
 }
 
-@bot.on_callback_query(filters.regex(r"^sync_tn_(.+)_(tong|supplier|sales|hr|finance|product|inventory|partner|sh|harvest)$"))
-async def sync_tn_dept_callback(client, callback_query: CallbackQuery):
+@bot.on_callback_query(filters.regex(r"^sync_dept_(.+)_(tong|supplier|sales|hr|finance|product|inventory|partner|sh|harvest)$"))
+async def sync_dept_callback(client, callback_query: CallbackQuery):
     project_id = callback_query.matches[0].group(1)
     dept = callback_query.matches[0].group(2)
 
-    label = TN_DEPT_LABELS.get(dept, dept)
+    label = DEPT_LABELS.get(dept, dept)
 
     # Special case: "Nhóm Tổng" -> auto-set role=main, custom_title=super_main
     if dept == "tong":
@@ -192,7 +213,7 @@ async def sync_member_check_parent_callback(client, callback_query: CallbackQuer
     project_id = callback_query.matches[0].group(1)
     dept = callback_query.matches[0].group(2)
 
-    label = TN_DEPT_LABELS.get(dept, dept)
+    label = DEPT_LABELS.get(dept, dept)
 
     # Xác định custom_title của nhóm Main tương ứng
     resolved_dept = SUBCATEGORY_MAP_SYNC.get(dept, dept)
