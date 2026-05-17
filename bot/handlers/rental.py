@@ -182,7 +182,7 @@ Ngày Bắt Đầu Thuê (dd/mm/yyyy):
 Ngày Kết Thúc Thuê (dd/mm/yyyy): 
 Tiền Cọc: 
 Tiền Thuê / Tháng: 
-Công Nợ: 0
+Số tiền nợ của khách: 0
 </pre>
 
 <i>Ví dụ mã hợp đồng: LMD-HD220101. Loại hợp đồng gồm (Nhà nguyên căn, Phòng trọ, Căn hộ, Mặt bằng, v.v.)</i>"""
@@ -242,7 +242,7 @@ Công Nợ: 0
         end_rental = parse_date(data.get("Ngày Kết Thúc Thuê (dd/mm/yyyy)", ""))
         deposit = parse_float(data.get("Tiền Cọc", "0"))
         monthly_rental = parse_float(data.get("Tiền Thuê / Tháng", "0"))
-        rental_debt = parse_float(data.get("Công Nợ", "0"))
+        rental_debt = parse_float(data.get("Số tiền nợ của khách", "0"))
 
         from app.schemas.rental import RentalCreate
         from app.crud.rental import create_rental
@@ -1024,7 +1024,7 @@ Ngày Bắt Đầu Thuê (dd/mm/yyyy): {fmt_dt(contract.start_rental)}
 Ngày Kết Thúc Thuê (dd/mm/yyyy): {fmt_dt(contract.end_rental)}
 Tiền Cọc: {deposit_val}
 Tiền Thuê / Tháng: {monthly_val}
-Công Nợ: {debt_val}
+Số tiền nợ của khách: {debt_val}
 Trạng Thái (active/expired/cancelled): {contract.status or 'active'}
 </pre>"""
             await message.reply_text(form_template, parse_mode=ParseMode.HTML)
@@ -1078,7 +1078,7 @@ Trạng Thái (active/expired/cancelled): {contract.status or 'active'}
         contract.deposit = parse_float(data.get("Tiền Cọc", "")) or contract.deposit
         contract.monthly_rental = parse_float(data.get("Tiền Thuê / Tháng", "")) or contract.monthly_rental
 
-        debt_str = data.get("Công Nợ", "").strip()
+        debt_str = data.get("Số tiền nợ của khách", "").strip()
         if debt_str:
             contract.rental_debt = parse_float(debt_str)
 
@@ -1136,9 +1136,7 @@ async def generate_rental_revenue_report(client, message, project_id, start_date
             if start_date <= record_date <= end_date:
                 valid_payments.append(payment)
                 
-        def fmt_num(val):
-            if val is None: return 0
-            return int(val) if val == int(val) else val
+        from bot.utils.utils import fmt_vn
             
         total_collected = sum([p.payment_amount or 0 for p in valid_payments])
         
@@ -1149,8 +1147,8 @@ async def generate_rental_revenue_report(client, message, project_id, start_date
             f"<b>BÁO CÁO DOANH THU THUÊ NHÀ</b>",
             f"<i>(Thời gian lọc: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})</i>",
             f"---------------------------",
-            f"<b>Tổng Tiền Thuê Đã Thu:</b> <b>{fmt_num(total_collected):,} VND</b>", 
-            f"<b>Tổng Công Nợ Khách Hàng:</b> {fmt_num(total_outstanding_debt):,} VND",
+            f"<b>Tổng Tiền Thuê Đã Thu:</b> <b>{fmt_vn(total_collected)}</b>", 
+            f"<b>Tổng Công Nợ Khách Hàng:</b> {fmt_vn(total_outstanding_debt)}",
         ]
         
         await message.reply_text("\n".join(report_lines), parse_mode=ParseMode.HTML)
@@ -1290,9 +1288,7 @@ async def rental_cashflow_report_handler(client, message: Message) -> None:
             await message.reply_text("⚠️ Không có khách hàng nào trong dự án này.", parse_mode=ParseMode.HTML)
             return
             
-        def fmt_num(val):
-            if val is None: return 0
-            return int(val) if val == int(val) else val
+        from bot.utils.utils import fmt_vn
             
         total_contracts = 0
         total_deposit = 0
@@ -1333,8 +1329,8 @@ async def rental_cashflow_report_handler(client, message: Message) -> None:
                     project_monthly_totals[ym] = project_monthly_totals.get(ym, 0) + (payment.payment_amount or 0)
                     
                 if monthly_totals:
-                    parts = [f"Tháng {ym}: {fmt_num(amt):,}" for ym, amt in sorted(monthly_totals.items())]
-                    cust_paid_str = " | ".join(parts)
+                    total_paid = sum(monthly_totals.values())
+                    cust_paid_str = f"<b>{fmt_vn(total_paid)}</b>"
             
             if not cust_paid_str:
                 cust_paid_str = "Chưa đóng tiền"
@@ -1344,29 +1340,24 @@ async def rental_cashflow_report_handler(client, message: Message) -> None:
             
             customer_lines.append(
                 f"\n<b>{customer.customer_name}</b> (Mã: {customer.customer_id})\n"
-                f"   Hợp đồng: {cust_contracts} | Tiền Cọc: <b>{fmt_num(cust_deposit):,}</b> | Công Nợ: <b>{fmt_num(cust_debt):,}</b>\n"
-                f"   Đã đóng: {cust_paid_str}"
+                f"   Hợp đồng: {cust_contracts} | Tiền Cọc: <b>{fmt_vn(cust_deposit)}</b> | Số tiền nợ còn lại: <b>{fmt_vn(cust_debt)}</b>\n"
+                f"   Tổng thanh toán: {cust_paid_str}"
             )
             
         if total_contracts == 0 and not project_monthly_totals:
             await message.reply_text("ℹ️ Không có dữ liệu hợp đồng/dòng tiền nào trong dự án.", parse_mode=ParseMode.HTML)
             return
             
+        total_project_paid = sum(project_monthly_totals.values()) if project_monthly_totals else 0
         header_lines = [
             f"<b>BÁO CÁO DÒNG TIỀN DỰ ÁN THUÊ NHÀ</b>",
             f"---------------------------",
             f"<b>Tổng Hợp Đồng Đang Thuê:</b> {total_contracts}",
-            f"<b>Tổng Tiền Cọc Đang Giữ:</b> {fmt_num(total_deposit):,}",
-            f"<b>Tổng Công Nợ:</b> {fmt_num(total_debt):,}"
+            f"<b>Tổng Tiền Cọc Đang Giữ:</b> {fmt_vn(total_deposit)}",
+            f"<b>Tổng Tiền Nợ Của Khách:</b> {fmt_vn(total_debt)}",
+            f"<b>Tổng Tiền Thuê Đã Thu:</b> {fmt_vn(total_project_paid)}",
+            f"---------------------------"
         ]
-        
-        if project_monthly_totals:
-            header_lines.append(f"---------------------------")
-            header_lines.append(f"<b>TỔNG TIỀN THUÊ ĐÃ THU THEO THÁNG:</b>")
-            for ym, amt in sorted(project_monthly_totals.items()):
-                header_lines.append(f"Tháng {ym}: <b>{fmt_num(amt):,}</b>")
-                
-        header_lines.append(f"---------------------------")
         
         full_report_lines = header_lines + customer_lines
         msg_text = "\n".join(full_report_lines)

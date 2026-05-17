@@ -1645,8 +1645,8 @@ async def payment_confirmed_handler(client, message: Message) -> None:
         
         reply_msg = (
             f"<b>{date_str}</b>\n"
-            f"Đã cập nhật thanh toán: <b>{amount_fmt:,}</b> vào hợp đồng\n"
-            f"Công nợ hiện tại: <b>{remaining:,}</b>"
+            f"Đã cập nhật thanh toán nợ lãi: <b>{amount_fmt:,}</b> vào hợp đồng\n"
+            f"Tổng nợ lãi còn lại: <b>{remaining:,}</b>"
         )
         
         await message.reply_text(reply_msg, parse_mode=ParseMode.HTML)
@@ -1695,9 +1695,7 @@ async def report_cashflow_handler(client, message: Message) -> None:
             await message.reply_text("⚠️ Không có khách hàng nào trong dự án này.", parse_mode=ParseMode.HTML)
             return
             
-        def fmt_num(val):
-            if val is None: return 0
-            return int(val) if val == int(val) else val
+        from bot.utils.utils import fmt_vn
             
         total_contracts = 0
         total_principal = 0
@@ -1741,8 +1739,8 @@ async def report_cashflow_handler(client, message: Message) -> None:
                     project_monthly_totals[ym] = project_monthly_totals.get(ym, 0) + (int_record.interest_amount or 0)
                     
                 if monthly_totals:
-                    parts = [f"Tháng {ym}: {fmt_num(amt):,}" for ym, amt in sorted(monthly_totals.items())]
-                    cust_paid_str = " | ".join(parts)
+                    total_paid = sum(monthly_totals.values())
+                    cust_paid_str = f"<b>{fmt_vn(total_paid)}</b>"
             
             if not cust_paid_str:
                 cust_paid_str = "Chưa đóng lãi"
@@ -1752,29 +1750,24 @@ async def report_cashflow_handler(client, message: Message) -> None:
             
             customer_lines.append(
                 f"\n<b>{customer.customer_name}</b> (Mã: {customer.customer_id})\n"
-                f"   Hợp đồng: {cust_contracts} | Nợ Gốc: <b>{fmt_num(cust_principal):,}</b> | Nợ Lãi: <b>{fmt_num(cust_interest):,}</b>\n"
-                f"   Đã đóng: {cust_paid_str}"
+                f"   Hợp đồng: {cust_contracts} | Nợ Gốc: <b>{fmt_vn(cust_principal)}</b> | Nợ Lãi: <b>{fmt_vn(cust_interest)}</b>\n"
+                f"   Tổng thanh toán: {cust_paid_str}"
             )
             
         if total_contracts == 0 and not project_monthly_totals:
             await message.reply_text("ℹ️ Không có dữ liệu hợp đồng/dòng tiền nào trong dự án.", parse_mode=ParseMode.HTML)
             return
             
+        total_project_paid = sum(project_monthly_totals.values()) if project_monthly_totals else 0
         header_lines = [
             f"<b>BÁO CÁO DÒNG TIỀN DỰ ÁN</b>",
             f"---------------------------",
             f"<b>Tổng Hợp Đồng Đang Vay:</b> {total_contracts}",
-            f"<b>Tổng Nợ Gốc:</b> {fmt_num(total_principal):,}",
-            f"<b>Tổng Nợ Lãi:</b> {fmt_num(total_interest):,}"
+            f"<b>Tổng Nợ Gốc:</b> {fmt_vn(total_principal)}",
+            f"<b>Tổng Nợ Lãi:</b> {fmt_vn(total_interest)}",
+            f"<b>Tổng Lãi Đã Thu:</b> {fmt_vn(total_project_paid)}",
+            f"---------------------------"
         ]
-        
-        if project_monthly_totals:
-            header_lines.append(f"---------------------------")
-            header_lines.append(f"<b>TỔNG LÃI ĐÃ THU THEO THÁNG:</b>")
-            for ym, amt in sorted(project_monthly_totals.items()):
-                header_lines.append(f"Tháng {ym}: <b>{fmt_num(amt):,}</b>")
-                
-        header_lines.append(f"---------------------------")
         
         report_lines = header_lines + customer_lines
             
@@ -1830,9 +1823,7 @@ async def generate_revenue_report(client, message, project_id, start_date, end_d
             if start_date <= record_date <= end_date:
                 valid_interests.append(interest)
                 
-        def fmt_num(val):
-            if val is None: return 0
-            return int(val) if val == int(val) else val
+        from bot.utils.utils import fmt_vn
             
         total_collected = sum([i.interest_amount or 0 for i in valid_interests])
         
@@ -1844,9 +1835,9 @@ async def generate_revenue_report(client, message, project_id, start_date, end_d
             f"<b>BÁO CÁO DOANH THU (Lãi đã thu)</b>",
             f"<i>(Thời gian lọc: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})</i>",
             f"---------------------------",
-            f"<b>Tổng Lãi Đã Thu:</b> <b>{fmt_num(total_collected):,} VND</b>", 
-            f"<b>Tổng Nợ Gốc:</b> {fmt_num(total_outstanding_principal):,} VND",
-            f"<b>Tổng Nợ Lãi Chưa Trả:</b> {fmt_num(total_outstanding_interest):,} VND"
+            f"<b>Tổng Lãi Đã Thu:</b> <b>{fmt_vn(total_collected)}</b>", 
+            f"<b>Tổng Nợ Gốc:</b> {fmt_vn(total_outstanding_principal)}",
+            f"<b>Tổng Nợ Lãi Chưa Trả:</b> {fmt_vn(total_outstanding_interest)}"
         ]
         
         await message.reply_text("\n".join(report_lines), parse_mode=ParseMode.HTML)
