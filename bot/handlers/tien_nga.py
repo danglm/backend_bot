@@ -9707,7 +9707,10 @@ async def tien_nga_update_inventory_handler(client, message: Message) -> None:
     from app.models.inventory import Inventory
     db = SessionLocal()
     try:
-        inv = db.query(Inventory).filter(Inventory.material_name == material_name).first()
+        query = db.query(Inventory).filter(Inventory.material_name == material_name)
+        if storage_name:
+            query = query.filter(Inventory.storage_name == storage_name)
+        inv = query.first()
         if not inv:
             await message.reply_text("⚠️ Không tìm thấy nguyên liệu này trong hệ thống.")
             return
@@ -9946,9 +9949,12 @@ async def tien_nga_material_purchase_handler(client, message: Message) -> None:
     import uuid
     db = SessionLocal()
     try:
-        inv = db.query(Inventory).filter(Inventory.material_name == material_type).first()
+        query = db.query(Inventory).filter(Inventory.material_name == material_type)
+        if storage_name:
+            query = query.filter(Inventory.storage_name == storage_name)
+        inv = query.first()
         if not inv:
-            await message.reply_text("⚠️ Không tìm thấy nguyên liệu này.")
+            await message.reply_text("⚠️ Không tìm thấy nguyên liệu này trong kho được chỉ định.")
             return
 
         purchase = MaterialPurchase(
@@ -10090,9 +10096,12 @@ async def tien_nga_export_inventory_handler(client, message: Message) -> None:
     import uuid
     db = SessionLocal()
     try:
-        inv = db.query(Inventory).filter(Inventory.material_name == material_type).first()
+        query = db.query(Inventory).filter(Inventory.material_name == material_type)
+        if storage_name:
+            query = query.filter(Inventory.storage_name == storage_name)
+        inv = query.first()
         if not inv:
-            await message.reply_text("⚠️ Không tìm thấy nguyên liệu này.")
+            await message.reply_text("⚠️ Không tìm thấy nguyên liệu này trong kho được chỉ định.")
             return
 
         if inv.quantity < export_weight:

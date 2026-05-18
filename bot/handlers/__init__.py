@@ -5,3 +5,4 @@ from . import rental
 from . import other
 from . import tien_nga
 from . import ggomoonsin
+from . import rosca
