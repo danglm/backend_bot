@@ -911,6 +911,31 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_kiem_tra_ho_dan", "Kiểm tra hộ dân"),
                 ])
 
+        # ===================== HỤI =====================
+        elif "hụi" in project_name.lower() or "hui" in project_name.lower():
+            if role == "main":
+                label = "Hụi (Quản Lý)"
+                commands_to_set = [
+                    BotCommand("hui_tao_nguoi_choi", "Tạo người chơi"),
+                    BotCommand("hui_cap_nhat_nguoi_choi", "Cập nhật người chơi"),
+                    BotCommand("hui_xoa_nguoi_choi", "Xóa người chơi"),
+                    BotCommand("hui_tao_day_hui", "Tạo dây hụi"),
+                    BotCommand("hui_cap_nhat_day_hui", "Cập nhật dây hụi"),
+                    BotCommand("hui_xoa_day_hui", "Xóa dây hụi"),
+                    BotCommand("hui_tao_chan_hui", "Tạo chân hụi"),
+                    BotCommand("hui_cap_nhat_chan_hui", "Cập nhật chân hụi"),
+                    BotCommand("hui_xoa_chan_hui", "Xóa chân hụi"),
+                    BotCommand("hui_kiem_tra_chan_hui", "Kiểm tra chân hụi"),
+                    BotCommand("hui_rut_day_hui", "Rút dây hụi/hốt hụi"),
+                ]
+            else:
+                label = "Hụi (Người Chơi)"
+                commands_to_set = [
+                    BotCommand("hui_kiem_tra_chan_hui", "Kiểm tra chân hụi"),
+                    BotCommand("hui_dong_tien_chan_hui", "Đóng tiền chân hụi"),
+                    BotCommand("hui_rut_day_hui", "Rút dây hụi/hốt hụi"),
+                ]
+
         # ===================== GGOMOONSIN =====================
         elif "ggomoonsin" in project_name.lower():
             if custom_title == "super_main":
