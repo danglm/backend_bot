@@ -2478,3 +2478,91 @@ async def auto_attendance_worker():
         except Exception as e:
             LogError(f"Critical error in auto_attendance_worker: {e}", LogType.SYSTEM_STATUS)
             await asyncio.sleep(60)
+
+async def rosca_payment_notification_worker():
+    """
+    Background worker that checks for active Roscas and sends a notification 
+    to the telegram group on the `payment_day` and at the `bidding_time`.
+    """
+    LogInfo("Rosca payment notification worker started.", LogType.SYSTEM_STATUS)
+    while True:
+        try:
+            now = datetime.datetime.now()
+            
+            # Wait for userbot client to be ready
+            client = bot
+            if not client.is_connected:
+                await asyncio.sleep(30)
+                continue
+                
+            db = SessionLocal()
+            try:
+                from app.models.rosca import Rosca, RoscaMember, UserRosca
+                from app.models.telegram import TelegramProjectMember
+                
+                active_roscas = db.query(Rosca).filter(Rosca.status == "Active").all()
+                for rosca in active_roscas:
+                    if rosca.payment_day == now.day and rosca.bidding_time:
+                        if rosca.bidding_time.hour == now.hour and rosca.bidding_time.minute == now.minute:
+                            owner = db.query(UserRosca).filter(UserRosca.id == rosca.user_id).first()
+                            owner_name = owner.full_name if owner else "Không xác định"
+
+                            members = db.query(RoscaMember).filter(
+                                RoscaMember.rosca_id == rosca.id,
+                                RoscaMember.status == "Playing"
+                            ).all()
+                            LogInfo(f"[Rosca Worker] Found {len(members)} playing members in rosca {rosca.code} to notify.", LogType.SYSTEM_STATUS)
+
+                            groups_to_notify = set()
+                            for m in members:
+                                if m.telegram_group:
+                                    groups_to_notify.add(m.telegram_group.strip())
+
+                            for tg_group in groups_to_notify:
+                                tpm = db.query(TelegramProjectMember).filter(
+                                    TelegramProjectMember.group_name == tg_group
+                                ).first()
+                                if not tpm:
+                                    tpm = db.query(TelegramProjectMember).filter(
+                                        TelegramProjectMember.chat_id == tg_group
+                                    ).first()
+                                
+                                if tpm and tpm.chat_id:
+                                    try:
+                                        target_chat_id = int(tpm.chat_id)
+                                        min_bid = rosca.min_bid_amount or 0
+                                        max_bid = rosca.max_bid_amount or 0
+                                        msg_text = (
+                                            f"🔔 <b>THÔNG BÁO ĐÓNG HỤI HÀNG KỲ</b> 🔔\n\n"
+                                            f"<b>Dây hụi:</b> {rosca.code}\n"
+                                            f"<b>Chủ hụi:</b> {owner_name}\n"
+                                            f"<b>Kỳ đóng:</b> Ngày {rosca.payment_day} hàng tháng\n"
+                                            f"<b>Mức bỏ hụi tối thiểu:</b> {min_bid:,.0f} VNĐ\n"
+                                            f"<b>Mức bỏ hụi tối đa:</b> {max_bid:,.0f} VNĐ\n\n"
+                                            f"<i>Vui lòng nộp tiền hụi đúng hạn và thực hiện bỏ thăm nếu có nhu cầu hốt hụi kỳ này!</i>"
+                                        )
+                                        await client.send_message(
+                                            chat_id=target_chat_id,
+                                            text=msg_text,
+                                            parse_mode=ParseMode.HTML
+                                        )
+                                        LogInfo(f"Sent rosca payment notification for {rosca.code} to {target_chat_id}", LogType.SYSTEM_STATUS)
+                                    except Exception as e:
+                                        LogError(f"Error sending rosca notification to {tg_group}: {e}", LogType.SYSTEM_STATUS)
+
+            except Exception as e:
+                LogError(f"Error in rosca_payment_notification_worker logic: {e}", LogType.SYSTEM_STATUS)
+            finally:
+                db.close()
+
+            # Wait exactly until the next minute
+            next_run = (datetime.datetime.now() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+            sleep_time = (next_run - datetime.datetime.now()).total_seconds()
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            LogError(f"Critical error in rosca_payment_notification_worker: {e}", LogType.SYSTEM_STATUS)
+            await asyncio.sleep(60)

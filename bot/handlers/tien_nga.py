@@ -966,7 +966,7 @@ STK Ngân Hàng: {customer.number_bank or ''}</pre>"""
             f"<b>Ngân hàng:</b> {customer.bank_name or '—'} <i>({customer.number_bank or '—'})</i>\n"
             f"<b>Số Tiền Nợ:</b> <code>{fmt_vn(customer.amount_of_debt)}</code>\n"
             f"<b>Ứng Cuối Mùa:</b> <code>{fmt_vn(customer.cash_advance)}</code>\n"
-            f"<b>Tổng Nợ:</b> <code>{fmt_vn(customer.total_debt)}</code>\n"
+            f"<b>Tổng Công Nợ:</b> <code>{fmt_vn(customer.total_debt)}</code>\n"
             f"<b>Trợ Giá:</b> <code>{fmt_vn(customer.is_subsidized)}</code>\n"
             f"<b>Trạng Thái:</b> {customer.status}\n"
             f"<b>Username:</b> {customer.username or '—'}",

@@ -360,7 +360,7 @@ async def rental_check_customer_handler(client, message: Message) -> None:
                     f"\n        Thời gian thuê: {fmt_dt(r.start_rental)} - {fmt_dt(r.end_rental)}"
                     f"\n        Tiền thuê: <b>{fmt_num(r.monthly_rental):,}</b>/tháng"
                     f"\n        Cọc: {fmt_num(r.deposit):,}"
-                    f"\n        Tổng tiền thanh toán HD: <b>{fmt_num(r.rental_debt):,}</b>"
+                    # f"\n        Tổng tiền thanh toán HD: <b>{fmt_num(r.rental_debt):,}</b>"
                 )
 
         await message.reply_text("\n".join(reply_lines), parse_mode=ParseMode.HTML)
@@ -450,7 +450,7 @@ async def rental_check_contract_handler(client, message: Message) -> None:
             f"Mã BĐS: <b>{contract.real_estate_id or 'N/A'}<b>",
             f"Tiền Cọc: <b>{fmt_num(contract.deposit):,} VNĐ</b>",
             f"Tiền Thuê / Tháng: <b>{fmt_num(contract.monthly_rental):,} VNĐ</b>",
-            f"Tổng tiền thanh toán HD: <b>{fmt_num(contract.rental_debt):,} VNĐ</b>",
+            # f"Tổng tiền thanh toán HD: <b>{fmt_num(contract.rental_debt):,} VNĐ</b>",
             f"Ngày Bắt Đầu Thuê: <b>{fmt_dt(contract.start_rental)}</b>",
             f"Ngày Kết Thúc Thuê: <b>{fmt_dt(contract.end_rental)}</b>",
         ]
@@ -517,7 +517,7 @@ async def rental_check_debt_handler(client, message: Message) -> None:
             contract_lines.append(
                 f"{idx}. <b>{r.contract_id}</b> ({r.type_contract or 'N/A'}) - {status_label}\n"
                 f"   Tiền thuê: <b>{fmt_num(r.monthly_rental):,}</b>/tháng\n"
-                f"   Tổng tiền thanh toán HD: <b>{fmt_num(r.rental_debt or 0):,}</b>\n"
+                f"   Tổng tiền cần thanh toán: <b>{fmt_num(r.rental_debt or 0):,}</b>\n"
                 f"   BĐS: {r.real_estate_id or 'N/A'}\n"
                 f"   Thuê: {fmt_dt(r.start_rental)} - {fmt_dt(r.end_rental)}"
             )
@@ -528,7 +528,7 @@ async def rental_check_debt_handler(client, message: Message) -> None:
             f"---------------------------",
             f"Tổng hợp đồng: <b>{len(active_rentals)}</b>",
             f"Tổng tiền thuê: <b>{fmt_num(total_monthly):,}</b>/tháng",
-            f"Tổng nợ: <b>{fmt_num(total_debt):,}</b>",
+            f"Tổng tiền cần thanh toán: <b>{fmt_num(total_debt):,}</b>",
             f"---------------------------",
         ] + contract_lines
 
@@ -792,7 +792,7 @@ async def rental_cancel_contract_handler(client, message: Message) -> None:
             f"- Loại Hợp Đồng: <b>{contract.type_contract or 'N/A'}</b>\n"
             f"- Tiền Thuê / Tháng: <b>{monthly:,} VNĐ</b>\n"
             f"- Tiền Cọc: <b>{deposit:,} VNĐ</b>\n"
-            f"- Tổng tiền thanh toán HD: <b>{debt:,} VNĐ</b>\n"
+            # f"- Tổng tiền thanh toán HD: <b>{debt:,} VNĐ</b>\n"
             f"- Thuê: <b>{fmt_dt(contract.start_rental)} - {fmt_dt(contract.end_rental)}</b>\n\n"
             f"Bạn có chắc chắn muốn hủy hợp đồng này không?"
         )
@@ -928,7 +928,7 @@ async def rental_payment_confirmed_handler(client, message: Message) -> None:
             f"<b>{date_str}</b>\n"
             f"Đã cập nhật thanh toán: <b>{amount_fmt:,} VNĐ</b> vào hợp đồng cho thuê <b>{contract.contract_id}</b>\n"
             f"Khách hàng: <b>{customer.customer_name if customer else 'N/A'}</b>\n"
-            f"Tổng tiền thanh toán HD hiện tại: <b>{remaining:,} VNĐ</b>"
+            # f"Tổng tiền thanh toán HD hiện tại: <b>{remaining:,} VNĐ</b>"
         )
 
         await message.reply_text(reply_msg, parse_mode=ParseMode.HTML)
@@ -1024,7 +1024,6 @@ Ngày Bắt Đầu Thuê (dd/mm/yyyy): {fmt_dt(contract.start_rental)}
 Ngày Kết Thúc Thuê (dd/mm/yyyy): {fmt_dt(contract.end_rental)}
 Tiền Cọc: {deposit_val}
 Tiền Thuê / Tháng: {monthly_val}
-Tổng tiền thanh toán HD: {debt_val}
 Trạng Thái (active/expired/cancelled): {contract.status or 'active'}
 </pre>"""
             await message.reply_text(form_template, parse_mode=ParseMode.HTML)
@@ -1148,7 +1147,7 @@ async def generate_rental_revenue_report(client, message, project_id, start_date
             f"<i>(Thời gian lọc: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})</i>",
             f"---------------------------",
             f"<b>Tổng Tiền Thuê Đã Thu:</b> <b>{fmt_vn(total_collected)}</b>", 
-            f"<b>Tổng Tiền Thanh Toán HD Của Khách Hàng:</b> {fmt_vn(total_outstanding_debt)}",
+            # f"<b>Tổng Tiền Thanh Toán HD Của Khách Hàng:</b> {fmt_vn(total_outstanding_debt)}",
         ]
         
         await message.reply_text("\n".join(report_lines), parse_mode=ParseMode.HTML)
@@ -1354,7 +1353,7 @@ async def rental_cashflow_report_handler(client, message: Message) -> None:
             f"---------------------------",
             f"<b>Tổng Hợp Đồng Đang Thuê:</b> {total_contracts}",
             f"<b>Tổng Tiền Cọc Đang Giữ:</b> {fmt_vn(total_deposit)}",
-            f"<b>Tổng Tiền Thanh Toán HD Của Khách:</b> {fmt_vn(total_debt)}",
+            # f"<b>Tổng Tiền Thanh Toán HD Của Khách:</b> {fmt_vn(total_debt)}",
             f"<b>Tổng Tiền Thuê Đã Thu:</b> {fmt_vn(total_project_paid)}",
             f"---------------------------"
         ]
@@ -1595,7 +1594,7 @@ async def rental_bad_debt_handler(client, message: Message) -> None:
             f"<b>Loại HĐ:</b> {contract.type_contract or 'N/A'}\n"
             f"<b>Mã BĐS:</b> {contract.real_estate_id or 'N/A'}\n"
             f"<b>Tiền thuê:</b> {monthly:,} VNĐ/tháng\n"
-            f"<b>Tổng tiền thanh toán HD:</b> {debt:,} VNĐ\n"
+            # f"<b>Tổng tiền thanh toán HD:</b> {debt:,} VNĐ\n"
             f"<b>Thời gian thuê:</b> {fmt_dt(contract.start_rental)} - {fmt_dt(contract.end_rental)}\n\n"
             f"Bạn có chắc chắn muốn đưa hợp đồng này vào <b>BLACKLIST NỢ XẤU</b> không?"
         )

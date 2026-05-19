@@ -56,6 +56,7 @@ class RoscaMember(Base):
     profit_rate = Column(Float, default=0.0)                                # Tỷ suất lợi nhuận (%)
     status = Column(String, nullable=True)                                  # Trạng thái: Playing (Đang chơi), Defaulted (Bể hụi)
     note = Column(Text, nullable=True)                                      # Ghi chú riêng
+    telegram_group = Column(String, nullable=True)                          # Nhóm chat Telegram
 
 class RoscaRound(Base):
     """Bảng lưu trữ chi tiết các Kỳ khui hụi"""
@@ -80,6 +81,7 @@ class RoscaContribution(Base):
     id = Column(String, primary_key=True)                                   # Khóa chính
     rosca_id = Column(String, nullable=True)                                # Giao dịch thuộc dây hụi nào
     round_id = Column(String, nullable=True)                                # Thuộc kỳ khui hụi nào
+    round_number = Column(Integer, nullable=True)                           # Kỳ thứ mấy (Kỳ 1, Kỳ 2...)
     member_id = Column(String, nullable=True)                               # Người đóng tiền
     amount = Column(Float, nullable=True)                                   # Số tiền cần đóng (hụi sống hoặc hụi chết)
     actual_payment_date = Column(DateTime, nullable=True)                   # Ngày giờ đóng tiền thực tế

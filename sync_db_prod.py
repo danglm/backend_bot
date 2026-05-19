@@ -42,7 +42,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 # ── Import all models so Base.metadata is fully populated ───────────────────
 from app.db.base import Base
 from app.models import business, credit, device, employee, finance
-from app.models import inventory, rental, task, telegram, vehicle
+from app.models import inventory, rental, rosca, task, telegram, vehicle
 
 
 # ═══════════════════════════════════════════════════════════════════════════
