@@ -22,6 +22,7 @@ Mã NV:
 Họ: 
 Tên: 
 Username: 
+Ủy quyền: 
 Nhóm Telegram: 
 Giới tính: 
 Ngày sinh: 
@@ -239,6 +240,7 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
         new_employee = Employee(
             id=emp_id,
             username=username,
+            authority=data.get("Ủy quyền", "").strip().lstrip("@") or None,
             telegram_group=data.get("Nhóm Telegram", "").strip() or None,
             last_name=last_name,
             first_name=first_name,
@@ -342,6 +344,7 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
 FIELD_MAP = {
     "Họ": "last_name",
     "Tên": "first_name",
+    "Ủy quyền": "authority",
     "Nhóm Telegram": "telegram_group",
     "Giới tính": "gender",
     "SĐT": "number_phone",
@@ -403,6 +406,7 @@ Dữ liệu hiện tại đã được điền sẵn. Chỉ sửa các trường
 
 <pre>{command_name}
 Username: @{emp.username or ''}
+Ủy quyền: @{emp.authority or ''}
 Họ: {emp.last_name or ''}
 Tên: {emp.first_name or ''}
 Nhóm Telegram: {emp.telegram_group or ''}
@@ -524,9 +528,18 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
 
         for form_key, model_field in FIELD_MAP.items():
             val = data.get(form_key, "").strip()
-            if val:
-                setattr(employee, model_field, val)
-                updated_fields.append(form_key)
+            if model_field == "authority":
+                val_clean = val.lstrip("@").strip()
+                if val_clean:
+                    employee.authority = val_clean
+                    updated_fields.append(form_key)
+                elif val == "" or val == "@":
+                    employee.authority = None
+                    updated_fields.append(form_key)
+            else:
+                if val:
+                    setattr(employee, model_field, val)
+                    updated_fields.append(form_key)
 
         # Xử lý riêng: Ngày sinh
         birthday_str = data.get("Ngày sinh", "").strip()
@@ -809,6 +822,443 @@ async def handle_delete_employee_callback(client, callback_query) -> None:
 
 
 # ══════════════════════════════════════════════════════════════
+# AUTHORITY DELEGATION (Ủy quyền)
+# ══════════════════════════════════════════════════════════════
+
+# Lưu trữ tạm dữ liệu khi user chọn nhân viên ủy quyền từ Inline Keyboard
+# key: message_id của tin nhắn chứa Inline Keyboard
+# value: {"action": str, "form_data": dict|None, "command_name": str,
+#          "chat_id": int, "from_user_id": int, "original_message": Message}
+_PENDING_AUTHORITY_ACTIONS: dict[int, dict] = {}
+
+
+async def resolve_employee_for_command(
+    client, message: Message, db, callback_prefix: str, command_name: str,
+    form_data: dict | None = None,
+) -> Employee | None:
+    """
+    Xác định Employee cho lệnh chấm công/nghỉ phép, hỗ trợ ủy quyền (authority).
+
+    Logic:
+    1. Lấy telegram_username từ message.from_user.username
+    2. Tìm Employee.username == telegram_username (chính chủ)
+    3. Tìm tất cả Employee.authority == telegram_username (được ủy quyền)
+    4. Nếu chỉ có 1 kết quả → return trực tiếp
+    5. Nếu có nhiều kết quả → hiện Inline Keyboard chọn nhân viên → return None
+    6. Nếu không có kết quả → báo lỗi → return None
+
+    Args:
+        client: Pyrogram client
+        message: Tin nhắn gốc từ user
+        db: Database session
+        callback_prefix: Prefix cho callback_data (ci/co/lv/ov)
+        command_name: Tên lệnh gốc (vd: "/tien_nga_check_in")
+        form_data: Dữ liệu form đã parse (cho request_leave/request_overtime), None cho check_in/check_out
+
+    Returns:
+        Employee nếu chỉ có 1 candidate, None nếu cần chờ callback hoặc lỗi
+    """
+    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    username = message.from_user.username
+    if not username:
+        await message.reply_text(
+            "⚠️ Bạn chưa cài đặt username Telegram. Vui lòng cài đặt username trước.",
+            parse_mode=ParseMode.HTML
+        )
+        return None
+
+    candidates = []
+
+    # 1. Tìm chính chủ (Employee.username == telegram_username)
+    employee_self = db.query(Employee).filter(
+        Employee.username == username,
+        Employee.status != "inactive"
+    ).first()
+    if employee_self:
+        candidates.append(("self", employee_self))
+
+    # 2. Tìm nhân viên ủy quyền (Employee.authority == telegram_username)
+    delegated = db.query(Employee).filter(
+        Employee.authority == username,
+        Employee.status != "inactive"
+    ).all()
+    for emp in delegated:
+        candidates.append(("delegated", emp))
+
+    # 3. Xử lý kết quả
+    if not candidates:
+        await message.reply_text(
+            f"⚠️ Không tìm thấy nhân viên nào liên kết với <b>@{username}</b> trong hệ thống.\n"
+            "Vui lòng liên hệ quản lý để được thêm vào hệ thống.",
+            parse_mode=ParseMode.HTML
+        )
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0][1]
+
+    # 4. Nhiều candidates → hiện Inline Keyboard
+    ACTION_LABELS = {
+        "ci": "check-in",
+        "co": "check-out",
+        "lv": "xin nghỉ phép",
+        "ov": "đăng ký tăng ca",
+    }
+    action_label = ACTION_LABELS.get(callback_prefix, callback_prefix)
+
+    buttons = []
+    for tag, emp in candidates:
+        full_name = f"{emp.last_name} {emp.first_name}"
+        label_suffix = " (Bạn)" if tag == "self" else " (UQ)"
+        btn_text = f"{full_name} - {emp.id}{label_suffix}"
+        buttons.append([
+            InlineKeyboardButton(
+                btn_text,
+                callback_data=f"auth_{callback_prefix}|{emp.id}"
+            )
+        ])
+    buttons.append([InlineKeyboardButton("❌ Hủy", callback_data=f"auth_{callback_prefix}|cancel")])
+
+    markup = InlineKeyboardMarkup(buttons)
+    sent = await message.reply_text(
+        f"<b>Chọn nhân viên để {action_label}:</b>",
+        reply_markup=markup,
+        parse_mode=ParseMode.HTML
+    )
+
+    # Lưu context để callback xử lý tiếp
+    _PENDING_AUTHORITY_ACTIONS[sent.id] = {
+        "action": callback_prefix,
+        "form_data": form_data,
+        "command_name": command_name,
+        "chat_id": message.chat.id,
+        "from_user_id": message.from_user.id,
+        "original_message": message,
+    }
+
+    return None
+
+
+async def _execute_check_in_for_employee(client, message: Message, employee: Employee, db, acting_username: str) -> None:
+    """Thực hiện logic check-in cho 1 Employee cụ thể (tách riêng từ handle_check_in)."""
+    from app.models.finance import Attendance
+
+    now_vn = datetime.datetime.now(VN_TZ)
+    today = now_vn.date()
+    current_time = now_vn.time()
+
+    # Kiểm tra start_time (giờ vào ca)
+    if not employee.start_time:
+        await message.reply_text(
+            f"⚠️ Nhân viên <b>{employee.last_name} {employee.first_name}</b> chưa được cài đặt giờ vào ca. Vui lòng liên hệ quản lý.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Lấy giờ vào ca từ start_time (DateTime -> Time)
+    shift_time = employee.start_time.time() if isinstance(employee.start_time, datetime.datetime) else employee.start_time
+    shift_start_str = shift_time.strftime("%H:%M")
+
+    # Tính cửa sổ check-in: start_time - 30 phút → start_time + 30 phút
+    shift_dt = datetime.datetime.combine(today, shift_time)
+    window_start = (shift_dt - datetime.timedelta(minutes=30)).time()
+    window_end = (shift_dt + datetime.timedelta(minutes=30)).time()
+
+    if not (window_start <= current_time <= window_end):
+        await message.reply_text(
+            f"⚠️ <b>Ngoài thời gian check-in!</b>\n\n"
+            f"Ca của nhân viên: <b>{shift_start_str}</b>\n"
+            f"Thời gian cho phép: <b>{window_start.strftime('%H:%M')} - {window_end.strftime('%H:%M')}</b>\n"
+            f"Hiện tại: <b>{current_time.strftime('%H:%M')}</b>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Kiểm tra đã check-in hôm nay chưa
+    existing = db.query(Attendance).filter(
+        Attendance.employee_id == employee.id,
+        Attendance.year == today.year,
+        Attendance.month == today.month,
+        Attendance.day == today.day,
+        Attendance.check_in_time.isnot(None)
+    ).first()
+
+    if existing:
+        checkin_str = existing.check_in_time.strftime("%H:%M:%S") if existing.check_in_time else "N/A"
+        full_name = f"{employee.last_name} {employee.first_name}"
+        await message.reply_text(
+            f"⚠️ Nhân viên <b>{full_name}</b> đã check-in hôm nay rồi!\n\n"
+            f"Thời gian check-in: <b>{checkin_str}</b>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Tính trạng thái
+    late_minutes = 0
+    status = "on_time"
+
+    if current_time > shift_time:
+        now_dt = datetime.datetime.combine(today, current_time.replace(second=0, microsecond=0))
+        shift_dt_full = datetime.datetime.combine(today, shift_time.replace(second=0, microsecond=0))
+        diff = (now_dt - shift_dt_full).total_seconds() / 60
+        late_minutes = int(diff)
+        if late_minutes > 0:
+            status = "late"
+    elif current_time < shift_time:
+        status = "early"
+
+    # Tạo Attendance record
+    day_name = DAY_NAMES_VN.get(today.weekday(), "")
+
+    new_attendance = Attendance(
+        employee_id=employee.id,
+        year=today.year,
+        month=today.month,
+        day=today.day,
+        date_str=day_name,
+        check_in_time=now_vn.replace(tzinfo=None),
+        late_time=float(late_minutes),
+    )
+    db.add(new_attendance)
+    db.commit()
+
+    # Reply
+    full_name = f"{employee.last_name} {employee.first_name}"
+    emp_username = employee.username or employee.id
+    delegated_note = ""
+    if acting_username != employee.username:
+        delegated_note = f"\n<b>Người thực hiện:</b> @{acting_username} (ủy quyền)"
+
+    result = (
+        f"<b>CHECK-IN THÀNH CÔNG</b>\n\n"
+        f"<b>Nhân viên:</b> {full_name} (@{emp_username})\n"
+        f"<b>Mã NV:</b> {employee.id}\n"
+        f"<b>Ngày:</b> {day_name}, {today.strftime('%d-%m-%Y')}\n"
+        f"<b>Giờ check-in:</b> {current_time.strftime('%H:%M:%S')}\n"
+        f"<b>Ca vào:</b> {shift_start_str}\n"
+        f"{delegated_note}"
+    )
+
+    await message.reply_text(result, parse_mode=ParseMode.HTML)
+    LogInfo(
+        f"[CheckIn] {full_name} (@{emp_username}) checked in at {current_time.strftime('%H:%M')} - {status} (by @{acting_username})",
+        LogType.SYSTEM_STATUS
+    )
+
+
+async def _execute_check_out_for_employee(client, message: Message, employee: Employee, db, acting_username: str) -> None:
+    """Thực hiện logic check-out cho 1 Employee cụ thể (tách riêng từ handle_check_out)."""
+    from app.models.finance import Attendance
+
+    now_vn = datetime.datetime.now(VN_TZ)
+    today = now_vn.date()
+    current_time = now_vn.time()
+
+    # Kiểm tra end_time (giờ tan ca)
+    if not employee.end_time:
+        await message.reply_text(
+            f"⚠️ Nhân viên <b>{employee.last_name} {employee.first_name}</b> chưa được cài đặt giờ tan ca. Vui lòng liên hệ quản lý.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    end_time_obj = employee.end_time.time() if isinstance(employee.end_time, datetime.datetime) else employee.end_time
+    end_time_str = end_time_obj.strftime("%H:%M")
+
+    # Check-out chỉ được phép từ end_time đến 23:59 cùng ngày
+    if current_time < end_time_obj:
+        await message.reply_text(
+            f"⚠️ <b>Chưa đến giờ tan ca!</b>\n\n"
+            f"Giờ tan ca: <b>{end_time_str}</b>\n"
+            f"Hiện tại: <b>{current_time.strftime('%H:%M')}</b>\n\n"
+            f"<i>Bạn chỉ có thể check-out từ <b>{end_time_str}</b> đến <b>23:59</b>.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Tìm record check-in hôm nay
+    attendance = db.query(Attendance).filter(
+        Attendance.employee_id == employee.id,
+        Attendance.year == today.year,
+        Attendance.month == today.month,
+        Attendance.day == today.day,
+        Attendance.check_in_time.isnot(None)
+    ).first()
+
+    if not attendance:
+        full_name = f"{employee.last_name} {employee.first_name}"
+        await message.reply_text(
+            f"⚠️ Nhân viên <b>{full_name}</b> chưa check-in hôm nay. Vui lòng check-in trước.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    if attendance.check_out_time:
+        checkout_str = attendance.check_out_time.strftime("%H:%M:%S")
+        full_name = f"{employee.last_name} {employee.first_name}"
+        await message.reply_text(
+            f"⚠️ Nhân viên <b>{full_name}</b> đã check-out hôm nay rồi!\n\n"
+            f"Thời gian check-out: <b>{checkout_str}</b>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Cập nhật check-out
+    checkout_dt = now_vn.replace(tzinfo=None)
+    attendance.check_out_time = checkout_dt
+
+    # Tính overtime nếu check-out sau end_time
+    overtime_minutes = 0
+    if current_time > end_time_obj:
+        now_dt = datetime.datetime.combine(today, current_time)
+        end_dt_full = datetime.datetime.combine(today, end_time_obj)
+        overtime_minutes = round((now_dt - end_dt_full).total_seconds() / 60)
+        attendance.overtime = round(overtime_minutes / 60, 2)
+
+    # Tính working_time (giờ làm việc)
+    if attendance.check_in_time:
+        diff = (checkout_dt - attendance.check_in_time).total_seconds() / 3600
+        if overtime_minutes > 0:
+            diff -= (overtime_minutes / 60)
+        attendance.working_time = round(diff, 2)
+
+    db.commit()
+
+    # Reply
+    full_name = f"{employee.last_name} {employee.first_name}"
+    emp_username = employee.username or employee.id
+    checkin_str = attendance.check_in_time.strftime("%H:%M:%S") if attendance.check_in_time else "N/A"
+    day_name = DAY_NAMES_VN.get(today.weekday(), "")
+    working_hours = attendance.working_time or 0
+
+    delegated_note = ""
+    if acting_username != employee.username:
+        delegated_note = f"\n<b>Người thực hiện:</b> @{acting_username} (ủy quyền)"
+
+    result = (
+        f"<b>CHECK-OUT THÀNH CÔNG</b>\n\n"
+        f"<b>Nhân viên:</b> {full_name} (@{emp_username})\n"
+        f"<b>Mã NV:</b> {employee.id}\n"
+        f"<b>Ngày:</b> {day_name}, {today.strftime('%d-%m-%Y')}\n"
+        f"<b>Giờ check-in:</b> {checkin_str}\n"
+        f"<b>Giờ check-out:</b> {current_time.strftime('%H:%M:%S')}\n"
+        f"<b>Ca tan:</b> {end_time_str}\n"
+        f"<b>Tổng giờ làm:</b> {working_hours:.1f}h\n"
+        f"{delegated_note}"
+    )
+    if overtime_minutes > 0:
+        result += f"<b>Tăng ca:</b> {overtime_minutes} phút\n"
+
+    await message.reply_text(result, parse_mode=ParseMode.HTML)
+    LogInfo(
+        f"[CheckOut] {full_name} (@{emp_username}) checked out at {current_time.strftime('%H:%M')} - {working_hours:.1f}h (by @{acting_username})",
+        LogType.SYSTEM_STATUS
+    )
+
+
+async def handle_authority_callback(client, callback_query) -> None:
+    """
+    Xử lý callback khi user chọn nhân viên từ Inline Keyboard ủy quyền.
+    Callback data format: auth_{prefix}|{employee_id}  hoặc  auth_{prefix}|cancel
+    """
+    data = callback_query.data
+    parts = data.split("|", 1)
+    if len(parts) != 2:
+        await callback_query.answer("⚠️ Dữ liệu không hợp lệ.", show_alert=True)
+        return
+
+    prefix_part = parts[0]  # auth_ci, auth_co, auth_lv, auth_ov
+    emp_id = parts[1]
+
+    action = prefix_part.replace("auth_", "")  # ci, co, lv, ov
+
+    msg_id = callback_query.message.id
+    pending = _PENDING_AUTHORITY_ACTIONS.pop(msg_id, None)
+
+    if emp_id == "cancel":
+        await callback_query.message.edit_text(
+            "❌ <b>Đã hủy thao tác.</b>",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+        return
+
+    # Kiểm tra người nhấn nút đúng là người gõ lệnh
+    if pending and callback_query.from_user.id != pending["from_user_id"]:
+        await callback_query.answer("⚠️ Chỉ người gõ lệnh mới được chọn.", show_alert=True)
+        return
+
+    acting_username = callback_query.from_user.username
+
+    db = SessionLocal()
+    try:
+        employee = db.query(Employee).filter(Employee.id == emp_id).first()
+        if not employee:
+            await callback_query.message.edit_text(
+                f"⚠️ Không tìm thấy nhân viên <b>{emp_id}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            await callback_query.answer()
+            return
+
+        if employee.status == "inactive":
+            await callback_query.message.edit_text(
+                "⚠️ Tài khoản nhân viên đã bị vô hiệu hóa.",
+                parse_mode=ParseMode.HTML
+            )
+            await callback_query.answer()
+            return
+
+        full_name = f"{employee.last_name} {employee.first_name}"
+        await callback_query.message.edit_text(
+            f"✅ Đã chọn: <b>{full_name} - {employee.id}</b>",
+            parse_mode=ParseMode.HTML
+        )
+
+        # Dispatch theo action
+        original_message = pending["original_message"] if pending else callback_query.message
+
+        if action == "ci":
+            await _execute_check_in_for_employee(client, original_message, employee, db, acting_username)
+        elif action == "co":
+            await _execute_check_out_for_employee(client, original_message, employee, db, acting_username)
+        elif action == "lv":
+            form_data = pending.get("form_data") if pending else None
+            command_name = pending.get("command_name", "") if pending else ""
+            if form_data:
+                await _execute_request_leave_for_employee(client, original_message, employee, db, acting_username, form_data, command_name)
+            else:
+                await callback_query.message.reply_text(
+                    "⚠️ Dữ liệu form nghỉ phép đã hết hạn. Vui lòng gửi lại lệnh.",
+                    parse_mode=ParseMode.HTML
+                )
+        elif action == "ov":
+            form_data = pending.get("form_data") if pending else None
+            command_name = pending.get("command_name", "") if pending else ""
+            if form_data:
+                await _execute_request_overtime_for_employee(client, original_message, employee, db, acting_username, form_data, command_name)
+            else:
+                await callback_query.message.reply_text(
+                    "⚠️ Dữ liệu form tăng ca đã hết hạn. Vui lòng gửi lại lệnh.",
+                    parse_mode=ParseMode.HTML
+                )
+
+        await callback_query.answer()
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in handle_authority_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.reply_text(
+            "❌ Có lỗi xảy ra. Vui lòng thử lại.",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
 # CHECK-IN (Chấm công)
 # ══════════════════════════════════════════════════════════════
 
@@ -824,139 +1274,18 @@ DAY_NAMES_VN = {
 async def handle_check_in(client, message: Message, command_name: str) -> None:
     """
     Xử lý chấm công (check-in) cho nhân viên.
-    
-    Flow:
-    1. Tìm Employee theo username Telegram
-    2. Kiểm tra shift_start → cho phép check-in trong cửa sổ ±30 phút
-    3. Kiểm tra đã check-in hôm nay chưa
-    4. Lưu record vào bảng Attendance
+    Hỗ trợ ủy quyền: nếu user được nhiều nhân viên ủy quyền, hiện Inline Keyboard chọn.
     """
-    from app.models.finance import Attendance
-
-    now_vn = datetime.datetime.now(VN_TZ)
-    today = now_vn.date()
-    current_time = now_vn.time()
-
-    username = message.from_user.username
-    user_id = str(message.from_user.id)
-
-    if not username:
-        await message.reply_text(
-            "⚠️ Bạn chưa cài đặt username Telegram. Vui lòng cài đặt username trước.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
     db = SessionLocal()
     try:
-        # 1. Tìm Employee
-        employee = db.query(Employee).filter(Employee.username == username).first()
+        employee = await resolve_employee_for_command(
+            client, message, db, callback_prefix="ci", command_name=command_name
+        )
         if not employee:
-            await message.reply_text(
-                f"⚠️ Không tìm thấy nhân viên <b>@{username}</b> trong hệ thống.\n"
-                f"Vui lòng liên hệ quản lý để được thêm vào hệ thống.",
-                parse_mode=ParseMode.HTML
-            )
-            return
+            return  # Đã hiển thị lỗi hoặc Inline Keyboard chờ chọn
 
-        if employee.status == "inactive":
-            await message.reply_text(
-                "⚠️ Tài khoản nhân viên của bạn đã bị vô hiệu hóa.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # 2. Kiểm tra start_time (giờ vào ca)
-        if not employee.start_time:
-            await message.reply_text(
-                "⚠️ Bạn chưa được cài đặt giờ vào ca. Vui lòng liên hệ quản lý.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # Lấy giờ vào ca từ start_time (DateTime -> Time)
-        shift_time = employee.start_time.time() if isinstance(employee.start_time, datetime.datetime) else employee.start_time
-        shift_start_str = shift_time.strftime("%H:%M")
-
-        # Tính cửa sổ check-in: start_time - 30 phút → start_time + 30 phút
-        shift_dt = datetime.datetime.combine(today, shift_time)
-        window_start = (shift_dt - datetime.timedelta(minutes=30)).time()
-        window_end = (shift_dt + datetime.timedelta(minutes=30)).time()
-
-        if not (window_start <= current_time <= window_end):
-            await message.reply_text(
-                f"⚠️ <b>Ngoài thời gian check-in!</b>\n\n"
-                f"Ca của bạn: <b>{shift_start_str}</b>\n"
-                f"Thời gian cho phép: <b>{window_start.strftime('%H:%M')} - {window_end.strftime('%H:%M')}</b>\n"
-                f"Hiện tại: <b>{current_time.strftime('%H:%M')}</b>",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # 3. Kiểm tra đã check-in hôm nay chưa
-        existing = db.query(Attendance).filter(
-            Attendance.employee_id == employee.id,
-            Attendance.year == today.year,
-            Attendance.month == today.month,
-            Attendance.day == today.day,
-            Attendance.check_in_time.isnot(None)
-        ).first()
-
-        if existing:
-            checkin_str = existing.check_in_time.strftime("%H:%M:%S") if existing.check_in_time else "N/A"
-            await message.reply_text(
-                f"⚠️ Bạn đã check-in hôm nay rồi!\n\n"
-                f"Thời gian check-in: <b>{checkin_str}</b>",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # 4. Tính trạng thái
-        late_minutes = 0
-        status = "on_time"
-
-        if current_time > shift_time:
-            # Tính số phút trễ
-            now_dt = datetime.datetime.combine(today, current_time.replace(second=0, microsecond=0))
-            shift_dt_full = datetime.datetime.combine(today, shift_time.replace(second=0, microsecond=0))
-            diff = (now_dt - shift_dt_full).total_seconds() / 60
-            late_minutes = int(diff)
-            if late_minutes > 0:
-                status = "late"
-        elif current_time < shift_time:
-            status = "early"
-
-        # 5. Tạo Attendance record
-        day_name = DAY_NAMES_VN.get(today.weekday(), "")
-
-        new_attendance = Attendance(
-            employee_id=employee.id,
-            year=today.year,
-            month=today.month,
-            day=today.day,
-            date_str=day_name,
-            check_in_time=now_vn.replace(tzinfo=None),  # Store without tz
-            late_time=float(late_minutes),
-        )
-        db.add(new_attendance)
-        db.commit()
-
-        # 6. Reply
-        full_name = f"{employee.last_name} {employee.first_name}"
-        result = (
-            f"<b>CHECK-IN THÀNH CÔNG</b>\n\n"
-            f"<b>Nhân viên:</b> {full_name} (@{username})\n"
-            f"<b>Mã NV:</b> {employee.id}\n"
-            f"<b>Ngày:</b> {day_name}, {today.strftime('%d-%m-%Y')}\n"
-            f"<b>Giờ check-in:</b> {current_time.strftime('%H:%M:%S')}\n"
-            f"<b>Ca vào:</b> {shift_start_str}\n"
-        )
-
-        await message.reply_text(result, parse_mode=ParseMode.HTML)
-        LogInfo(
-            f"[CheckIn] {full_name} (@{username}) checked in at {current_time.strftime('%H:%M')} - {status}",
-            LogType.SYSTEM_STATUS
-        )
+        acting_username = message.from_user.username
+        await _execute_check_in_for_employee(client, message, employee, db, acting_username)
 
     except Exception as e:
         db.rollback()
@@ -969,6 +1298,7 @@ async def handle_check_in(client, message: Message, command_name: str) -> None:
         db.close()
 
 
+
 # ══════════════════════════════════════════════════════════════
 # CHECK-OUT (Tan ca)
 # ══════════════════════════════════════════════════════════════
@@ -976,137 +1306,18 @@ async def handle_check_in(client, message: Message, command_name: str) -> None:
 async def handle_check_out(client, message: Message, command_name: str) -> None:
     """
     Xử lý check-out (tan ca) cho nhân viên.
-
-    Flow:
-    1. Tìm Employee theo username Telegram
-    2. Kiểm tra end_time → cho phép check-out trong cửa sổ ±30 phút
-    3. Tìm record check-in hôm nay (phải có check-in trước)
-    4. Cập nhật check_out_time + tính working_time
+    Hỗ trợ ủy quyền: nếu user được nhiều nhân viên ủy quyền, hiện Inline Keyboard chọn.
     """
-    from app.models.finance import Attendance
-
-    now_vn = datetime.datetime.now(VN_TZ)
-    today = now_vn.date()
-    current_time = now_vn.time()
-
-    username = message.from_user.username
-    if not username:
-        await message.reply_text(
-            "⚠️ Bạn chưa cài đặt username Telegram.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
     db = SessionLocal()
     try:
-        # 1. Tìm Employee
-        employee = db.query(Employee).filter(Employee.username == username).first()
+        employee = await resolve_employee_for_command(
+            client, message, db, callback_prefix="co", command_name=command_name
+        )
         if not employee:
-            await message.reply_text(
-                f"⚠️ Không tìm thấy nhân viên <b>@{username}</b> trong hệ thống.",
-                parse_mode=ParseMode.HTML
-            )
-            return
+            return  # Đã hiển thị lỗi hoặc Inline Keyboard chờ chọn
 
-        if employee.status == "inactive":
-            await message.reply_text(
-                "⚠️ Tài khoản nhân viên của bạn đã bị vô hiệu hóa.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # 2. Kiểm tra end_time (giờ tan ca)
-        if not employee.end_time:
-            await message.reply_text(
-                "⚠️ Bạn chưa được cài đặt giờ tan ca. Vui lòng liên hệ quản lý.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        end_time_obj = employee.end_time.time() if isinstance(employee.end_time, datetime.datetime) else employee.end_time
-        end_time_str = end_time_obj.strftime("%H:%M")
-
-        # Check-out chỉ được phép từ end_time đến 23:59 cùng ngày
-        if current_time < end_time_obj:
-            await message.reply_text(
-                f"⚠️ <b>Chưa đến giờ tan ca!</b>\n\n"
-                f"Giờ tan ca: <b>{end_time_str}</b>\n"
-                f"Hiện tại: <b>{current_time.strftime('%H:%M')}</b>\n\n"
-                f"<i>Bạn chỉ có thể check-out từ <b>{end_time_str}</b> đến <b>23:59</b>.</i>",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # 3. Tìm record check-in hôm nay
-        attendance = db.query(Attendance).filter(
-            Attendance.employee_id == employee.id,
-            Attendance.year == today.year,
-            Attendance.month == today.month,
-            Attendance.day == today.day,
-            Attendance.check_in_time.isnot(None)
-        ).first()
-
-        if not attendance:
-            await message.reply_text(
-                "⚠️ Bạn chưa check-in hôm nay. Vui lòng check-in trước.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        if attendance.check_out_time:
-            checkout_str = attendance.check_out_time.strftime("%H:%M:%S")
-            await message.reply_text(
-                f"⚠️ Bạn đã check-out hôm nay rồi!\n\n"
-                f"Thời gian check-out: <b>{checkout_str}</b>",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        # 4. Cập nhật check-out
-        checkout_dt = now_vn.replace(tzinfo=None)
-        attendance.check_out_time = checkout_dt
-
-        # Tính overtime nếu check-out sau end_time
-        overtime_minutes = 0
-        if current_time > end_time_obj:
-            now_dt = datetime.datetime.combine(today, current_time)
-            end_dt_full = datetime.datetime.combine(today, end_time_obj)
-            overtime_minutes = round((now_dt - end_dt_full).total_seconds() / 60)
-            attendance.overtime = round(overtime_minutes / 60, 2)
-
-        # Tính working_time (giờ làm việc)
-        if attendance.check_in_time:
-            diff = (checkout_dt - attendance.check_in_time).total_seconds() / 3600
-            if overtime_minutes > 0:
-                diff -= (overtime_minutes / 60)
-            attendance.working_time = round(diff, 2)
-
-        db.commit()
-
-        # 5. Reply
-        full_name = f"{employee.last_name} {employee.first_name}"
-        checkin_str = attendance.check_in_time.strftime("%H:%M:%S") if attendance.check_in_time else "N/A"
-        day_name = DAY_NAMES_VN.get(today.weekday(), "")
-        working_hours = attendance.working_time or 0
-
-        result = (
-            f"<b>CHECK-OUT THÀNH CÔNG</b>\n\n"
-            f"<b>Nhân viên:</b> {full_name} (@{username})\n"
-            f"<b>Mã NV:</b> {employee.id}\n"
-            f"<b>Ngày:</b> {day_name}, {today.strftime('%d-%m-%Y')}\n"
-            f"<b>Giờ check-in:</b> {checkin_str}\n"
-            f"<b>Giờ check-out:</b> {current_time.strftime('%H:%M:%S')}\n"
-            f"<b>Ca tan:</b> {end_time_str}\n"
-            f"<b>Tổng giờ làm:</b> {working_hours:.1f}h\n"
-        )
-        if overtime_minutes > 0:
-            result += f"<b>Tăng ca:</b> {overtime_minutes} phút\n"
-
-        await message.reply_text(result, parse_mode=ParseMode.HTML)
-        LogInfo(
-            f"[CheckOut] {full_name} (@{username}) checked out at {current_time.strftime('%H:%M')} - {working_hours:.1f}h",
-            LogType.SYSTEM_STATUS
-        )
+        acting_username = message.from_user.username
+        await _execute_check_out_for_employee(client, message, employee, db, acting_username)
 
     except Exception as e:
         db.rollback()
@@ -1145,20 +1356,162 @@ Lý do: </pre>
 Số ngày nghỉ phép năm còn lại: <b>{leave_balance}</b></i>"""
 
 
+async def _execute_request_leave_for_employee(
+    client, message: Message, employee: Employee, db, acting_username: str,
+    form_data: dict, command_name: str,
+) -> None:
+    """Thực hiện logic request_leave cho 1 Employee cụ thể."""
+    from app.models.finance import Attendance
+
+    dates = form_data["dates"]
+    leave_type = form_data["leave_type"]
+    approver = form_data["approver"]
+    supporter = form_data["supporter"]
+    reason = form_data["reason"]
+    start_dt = form_data["start_dt"]
+    end_dt = form_data["end_dt"]
+    num_days = form_data["num_days"]
+    display_dates = form_data["display_dates"]
+
+    # Kiểm tra nghỉ phép năm
+    from bot.utils.utils import get_best_match
+    is_annual_leave = (
+        leave_type == "Nghỉ phép năm"
+        or get_best_match(leave_type, ["Nghỉ phép năm"], threshold=0.7) is not None
+    )
+
+    full_name = f"{employee.last_name} {employee.first_name}"
+    emp_username = employee.username or employee.id
+
+    if is_annual_leave:
+        balance = employee.leave_balance or 0
+        if balance == 0:
+            await message.reply_text(
+                f"⚠️ Nhân viên <b>{full_name}</b> đã <b>hết ngày nghỉ phép năm</b> để sử dụng.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        if balance < num_days:
+            await message.reply_text(
+                f"⚠️ Nhân viên <b>{full_name}</b> chỉ còn <b>{balance}</b> ngày phép năm, "
+                f"không đủ để đăng ký <b>{num_days}</b> ngày.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        # Kiểm tra trùng ngày đã đăng ký hoặc đã chấm công
+        for i in range(num_days):
+            curr_date = start_dt + datetime.timedelta(days=i)
+            existing_att = db.query(Attendance).filter(
+                Attendance.employee_id == employee.id,
+                Attendance.year == curr_date.year,
+                Attendance.month == curr_date.month,
+                Attendance.day == curr_date.day,
+            ).first()
+
+            if existing_att:
+                if existing_att.error and get_best_match(
+                    existing_att.error, ["Nghỉ phép năm"], threshold=0.8
+                ):
+                    await message.reply_text(
+                        f"⚠️ Nhân viên <b>{full_name}</b> đã đăng ký phép năm cho ngày "
+                        f"<b>{curr_date.strftime('%d/%m/%Y')}</b> rồi.",
+                        parse_mode=ParseMode.HTML,
+                    )
+                    return
+
+                if existing_att.check_in_time or existing_att.check_out_time:
+                    await message.reply_text(
+                        f"⚠️ Nhân viên <b>{full_name}</b>, Ngày <b>{curr_date.strftime('%d/%m/%Y')}</b> "
+                        "đã có dữ liệu chấm công. Không thể xin nghỉ phép năm.",
+                        parse_mode=ParseMode.HTML,
+                    )
+                    return
+
+    # Build response
+    delegated_note = ""
+    if acting_username != employee.username:
+        delegated_note = f"\nNgười thực hiện: <b>@{acting_username}</b> (ủy quyền)"
+
+    response = (
+        f"<b>ĐƠN XIN NGHỈ PHÉP</b>\n\n"
+        f"Người nghỉ: <b>{full_name}</b> (<b>@{emp_username}</b>)\n"
+        f"Thời gian: <code>{display_dates}</code>\n"
+        f"Loại nghỉ: <b>{leave_type}</b>\n"
+        f"Người hỗ trợ: <b>{supporter}</b>\n"
+        f"Lý do: <i>{reason}</i>\n"
+        f"Người duyệt: <b>{approver}</b>"
+        f"{delegated_note}"
+    )
+
+    # Tìm HR group
+    hr_chat_id = None
+    try:
+        from app.models.telegram import TelegramProjectMember
+        from bot.utils.enums import CustomTitle
+        current_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(message.chat.id)
+        ).first()
+
+        main_hr_group = None
+        if current_member:
+            main_hr_group = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == current_member.project_id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title.in_([CustomTitle.MAIN_HR.value, CustomTitle.SUPER_MAIN.value])
+            ).first()
+
+        hr_chat_id = main_hr_group.chat_id if main_hr_group else None
+    except Exception as e:
+        LogError(f"Error finding HR group: {e}", LogType.SYSTEM_STATUS)
+
+    LogInfo(
+        f"[RequestLeave] {full_name} (@{emp_username}) submitted leave: "
+        f"{display_dates} | {leave_type} | {reason} (by @{acting_username})",
+        LogType.SYSTEM_STATUS,
+    )
+
+    if hr_chat_id:
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Chấp thuận", callback_data=f"lv_req|ok|{message.chat.id}|{message.id}"),
+                InlineKeyboardButton("Từ chối", callback_data=f"lv_req|no|{message.chat.id}|{message.id}")
+            ]
+        ])
+
+        try:
+            await client.send_message(
+                chat_id=int(hr_chat_id),
+                text=response,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup
+            )
+            await message.reply_text("✅ <b>Đơn xin nghỉ phép đã được gửi đến bộ phận Nhân sự để xét duyệt.</b>", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error forwarding leave request to HR group: {e}", LogType.SYSTEM_STATUS)
+            response += (
+                f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
+                f"phản hồi đơn này bằng cách reply:</b>\n"
+                f"- <code>/confirmed</code> để chấp thuận.\n"
+                f"- <code>/denied</code> để từ chối."
+            )
+            await message.reply_text(response, parse_mode=ParseMode.HTML)
+    else:
+        # Fallback to local reply
+        response += (
+            f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
+            f"phản hồi đơn này bằng cách reply:</b>\n"
+            f"- <code>/confirmed</code> để chấp thuận.\n"
+            f"- <code>/denied</code> để từ chối."
+        )
+        await message.reply_text(response, parse_mode=ParseMode.HTML)
+
+
 async def handle_request_leave(client, message: Message, command_name: str) -> None:
     """
     Xử lý yêu cầu xin nghỉ phép - dùng chung cho mọi dự án.
-
-    Flow:
-    1. Gõ lệnh không tham số → hiển thị form mẫu (kèm số ngày phép còn lại)
-    2. Gõ lệnh với form data → validate, hiển thị đơn xin phép
-    3. Người duyệt/hỗ trợ reply /confirmed hoặc /denied
-    4. Bot thông báo kết quả
-
-    Args:
-        client: Pyrogram client
-        message: Tin nhắn từ user
-        command_name: Tên lệnh (vd: "/tien_nga_request_leave")
+    Hỗ trợ ủy quyền: nếu user được nhiều nhân viên ủy quyền, hiện Inline Keyboard chọn.
     """
     from app.models.finance import Attendance
 
@@ -1260,173 +1613,42 @@ async def handle_request_leave(client, message: Message, command_name: str) -> N
     num_days = (end_dt - start_dt).days + 1
     display_dates = f"{start_dt.strftime('%d/%m/%Y')} - {end_dt.strftime('%d/%m/%Y')}"
 
-    username = message.from_user.username
-    if not username:
-        await message.reply_text(
-            "⚠️ Bạn chưa cài đặt username Telegram. Vui lòng cài đặt username trước.",
-            parse_mode=ParseMode.HTML,
-        )
-        return
+    # Đóng gói form data
+    form_data = {
+        "dates": dates,
+        "leave_type": leave_type,
+        "approver": approver,
+        "supporter": supporter,
+        "reason": reason,
+        "start_dt": start_dt,
+        "end_dt": end_dt,
+        "num_days": num_days,
+        "display_dates": display_dates,
+    }
 
-    # Validate employee & leave balance
+    # Resolve employee (hỗ trợ ủy quyền)
     db = SessionLocal()
     try:
-        employee = db.query(Employee).filter(Employee.username == username).first()
+        employee = await resolve_employee_for_command(
+            client, message, db, callback_prefix="lv", command_name=command_name,
+            form_data=form_data,
+        )
         if not employee:
-            await message.reply_text(
-                f"⚠️ Không tìm thấy nhân viên <b>@{username}</b> trong hệ thống.\n"
-                "Vui lòng liên hệ quản lý để được thêm vào hệ thống.",
-                parse_mode=ParseMode.HTML,
-            )
-            return
+            return  # Đã hiển thị lỗi hoặc Inline Keyboard chờ chọn
 
-        if employee.status == "inactive":
-            await message.reply_text(
-                "⚠️ Tài khoản nhân viên của bạn đã bị vô hiệu hóa.",
-                parse_mode=ParseMode.HTML,
-            )
-            return
-
-        # Kiểm tra nghỉ phép năm
-        from bot.utils.utils import get_best_match
-        is_annual_leave = (
-            leave_type == "Nghỉ phép năm"
-            or get_best_match(leave_type, ["Nghỉ phép năm"], threshold=0.7) is not None
+        acting_username = message.from_user.username
+        await _execute_request_leave_for_employee(
+            client, message, employee, db, acting_username, form_data, command_name
         )
 
-        if is_annual_leave:
-            balance = employee.leave_balance or 0
-            if balance == 0:
-                await message.reply_text(
-                    f"⚠️ Hi @{username}, Bạn đã <b>hết ngày nghỉ phép năm</b> để sử dụng.",
-                    parse_mode=ParseMode.HTML,
-                )
-                return
-            if balance < num_days:
-                await message.reply_text(
-                    f"⚠️ Hi @{username}, Bạn chỉ còn <b>{balance}</b> ngày phép năm, "
-                    f"không đủ để đăng ký <b>{num_days}</b> ngày.",
-                    parse_mode=ParseMode.HTML,
-                )
-                return
-
-            # Kiểm tra trùng ngày đã đăng ký hoặc đã chấm công
-            for i in range(num_days):
-                curr_date = start_dt + datetime.timedelta(days=i)
-                existing_att = db.query(Attendance).filter(
-                    Attendance.employee_id == employee.id,
-                    Attendance.year == curr_date.year,
-                    Attendance.month == curr_date.month,
-                    Attendance.day == curr_date.day,
-                ).first()
-
-                if existing_att:
-                    if existing_att.error and get_best_match(
-                        existing_att.error, ["Nghỉ phép năm"], threshold=0.8
-                    ):
-                        await message.reply_text(
-                            f"⚠️ Hi @{username}, Bạn đã đăng ký phép năm cho ngày "
-                            f"<b>{curr_date.strftime('%d/%m/%Y')}</b> rồi.",
-                            parse_mode=ParseMode.HTML,
-                        )
-                        return
-
-                    if existing_att.check_in_time or existing_att.check_out_time:
-                        await message.reply_text(
-                            f"⚠️ Hi @{username}, Ngày <b>{curr_date.strftime('%d/%m/%Y')}</b> "
-                            "bạn đã có dữ liệu chấm công. Không thể xin nghỉ phép năm.",
-                            parse_mode=ParseMode.HTML,
-                        )
-                        return
-
     except Exception as e:
-        LogError(f"Error validating leave in handle_request_leave: {e}", LogType.SYSTEM_STATUS)
+        LogError(f"Error in handle_request_leave: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text(
             "❌ Có lỗi xảy ra khi kiểm tra thông tin. Vui lòng thử lại.",
             parse_mode=ParseMode.HTML,
         )
-        return
     finally:
         db.close()
-
-    # Build response
-    user = message.from_user
-    full_name = f"{user.first_name} {user.last_name or ''}".strip()
-
-    response = (
-        f"<b>ĐƠN XIN NGHỈ PHÉP</b>\n\n"
-        f"Người nghỉ: <b>{full_name}</b> (<b>@{username}</b>)\n"
-        f"Thời gian: <code>{display_dates}</code>\n"
-        f"Loại nghỉ: <b>{leave_type}</b>\n"
-        f"Người hỗ trợ: <b>{supporter}</b>\n"
-        f"Lý do: <i>{reason}</i>\n"
-        f"Người duyệt: <b>{approver}</b>"
-    )
-
-    db = SessionLocal()
-    try:
-        from app.models.telegram import TelegramProjectMember
-        from bot.utils.enums import CustomTitle
-        current_member = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.chat_id == str(message.chat.id)
-        ).first()
-        
-        main_hr_group = None
-        if current_member:
-            main_hr_group = db.query(TelegramProjectMember).filter(
-                TelegramProjectMember.project_id == current_member.project_id,
-                TelegramProjectMember.role == "main",
-                TelegramProjectMember.custom_title.in_([CustomTitle.MAIN_HR.value, CustomTitle.SUPER_MAIN.value])
-            ).first()
-            
-        hr_chat_id = main_hr_group.chat_id if main_hr_group else None
-    except Exception as e:
-        LogError(f"Error finding HR group: {e}", LogType.SYSTEM_STATUS)
-        hr_chat_id = None
-    finally:
-        db.close()
-
-    LogInfo(
-        f"[RequestLeave] {full_name} (@{username}) submitted leave: "
-        f"{display_dates} | {leave_type} | {reason}",
-        LogType.SYSTEM_STATUS,
-    )
-
-    if hr_chat_id:
-        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        markup = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("Chấp thuận", callback_data=f"lv_req|ok|{message.chat.id}|{message.id}"),
-                InlineKeyboardButton("Từ chối", callback_data=f"lv_req|no|{message.chat.id}|{message.id}")
-            ]
-        ])
-        
-        try:
-            await client.send_message(
-                chat_id=int(hr_chat_id),
-                text=response,
-                parse_mode=ParseMode.HTML,
-                reply_markup=markup
-            )
-            await message.reply_text("✅ <b>Đơn xin nghỉ phép đã được gửi đến bộ phận Nhân sự để xét duyệt.</b>", parse_mode=ParseMode.HTML)
-        except Exception as e:
-            LogError(f"Error forwarding leave request to HR group: {e}", LogType.SYSTEM_STATUS)
-            response += (
-                f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
-                f"phản hồi đơn này bằng cách reply:</b>\n"
-                f"- <code>/confirmed</code> để chấp thuận.\n"
-                f"- <code>/denied</code> để từ chối."
-            )
-            await message.reply_text(response, parse_mode=ParseMode.HTML)
-    else:
-        # Fallback to local reply
-        response += (
-            f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
-            f"phản hồi đơn này bằng cách reply:</b>\n"
-            f"- <code>/confirmed</code> để chấp thuận.\n"
-            f"- <code>/denied</code> để từ chối."
-        )
-        await message.reply_text(response, parse_mode=ParseMode.HTML)
 
 
 async def handle_leave_request_callback(client, callback_query) -> None:
@@ -1775,20 +1997,104 @@ Lý do: </pre>
 <i>Ví dụ thời gian: 18:00 - 21:00</i>"""
 
 
+async def _execute_request_overtime_for_employee(
+    client, message: Message, employee: Employee, db, acting_username: str,
+    form_data: dict, command_name: str,
+) -> None:
+    """Thực hiện logic request_overtime cho 1 Employee cụ thể."""
+    date_str = form_data["date_str"]
+    time_str = form_data["time_str"]
+    approver = form_data["approver"]
+    supporter = form_data["supporter"]
+    reason = form_data["reason"]
+    display_date = form_data["display_date"]
+
+    full_name = f"{employee.last_name} {employee.first_name}"
+    emp_username = employee.username or employee.id
+
+    delegated_note = ""
+    if acting_username != employee.username:
+        delegated_note = f"\nNgười thực hiện: <b>@{acting_username}</b> (ủy quyền)"
+
+    response = (
+        f"<b>YÊU CẦU ĐĂNG KÝ TĂNG CA</b>\n\n"
+        f"Người yêu cầu: <b>{full_name}</b> (<b>@{emp_username}</b>)\n"
+        f"Ngày: <code>{display_date}</code>\n"
+        f"Thời gian: <b>{time_str}</b>\n"
+        f"Người duyệt: <b>{approver}</b>\n"
+        f"Người hỗ trợ: <b>{supporter}</b>\n"
+        f"Lý do: <i>{reason}</i>"
+        f"{delegated_note}"
+    )
+
+    # Tìm HR group
+    hr_chat_id = None
+    try:
+        from app.models.telegram import TelegramProjectMember
+        from bot.utils.enums import CustomTitle
+        current_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(message.chat.id)
+        ).first()
+
+        main_hr_group = None
+        if current_member:
+            main_hr_group = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == current_member.project_id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title.in_([CustomTitle.MAIN_HR.value, CustomTitle.SUPER_MAIN.value])
+            ).first()
+
+        hr_chat_id = main_hr_group.chat_id if main_hr_group else None
+    except Exception as e:
+        LogError(f"Error finding HR group for overtime: {e}", LogType.SYSTEM_STATUS)
+
+    LogInfo(
+        f"[RequestOvertime] {full_name} (@{emp_username}) submitted overtime: "
+        f"{display_date} | {time_str} | {reason} (by @{acting_username})",
+        LogType.SYSTEM_STATUS,
+    )
+
+    if hr_chat_id:
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Chấp thuận", callback_data=f"ov_req|ok|{message.chat.id}|{message.id}"),
+                InlineKeyboardButton("Từ chối", callback_data=f"ov_req|no|{message.chat.id}|{message.id}")
+            ]
+        ])
+
+        try:
+            await client.send_message(
+                chat_id=int(hr_chat_id),
+                text=response,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup
+            )
+            await message.reply_text("✅ <b>Đơn xin tăng ca đã được gửi đến bộ phận Nhân sự để xét duyệt.</b>", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error forwarding overtime request to HR group: {e}", LogType.SYSTEM_STATUS)
+            response += (
+                f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
+                f"phản hồi đơn này bằng cách reply:</b>\n"
+                f"- <code>/confirmed</code> để chấp thuận.\n"
+                f"- <code>/denied</code> để từ chối."
+            )
+            await message.reply_text(response, parse_mode=ParseMode.HTML)
+    else:
+        # Fallback to local reply
+        response += (
+            f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
+            f"phản hồi đơn này bằng cách reply:</b>\n"
+            f"- <code>/confirmed</code> để chấp thuận.\n"
+            f"- <code>/denied</code> để từ chối."
+        )
+        await message.reply_text(response, parse_mode=ParseMode.HTML)
+
+
 async def handle_request_overtime(client, message: Message, command_name: str) -> None:
     """
     Xử lý yêu cầu đăng ký tăng ca - dùng chung cho mọi dự án.
-
-    Flow:
-    1. Gõ lệnh không tham số → hiển thị form mẫu
-    2. Gõ lệnh với form data → validate, hiển thị đơn đăng ký tăng ca
-    3. Người duyệt/hỗ trợ reply /confirmed hoặc /denied
-    4. Bot thông báo kết quả
-
-    Args:
-        client: Pyrogram client
-        message: Tin nhắn từ user
-        command_name: Tên lệnh (vd: "/tien_nga_request_overtime")
+    Hỗ trợ ủy quyền: nếu user được nhiều nhân viên ủy quyền, hiện Inline Keyboard chọn.
     """
     lines = message.text.strip().split("\n")
 
@@ -1874,120 +2180,39 @@ async def handle_request_overtime(client, message: Message, command_name: str) -
         )
         return
 
-    username = message.from_user.username
-    if not username:
-        await message.reply_text(
-            "⚠️ Bạn chưa cài đặt username Telegram. Vui lòng cài đặt username trước.",
-            parse_mode=ParseMode.HTML,
-        )
-        return
+    # Đóng gói form data
+    form_data = {
+        "date_str": date_str,
+        "time_str": time_str,
+        "approver": approver,
+        "supporter": supporter,
+        "reason": reason,
+        "display_date": display_date,
+    }
 
-    # Validate employee
+    # Resolve employee (hỗ trợ ủy quyền)
     db = SessionLocal()
     try:
-        employee = db.query(Employee).filter(Employee.username == username).first()
+        employee = await resolve_employee_for_command(
+            client, message, db, callback_prefix="ov", command_name=command_name,
+            form_data=form_data,
+        )
         if not employee:
-            await message.reply_text(
-                f"⚠️ Không tìm thấy nhân viên <b>@{username}</b> trong hệ thống.\n"
-                "Vui lòng liên hệ quản lý để được thêm vào hệ thống.",
-                parse_mode=ParseMode.HTML,
-            )
-            return
+            return  # Đã hiển thị lỗi hoặc Inline Keyboard chờ chọn
 
-        if employee.status == "inactive":
-            await message.reply_text(
-                "⚠️ Tài khoản nhân viên của bạn đã bị vô hiệu hóa.",
-                parse_mode=ParseMode.HTML,
-            )
-            return
+        acting_username = message.from_user.username
+        await _execute_request_overtime_for_employee(
+            client, message, employee, db, acting_username, form_data, command_name
+        )
+
     except Exception as e:
-        LogError(f"Error validating employee in handle_request_overtime: {e}", LogType.SYSTEM_STATUS)
+        LogError(f"Error in handle_request_overtime: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text(
             "❌ Có lỗi xảy ra khi kiểm tra thông tin. Vui lòng thử lại.",
             parse_mode=ParseMode.HTML,
         )
-        return
     finally:
         db.close()
-
-    # Build response
-    user = message.from_user
-    full_name = f"{user.first_name} {user.last_name or ''}".strip()
-
-    response = (
-        f"<b>YÊU CẦU ĐĂNG KÝ TĂNG CA</b>\n\n"
-        f"Người yêu cầu: <b>{full_name}</b> (<b>@{username}</b>)\n"
-        f"Ngày: <code>{display_date}</code>\n"
-        f"Thời gian: <b>{time_str}</b>\n"
-        f"Người duyệt: <b>{approver}</b>\n"
-        f"Người hỗ trợ: <b>{supporter}</b>\n"
-        f"Lý do: <i>{reason}</i>"
-    )
-
-    db = SessionLocal()
-    try:
-        from app.models.telegram import TelegramProjectMember
-        from bot.utils.enums import CustomTitle
-        current_member = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.chat_id == str(message.chat.id)
-        ).first()
-        
-        main_hr_group = None
-        if current_member:
-            main_hr_group = db.query(TelegramProjectMember).filter(
-                TelegramProjectMember.project_id == current_member.project_id,
-                TelegramProjectMember.role == "main",
-                TelegramProjectMember.custom_title.in_([CustomTitle.MAIN_HR.value, CustomTitle.SUPER_MAIN.value])
-            ).first()
-            
-        hr_chat_id = main_hr_group.chat_id if main_hr_group else None
-    except Exception as e:
-        LogError(f"Error finding HR group for overtime: {e}", LogType.SYSTEM_STATUS)
-        hr_chat_id = None
-    finally:
-        db.close()
-
-    LogInfo(
-        f"[RequestOvertime] {full_name} (@{username}) submitted overtime: "
-        f"{display_date} | {time_str} | {reason}",
-        LogType.SYSTEM_STATUS,
-    )
-
-    if hr_chat_id:
-        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        markup = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("Chấp thuận", callback_data=f"ov_req|ok|{message.chat.id}|{message.id}"),
-                InlineKeyboardButton("Từ chối", callback_data=f"ov_req|no|{message.chat.id}|{message.id}")
-            ]
-        ])
-        
-        try:
-            await client.send_message(
-                chat_id=int(hr_chat_id),
-                text=response,
-                parse_mode=ParseMode.HTML,
-                reply_markup=markup
-            )
-            await message.reply_text("✅ <b>Đơn xin tăng ca đã được gửi đến bộ phận Nhân sự để xét duyệt.</b>", parse_mode=ParseMode.HTML)
-        except Exception as e:
-            LogError(f"Error forwarding overtime request to HR group: {e}", LogType.SYSTEM_STATUS)
-            response += (
-                f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
-                f"phản hồi đơn này bằng cách reply:</b>\n"
-                f"- <code>/confirmed</code> để chấp thuận.\n"
-                f"- <code>/denied</code> để từ chối."
-            )
-            await message.reply_text(response, parse_mode=ParseMode.HTML)
-    else:
-        # Fallback to local reply
-        response += (
-            f"\n\n<b>Yêu cầu người duyệt ({approver}) hoặc người hỗ trợ ({supporter}) "
-            f"phản hồi đơn này bằng cách reply:</b>\n"
-            f"- <code>/confirmed</code> để chấp thuận.\n"
-            f"- <code>/denied</code> để từ chối."
-        )
-        await message.reply_text(response, parse_mode=ParseMode.HTML)
 
 
 # ══════════════════════════════════════════════════════════════

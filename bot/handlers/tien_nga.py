@@ -237,6 +237,12 @@ async def _ov_req_callback(client, callback_query):
     from bot.utils.human_resource import handle_overtime_request_callback
     await handle_overtime_request_callback(client, callback_query)
 
+@bot.on_callback_query(filters.regex(r"^auth_(ci|co|lv|ov)\|(.+)$"))
+async def _auth_select_callback(client, callback_query):
+    from bot.utils.human_resource import handle_authority_callback
+    await handle_authority_callback(client, callback_query)
+
+
 @bot.on_message(filters.command(["cancel", "huy_task"]) & filters.reply)
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")

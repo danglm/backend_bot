@@ -96,6 +96,24 @@ async def ggomoonsin_request_overtime_handler(client, message: Message) -> None:
     await handle_request_overtime(client, message, "/ggomoonsin_request_overtime")
 
 
+# --- Callback handlers cho HR ---
+@bot.on_callback_query(filters.regex(r"^auth_(ci|co|lv|ov)\|(.+)$"))
+async def _ggomoonsin_auth_select_callback(client, callback_query):
+    from bot.utils.human_resource import handle_authority_callback
+    await handle_authority_callback(client, callback_query)
+
+@bot.on_callback_query(filters.regex(r"^lv_req\|(ok|no)\|([-\d]+)\|(\d+)$"))
+async def _ggomoonsin_lv_req_callback(client, callback_query):
+    from bot.utils.human_resource import handle_leave_request_callback
+    await handle_leave_request_callback(client, callback_query)
+
+@bot.on_callback_query(filters.regex(r"^ov_req\|(ok|no)\|([-\d]+)\|(\d+)$"))
+async def _ggomoonsin_ov_req_callback(client, callback_query):
+    from bot.utils.human_resource import handle_overtime_request_callback
+    await handle_overtime_request_callback(client, callback_query)
+
+
+
 # --- Xem chấm công (List Check-in) ---
 @bot.on_message(filters.command(["ggomoonsin_list_check_in", "ggomoonsin_xem_cham_cong"]) | filters.regex(r"^@\w+\s+/(ggomoonsin_list_check_in|ggomoonsin_xem_cham_cong)\b"))
 @require_project_name("GGoMoonSin")
