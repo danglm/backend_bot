@@ -1256,6 +1256,134 @@ async def rosca_check_member_handler(client, message: Message) -> None:
 
 
 
+# --- Rosca: Check Contributions History (Kiểm Tra Đóng Hụi) ---
+@bot.on_message(filters.command(["hui_kiem_tra_dong_hui", "roscas_check_contributions"]) | filters.regex(r"^@\w+\s+/(hui_kiem_tra_dong_hui|roscas_check_contributions)\b"))
+@require_group_role("main", "member")
+async def rosca_check_contributions_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["hui_kiem_tra_dong_hui", "roscas_check_contributions"])
+    if args is None: return
+
+    if len(args) < 2:
+        await message.reply_text("⚠️ Vui lòng cung cấp Mã Chân Hụi cần kiểm tra.\nVí dụ: <code>/hui_kiem_tra_dong_hui AT001</code>", parse_mode=ParseMode.HTML)
+        return
+
+    member_id = args[1].strip()
+    db = SessionLocal()
+    try:
+        from app.models.rosca import RoscaMember, Rosca, UserRosca, RoscaContribution
+        from bot.utils.utils import fmt_num, fmt_vn
+
+        member = db.query(RoscaMember).filter(RoscaMember.id == member_id).first()
+        if not member:
+            # Fallback: check if they entered user_id
+            member = db.query(RoscaMember).filter(RoscaMember.user_id == member_id).first()
+            if not member:
+                await message.reply_text(f"⚠️ Không tìm thấy Chân hụi hoặc Người chơi có mã: <b>{member_id}</b>", parse_mode=ParseMode.HTML)
+                return
+
+        rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
+        player = db.query(UserRosca).filter(UserRosca.id == member.user_id).first()
+
+        rosca_code = rosca.code if rosca else "N/A"
+        player_name = player.full_name if player else "N/A"
+
+        # Lấy tất cả lịch sử đóng hụi, sắp xếp theo kỳ rồi theo ngày
+        contributions = db.query(RoscaContribution).filter(
+            RoscaContribution.member_id == member.id
+        ).order_by(
+            RoscaContribution.round_number.asc(),
+            RoscaContribution.actual_payment_date.asc()
+        ).all()
+
+        if not contributions:
+            await message.reply_text(
+                f"<b>LỊCH SỬ ĐÓNG HỤI</b>\n"
+                f"- Chân hụi: <b>{member.id}</b>\n"
+                f"- Người chơi: <b>{player_name}</b>\n"
+                f"- Dây hụi: <b>{rosca_code}</b>\n\n"
+                f"<i>Chưa có lịch sử đóng hụi nào.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Build header
+        text = (
+            f"<b>LỊCH SỬ ĐÓNG HỤI</b>\n"
+            f"- Chân hụi: <code>{member.id}</code>\n"
+            f"- Người chơi: <b>{player_name}</b>\n"
+            f"- Dây hụi: <b>{rosca_code}</b>\n"
+            f"{'━' * 20}\n\n"
+        )
+
+        total_paid = 0
+        total_unpaid = 0
+        count_paid = 0
+        count_unpaid = 0
+
+        for idx, c in enumerate(contributions, start=1):
+            # Determine status emoji
+            if c.status == "Paid":
+                status_icon = ""
+                total_paid += (c.amount or 0)
+                count_paid += 1
+            elif c.status == "Late":
+                status_icon = ""
+                total_paid += (c.amount or 0)
+                count_paid += 1
+            else:
+                status_icon = ""
+                total_unpaid += (c.amount or 0)
+                count_unpaid += 1
+
+            round_label = f"Kỳ {c.round_number}" if c.round_number else f"#{idx}"
+            date_str = c.actual_payment_date.strftime("%d/%m/%Y %H:%M") if c.actual_payment_date else "Chưa đóng"
+            amount_str = fmt_vn(c.amount) if c.amount else "0 VNĐ"
+            note_str = f" — {c.note}" if c.note else ""
+
+            text += (
+                f"{status_icon} <b>{round_label}</b>\n"
+                f"{date_str}  |  {amount_str}  |  {c.status or 'N/A'}{note_str}\n"
+            )
+
+        # Summary
+        text += (
+            f"\n{'━' * 20}\n"
+            f"<b>TỔNG KẾT:</b>\n"
+            f"- Số kỳ đã đóng: <b>{count_paid}</b>\n"
+            f"- Số kỳ chưa đóng: <b>{count_unpaid}</b>\n"
+            f"- Tổng tiền đã đóng: <b>{fmt_vn(total_paid)}</b>\n"
+        )
+        if total_unpaid > 0:
+            text += f"- Tổng tiền chưa đóng: <b>{fmt_vn(total_unpaid)}</b>\n"
+
+        # Split message if too long (Telegram limit 4096 chars)
+        if len(text) > 4096:
+            parts = []
+            current = ""
+            for line in text.split("\n"):
+                if len(current) + len(line) + 1 > 4000:
+                    parts.append(current)
+                    current = line + "\n"
+                else:
+                    current += line + "\n"
+            if current:
+                parts.append(current)
+
+            for i, part in enumerate(parts):
+                if i == 0:
+                    await message.reply_text(part, parse_mode=ParseMode.HTML)
+                else:
+                    await message.reply_text(part, parse_mode=ParseMode.HTML)
+        else:
+            await message.reply_text(text, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error checking rosca contributions: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra trong quá trình kiểm tra lịch sử đóng hụi.")
+    finally:
+        db.close()
+
+
 # --- Rosca: Pay Contribution (Đóng Tiền Chân Hụi) ---
 @bot.on_message(filters.command(["hui_dong_tien_chan_hui", "roscas_pay_contribution"]) | filters.regex(r"^@\w+\s+/(hui_dong_tien_chan_hui|roscas_pay_contribution)\b"))
 @require_group_role("member", "main")
