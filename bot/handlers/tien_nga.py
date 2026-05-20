@@ -6088,7 +6088,7 @@ async def tien_nga_partner_txn_type_callback(client, callback_query):
 @bot.on_callback_query(filters.regex(r"^tn_ptx2_(.+)$"))
 async def tien_nga_partner_txn_prod_callback(client, callback_query):
     action = callback_query.matches[0].group(1)
-    parts = action.split("_")
+    parts = action.rsplit("_", 2)
     if len(parts) < 3:
         return
     partner_id, txn_code, prod_type = parts[0], parts[1], parts[2]
@@ -7099,7 +7099,7 @@ async def ttcn_cancel_callback(client, callback_query: CallbackQuery):
 
 
 # --- Thu Công Nợ / Trả Công Nợ ---
-@bot.on_callback_query(filters.regex(r"^cb_ttcn_(thu|tra)_(\w+)_(\w+)_(\d+)$"))
+@bot.on_callback_query(filters.regex(r"^cb_ttcn_(thu|tra)_(partner|customer|employee|household)_(.+)_(\d+)$"))
 async def ttcn_action_callback(client, callback_query: CallbackQuery):
     action = callback_query.matches[0].group(1)       # "thu" or "tra"
     target_type = callback_query.matches[0].group(2)   # partner/customer/employee/household
