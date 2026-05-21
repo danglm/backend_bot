@@ -21,10 +21,10 @@ def load_config() -> dict:
         return json.load(f)
 
 
-def load_chat_ids(file_path: str = "Test_Syncchat.xlsx") -> list[dict]:
+def load_chat_ids(file_path: str = "HoDanTienNga_2025.xlsx") -> list[dict]:
     """Đọc danh sách chat_id từ file Excel (tự tìm cột theo tên header)"""
     wb = openpyxl.load_workbook(file_path)
-    ws = wb.active
+    ws = wb["Danh Sách Chat ID"]
 
     # Đọc header row để tìm vị trí cột
     headers = [cell.value for cell in ws[1]]
