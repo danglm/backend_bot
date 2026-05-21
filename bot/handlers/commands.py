@@ -879,6 +879,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_xem_cham_cong", "Xem chấm công"),
                     BotCommand("tien_nga_xem_nghi_phep", "Xem danh sách nghỉ phép"),
                     BotCommand("tien_nga_xem_cong_viec", "Xem công việc được giao"),
+                    BotCommand("tien_nga_cap_nhat_cong", "Yêu cầu cập nhật chấm công"),
                 ])
             if custom_title == "member_shareholder":
                 label = "Tiến Nga (Cổ Đông)"

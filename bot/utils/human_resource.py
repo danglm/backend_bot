@@ -904,6 +904,7 @@ async def resolve_employee_for_command(
         "co": "check-out",
         "lv": "xin nghỉ phép",
         "ov": "đăng ký tăng ca",
+        "au": "yêu cầu cập nhật công",
     }
     action_label = ACTION_LABELS.get(callback_prefix, callback_prefix)
 
@@ -1147,8 +1148,8 @@ async def _execute_check_out_for_employee(client, message: Message, employee: Em
         f"<b>Tổng giờ làm:</b> {working_hours:.1f}h\n"
         f"{delegated_note}"
     )
-    if overtime_minutes > 0:
-        result += f"<b>Tăng ca:</b> {overtime_minutes} phút\n"
+    # if overtime_minutes > 0:
+    #     result += f"<b>Tăng ca:</b> {overtime_minutes} phút\n"
 
     await message.reply_text(result, parse_mode=ParseMode.HTML)
     LogInfo(
@@ -1241,6 +1242,16 @@ async def handle_authority_callback(client, callback_query) -> None:
             else:
                 await callback_query.message.reply_text(
                     "⚠️ Dữ liệu form tăng ca đã hết hạn. Vui lòng gửi lại lệnh.",
+                    parse_mode=ParseMode.HTML
+                )
+        elif action == "au":
+            form_data = pending.get("form_data") if pending else None
+            command_name = pending.get("command_name", "") if pending else ""
+            if form_data:
+                await _execute_request_attendance_update_for_employee(client, original_message, employee, db, acting_username, form_data, command_name)
+            else:
+                await callback_query.message.reply_text(
+                    "⚠️ Dữ liệu form cập nhật công đã hết hạn. Vui lòng gửi lại lệnh.",
                     parse_mode=ParseMode.HTML
                 )
 
@@ -2213,6 +2224,430 @@ async def handle_request_overtime(client, message: Message, command_name: str) -
         )
     finally:
         db.close()
+
+
+# ══════════════════════════════════════════════════════════════
+# REQUEST ATTENDANCE UPDATE (Yêu cầu cập nhật chấm công)
+# ══════════════════════════════════════════════════════════════
+
+ATTENDANCE_UPDATE_FORM_TEMPLATE = """<b>MẪU YÊU CẦU CẬP NHẬT CHẤM CÔNG</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>{cmd}
+Thời gian: dd/mm/yyyy
+Ca làm: hh:mm - hh:mm
+Người duyệt: @username
+Người hỗ trợ: @username
+Lý do: </pre>
+
+<i>Ví dụ ca làm: 08:00 - 17:00
+Mã NV: <b>{emp_id}</b></i>"""
+
+
+async def _execute_request_attendance_update_for_employee(
+    client, message: Message, employee: Employee, db, acting_username: str,
+    form_data: dict, command_name: str,
+) -> None:
+    """Thực hiện logic request_attendance_update cho 1 Employee cụ thể."""
+    date_str = form_data["date_str"]
+    shift_str = form_data["shift_str"]
+    approver = form_data["approver"]
+    supporter = form_data["supporter"]
+    reason = form_data["reason"]
+    display_date = form_data["display_date"]
+
+    full_name = f"{employee.last_name} {employee.first_name}"
+    emp_username = employee.username or employee.id
+
+    delegated_note = ""
+    if acting_username != employee.username:
+        delegated_note = f"\nNgười thực hiện: <b>@{acting_username}</b> (ủy quyền)"
+
+    response = (
+        f"<b>YÊU CẦU CẬP NHẬT CHẤM CÔNG</b>\n\n"
+        f"Người yêu cầu: <b>{full_name}</b> (<b>@{emp_username}</b>)\n"
+        f"Mã NV: <code>{employee.id}</code>\n"
+        f"Thời gian: <code>{display_date}</code>\n"
+        f"Ca làm: <b>{shift_str}</b>\n"
+        f"Người duyệt: <b>{approver}</b>\n"
+        f"Người hỗ trợ: <b>{supporter}</b>\n"
+        f"Lý do: <i>{reason}</i>"
+        f"{delegated_note}"
+    )
+
+    # Tìm HR group thông qua parent_id (liên kết trực tiếp Member → Main)
+    hr_chat_id = None
+    try:
+        from app.models.telegram import TelegramProjectMember
+        current_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(message.chat.id),
+            TelegramProjectMember.role == "member"
+        ).first()
+
+        if current_member and current_member.parent_id:
+            hr_chat_id = current_member.parent_id
+        elif current_member:
+            # Fallback: tìm theo project_id nếu không có parent_id
+            from bot.utils.enums import CustomTitle
+            main_hr_group = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == current_member.project_id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title.in_([CustomTitle.MAIN_HR.value, CustomTitle.SUPER_MAIN.value])
+            ).first()
+            hr_chat_id = main_hr_group.chat_id if main_hr_group else None
+    except Exception as e:
+        LogError(f"Error finding HR group for attendance update: {e}", LogType.SYSTEM_STATUS)
+
+    LogInfo(
+        f"[RequestAttendanceUpdate] {full_name} (@{emp_username}) submitted attendance update: "
+        f"{display_date} | {shift_str} | {reason} (by @{acting_username})",
+        LogType.SYSTEM_STATUS,
+    )
+
+    if hr_chat_id:
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Xác nhận", callback_data=f"att_req|ok|{message.chat.id}|{message.id}"),
+                InlineKeyboardButton("Từ chối", callback_data=f"att_req|no|{message.chat.id}|{message.id}")
+            ]
+        ])
+
+        try:
+            await client.send_message(
+                chat_id=int(hr_chat_id),
+                text=response,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup
+            )
+            await message.reply_text("✅ <b>Yêu cầu cập nhật chấm công đã được gửi đến bộ phận Nhân sự để xét duyệt.</b>", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error forwarding attendance update request to HR group: {e}", LogType.SYSTEM_STATUS)
+            # Fallback: gửi ngay tại nhóm member với inline buttons
+            from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            fallback_markup = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("Xác nhận", callback_data=f"att_req|ok|{message.chat.id}|{message.id}"),
+                    InlineKeyboardButton("Từ chối", callback_data=f"att_req|no|{message.chat.id}|{message.id}")
+                ]
+            ])
+            await message.reply_text(response, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
+    else:
+        # Fallback: không tìm được nhóm HR → gửi tại nhóm hiện tại với inline buttons
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        fallback_markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Xác nhận", callback_data=f"att_req|ok|{message.chat.id}|{message.id}"),
+                InlineKeyboardButton("Từ chối", callback_data=f"att_req|no|{message.chat.id}|{message.id}")
+            ]
+        ])
+        await message.reply_text(response, parse_mode=ParseMode.HTML, reply_markup=fallback_markup)
+
+
+async def handle_request_attendance_update(client, message: Message, command_name: str) -> None:
+    """
+    Xử lý yêu cầu cập nhật chấm công - dùng chung cho mọi dự án.
+    Hỗ trợ ủy quyền: nếu user được nhiều nhân viên ủy quyền, hiện Inline Keyboard chọn.
+    """
+    lines = message.text.strip().split("\n")
+
+    # Nếu chỉ gõ lệnh không tham số -> hiển thị form mẫu
+    if len(lines) < 3:
+        emp_id = "N/A"
+        username = message.from_user.username
+        if username:
+            db = SessionLocal()
+            try:
+                employee = db.query(Employee).filter(
+                    Employee.username == username
+                ).first()
+                if employee:
+                    emp_id = employee.id
+            except Exception:
+                pass
+            finally:
+                db.close()
+
+        form = ATTENDANCE_UPDATE_FORM_TEMPLATE.format(
+            cmd=command_name,
+            emp_id=emp_id,
+        )
+        await message.reply_text(form, parse_mode=ParseMode.HTML)
+        return
+
+    # Parse form data
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    # Lấy các trường
+    date_str = data.get("Thời gian", "").strip()
+    shift_str = data.get("Ca làm", "").strip()
+    approver = data.get("Người duyệt", "").strip()
+    supporter = data.get("Người hỗ trợ", "").strip()
+    reason = data.get("Lý do", "").strip()
+
+    # Validate required fields
+    if not all([date_str, shift_str, approver, supporter, reason]):
+        await message.reply_text(
+            "⚠️ <b>Thiếu thông tin hoặc sai định dạng!</b>\n\n"
+            "Vui lòng nhập đủ các trường theo mẫu sau:\n"
+            "<code>Thời gian: dd/mm/yyyy</code>\n"
+            "<code>Ca làm: hh:mm - hh:mm</code>\n"
+            "<code>Người duyệt: @username</code>\n"
+            "<code>Người hỗ trợ: @username</code>\n"
+            "<code>Lý do: ...</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # Parse date
+    parsed_date = None
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
+        try:
+            parsed_date = datetime.datetime.strptime(date_str, fmt)
+            break
+        except ValueError:
+            continue
+
+    if not parsed_date:
+        await message.reply_text(
+            "⚠️ <b>Sai định dạng ngày!</b>\n"
+            "Vui lòng nhập theo format: <code>dd/mm/yyyy</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    display_date = parsed_date.strftime("%d/%m/%Y")
+
+    # Validate shift format (hh:mm - hh:mm)
+    if " - " not in shift_str:
+        await message.reply_text(
+            "⚠️ <b>Sai định dạng ca làm!</b>\n"
+            "Vui lòng nhập theo format: <code>hh:mm - hh:mm</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    shift_parts = shift_str.split(" - ")
+    if len(shift_parts) != 2:
+        await message.reply_text(
+            "⚠️ <b>Sai định dạng ca làm!</b>\n"
+            "Vui lòng nhập theo format: <code>hh:mm - hh:mm</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    try:
+        datetime.datetime.strptime(shift_parts[0].strip(), "%H:%M")
+        datetime.datetime.strptime(shift_parts[1].strip(), "%H:%M")
+    except ValueError:
+        await message.reply_text(
+            "⚠️ <b>Sai định dạng ca làm!</b>\n"
+            "Vui lòng nhập theo format: <code>hh:mm - hh:mm</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # Đóng gói form data
+    form_data = {
+        "date_str": date_str,
+        "shift_str": shift_str,
+        "approver": approver,
+        "supporter": supporter,
+        "reason": reason,
+        "display_date": display_date,
+    }
+
+    # Resolve employee (hỗ trợ ủy quyền)
+    db = SessionLocal()
+    try:
+        employee = await resolve_employee_for_command(
+            client, message, db, callback_prefix="au", command_name=command_name,
+            form_data=form_data,
+        )
+        if not employee:
+            return  # Đã hiển thị lỗi hoặc Inline Keyboard chờ chọn
+
+        acting_username = message.from_user.username
+        await _execute_request_attendance_update_for_employee(
+            client, message, employee, db, acting_username, form_data, command_name
+        )
+
+    except Exception as e:
+        LogError(f"Error in handle_request_attendance_update: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(
+            "❌ Có lỗi xảy ra khi kiểm tra thông tin. Vui lòng thử lại.",
+            parse_mode=ParseMode.HTML,
+        )
+    finally:
+        db.close()
+
+
+async def handle_attendance_update_request_callback(client, callback_query) -> None:
+    """Xử lý callback xác nhận / từ chối yêu cầu cập nhật chấm công."""
+    data = callback_query.data  # format: att_req|ok|<orig_chat_id>|<orig_msg_id>
+    parts = data.split("|")
+    if len(parts) != 4:
+        await callback_query.answer("⚠️ Dữ liệu callback không hợp lệ.", show_alert=True)
+        return
+
+    action = parts[1]  # "ok" or "no"
+    orig_chat_id = parts[2]
+    orig_msg_id = parts[3]
+
+    message = callback_query.message
+    content = message.text
+    sender_username = callback_query.from_user.username
+
+    import re
+    approver_match = re.search(r"Người duyệt:\s*(?:<b>)?@([^\s<]+)(?:</b>)?", content)
+    designated_approver = approver_match.group(1).strip() if approver_match else ""
+
+    from bot.utils.enums import UserType, has_flag
+
+    is_authorized = False
+    if sender_username == designated_approver:
+        is_authorized = True
+    else:
+        from app.models.employee import Employee
+        db = SessionLocal()
+        try:
+            emp = db.query(Employee).filter(Employee.username == sender_username).first()
+            if emp and has_flag(emp.user_mask, UserType.OWNER | UserType.ADMIN):
+                is_authorized = True
+            else:
+                from app.models.telegram import TelegramProjectMember
+                from bot.utils.enums import CustomTitle
+                member = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.chat_id == str(message.chat.id),
+                    TelegramProjectMember.user_name == sender_username
+                ).first()
+                if member and member.custom_title == CustomTitle.SUPER_MAIN:
+                    is_authorized = True
+        except Exception as e:
+            LogError(f"Error checking authorization: {e}", LogType.SYSTEM_STATUS)
+        finally:
+            db.close()
+
+    if not is_authorized:
+        await callback_query.answer(f"⚠️ Chỉ người duyệt (@{designated_approver}) hoặc Quản lý mới có quyền thực hiện.", show_alert=True)
+        return
+
+    requester_match = re.search(r"Người yêu cầu:\s*(?:<b>)?(.*?)(?:</b>)?(?:\n|$)", content)
+    requester_name = requester_match.group(1).strip() if requester_match else "Nhân viên"
+
+    if action == "ok":
+        status_text = "<b>ĐÃ XÁC NHẬN</b>"
+        color_msg = "đã được xác nhận"
+    else:
+        status_text = "<b>BỊ TỪ CHỐI</b>"
+        color_msg = "đã bị từ chối"
+
+    response = (
+        f"{status_text}\n\n"
+        f"Yêu cầu cập nhật chấm công của <b>{requester_name}</b> {color_msg} bởi <b>@{sender_username}</b>."
+    )
+
+    # Nếu xác nhận → cập nhật DB Attendance
+    if action == "ok" and "YÊU CẦU CẬP NHẬT CHẤM CÔNG" in content:
+        d_match = re.search(r"Thời gian:\s*(?:<code>)?(.*?)(?:</code>)?(?:\n|$)", content)
+        s_match = re.search(r"Ca làm:\s*(?:<b>)?(.*?)(?:</b>)?(?:\n|$)", content)
+        u_match = re.search(r"Người yêu cầu:.*?\(\s*(?:<b>)?@([^\s<]+)(?:</b>)?\s*\)", content)
+
+        if d_match and s_match and u_match:
+            att_date_str = d_match.group(1).strip()
+            att_shift = s_match.group(1).strip()
+            att_username = u_match.group(1).strip()
+
+            db = SessionLocal()
+            try:
+                # Parse date
+                att_date = None
+                if "/" in att_date_str:
+                    try:
+                        att_date = datetime.datetime.strptime(att_date_str, "%d/%m/%Y")
+                    except Exception as e:
+                        LogError(f"Date parse error in Attendance update recording: {e}", LogType.SYSTEM_STATUS)
+
+                # Parse time range (hh:mm - hh:mm)
+                if att_date and "-" in att_shift:
+                    time_parts = att_shift.split("-")
+                    if len(time_parts) == 2:
+                        s_t_str = time_parts[0].strip()
+                        e_t_str = time_parts[1].strip()
+
+                        try:
+                            start_t = datetime.datetime.strptime(s_t_str, "%H:%M").time()
+                            end_t = datetime.datetime.strptime(e_t_str, "%H:%M").time()
+
+                            start_dt = datetime.datetime.combine(att_date.date(), start_t)
+                            end_dt = datetime.datetime.combine(att_date.date(), end_t)
+
+                            if end_dt < start_dt:
+                                end_dt += datetime.timedelta(days=1)
+
+                            from app.models.employee import Employee
+                            from app.models.finance import Attendance
+                            from app.crud.attendance import get_attendance
+                            emp = db.query(Employee).filter(Employee.username == att_username).first()
+                            if emp:
+                                s_id = emp.id
+                                y, m, d = att_date.year, att_date.month, att_date.day
+                                days_vn = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
+                                ds_vn = days_vn[att_date.weekday()]
+
+                                existing_att = get_attendance(db, s_id, y, m, d)
+                                if existing_att:
+                                    existing_att.check_in_time = start_dt
+                                    existing_att.check_out_time = end_dt
+                                    db.add(existing_att)
+                                else:
+                                    new_att = Attendance(
+                                        employee_id=s_id,
+                                        year=y,
+                                        month=m,
+                                        day=d,
+                                        date_str=ds_vn,
+                                        check_in_time=start_dt,
+                                        check_out_time=end_dt
+                                    )
+                                    db.add(new_att)
+
+                                db.commit()
+                                response += f"\n\n✅ <b>Đã cập nhật dữ liệu chấm công.</b>"
+                                LogInfo(
+                                    f"[AttendanceUpdate] Updated attendance for @{att_username} on {att_date_str}: {att_shift} by @{sender_username}",
+                                    LogType.SYSTEM_STATUS,
+                                )
+                        except Exception as e:
+                            LogError(f"Time parse error in Attendance update recording: {e}", LogType.SYSTEM_STATUS)
+            except Exception as e:
+                LogError(f"Error recording attendance update: {e}", LogType.SYSTEM_STATUS)
+            finally:
+                db.close()
+
+    try:
+        await callback_query.message.edit_text(
+            f"{content}\n\n====================\n{response}",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error editing original message: {e}", LogType.SYSTEM_STATUS)
+
+    try:
+        await client.send_message(
+            chat_id=int(orig_chat_id),
+            reply_to_message_id=int(orig_msg_id),
+            text=response,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error notifying employee: {e}", LogType.SYSTEM_STATUS)
+
+    await callback_query.answer()
 
 
 # ══════════════════════════════════════════════════════════════

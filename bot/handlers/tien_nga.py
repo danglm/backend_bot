@@ -135,6 +135,22 @@ async def tien_nga_request_overtime_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_request_overtime
     await handle_request_overtime(client, message, "/tien_nga_request_overtime")
 
+@bot.on_message(filters.command(["tien_nga_request_attendance_update", "tien_nga_cap_nhat_cong"]) | filters.regex(r"^@\w+\s+/(tien_nga_request_attendance_update|tien_nga_cap_nhat_cong)\b"))
+@require_project_name("Tiến Nga")
+@require_group_role("member")
+@require_custom_title(CustomTitle.MEMBER_HR)
+async def tien_nga_request_attendance_update_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_request_attendance_update", "tien_nga_cap_nhat_cong"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_request_attendance_update
+    await handle_request_attendance_update(client, message, "/tien_nga_cap_nhat_cong")
+
+@bot.on_callback_query(filters.regex(r"^att_req\|(ok|no)\|([-\d]+)\|(\d+)$"))
+async def _att_req_callback(client, callback_query):
+    from bot.utils.human_resource import handle_attendance_update_request_callback
+    await handle_attendance_update_request_callback(client, callback_query)
+
 @bot.on_message(filters.command(["tien_nga_list_check_in", "tien_nga_xem_cham_cong"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_check_in|tien_nga_xem_cham_cong)\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
@@ -237,7 +253,7 @@ async def _ov_req_callback(client, callback_query):
     from bot.utils.human_resource import handle_overtime_request_callback
     await handle_overtime_request_callback(client, callback_query)
 
-@bot.on_callback_query(filters.regex(r"^auth_(ci|co|lv|ov)\|(.+)$"))
+@bot.on_callback_query(filters.regex(r"^auth_(ci|co|lv|ov|au)\|(.+)$"))
 async def _auth_select_callback(client, callback_query):
     from bot.utils.human_resource import handle_authority_callback
     await handle_authority_callback(client, callback_query)
