@@ -3,7 +3,7 @@ from bot.utils.enums import CustomTitle
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
 from bot.utils.bot import bot
-from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_custom_title
+from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_custom_title, require_group_role
 from bot.utils.enums import UserType
 import re
 
@@ -94,6 +94,19 @@ async def ggomoonsin_request_overtime_handler(client, message: Message) -> None:
 
     from bot.utils.human_resource import handle_request_overtime
     await handle_request_overtime(client, message, "/ggomoonsin_request_overtime")
+
+
+# --- Yêu cầu cập nhật chấm công (Request Attendance Update) ---
+@bot.on_message(filters.command(["ggomoonsin_request_attendance_update", "ggomoonsin_cap_nhat_cong"]) | filters.regex(r"^@\w+\s+/(ggomoonsin_request_attendance_update|ggomoonsin_cap_nhat_cong)\b"))
+@require_project_name("GGoMoonSin")
+@require_group_role("member")
+@require_custom_title(CustomTitle.MEMBER_HR)
+async def ggomoonsin_request_attendance_update_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["ggomoonsin_request_attendance_update", "ggomoonsin_cap_nhat_cong"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_request_attendance_update
+    await handle_request_attendance_update(client, message, "/ggomoonsin_cap_nhat_cong")
 
 
 # --- Callback handlers cho HR ---

@@ -974,6 +974,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("ggomoonsin_xem_cham_cong", "Xem chấm công"),
                     BotCommand("ggomoonsin_xem_nghi_phep", "Xem danh sách nghỉ phép"),
                     BotCommand("ggomoonsin_xem_cong_viec", "Xem công việc được giao"),
+                    BotCommand("ggomoonsin_cap_nhat_cong", "Yêu cầu cập nhật chấm công"),
                 ])
 
         if not commands_to_set:
