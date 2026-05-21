@@ -16183,3 +16183,246 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
         await message.reply_text("❌ Có lỗi xảy ra khi thực hiện ứng tiền.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
+
+
+# ===================== THỐNG KÊ CÔNG NỢ (Total Debt) =====================
+
+@bot.on_message(filters.command(["tien_nga_thong_ke_cong_no"]) | filters.regex(r"^@\w+\s+/tien_nga_thong_ke_cong_no\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_thong_ke_cong_no_handler(client, message: Message) -> None:
+    """Thống kê công nợ hiện tại theo từng điểm thu mua.
+    Gửi:
+      1. Tin nhắn tổng hợp (text)
+      2. File Excel chi tiết: mỗi tab = 1 điểm thu mua, dòng cuối = tổng công nợ
+    """
+    await message.reply_text("⏳ <i>Đang tổng hợp dữ liệu công nợ...</i>", parse_mode=ParseMode.HTML)
+
+    from app.db.session import SessionLocal
+    from app.models.business import Customers, CollectionPoint
+    from sqlalchemy import func
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import tempfile
+    import os
+
+    db = SessionLocal()
+    try:
+        # ── 1. Query tổng hợp theo điểm thu mua ──
+        cp_stats = (
+            db.query(
+                CollectionPoint.collection_name,
+                func.sum(Customers.total_debt).label("total"),
+                func.count(Customers.id).label("cnt"),
+            )
+            .join(Customers, Customers.collection_point_id == CollectionPoint.id)
+            .group_by(CollectionPoint.collection_name)
+            .order_by(func.sum(Customers.total_debt).desc())
+            .all()
+        )
+
+        grand_total = sum((cp.total or 0) for cp in cp_stats)
+        grand_count = sum((cp.cnt or 0) for cp in cp_stats)
+
+        # ── 2. Gửi tin nhắn tổng hợp (text) ──
+        report = (
+            f"<b>THỐNG KÊ CÔNG NỢ HIỆN TẠI</b>\n"
+            f"<i>Ngày: {datetime.now().strftime('%d/%m/%Y %H:%M')}</i>\n\n"
+            f"<b>TỔNG CÔNG NỢ:</b> <code>{fmt_vn(grand_total)}</code>\n"
+            f"<b>TỔNG SỐ KHÁCH HÀNG:</b> <code>{grand_count}</code>\n"
+            f"{'━' * 20}\n\n"
+            f"<b>CHI TIẾT THEO ĐIỂM THU MUA:</b>\n\n"
+        )
+
+        for idx, cp in enumerate(cp_stats, 1):
+            name = cp.collection_name or "Chưa phân xưởng"
+            total = cp.total or 0
+            cnt = cp.cnt or 0
+            pct = (total / grand_total * 100) if grand_total > 0 else 0
+            report += (
+                f"<b>{idx}. {name}</b>\n"
+                f"   Công nợ: <code>{fmt_vn(total)}</code>\n"
+                f"   Tỉ lệ: <code>{pct:.1f}%</code> | Số KH: <code>{cnt}</code>\n\n"
+            )
+
+        await message.reply_text(report, parse_mode=ParseMode.HTML)
+
+        # ── 3. Tạo file Excel chi tiết ──
+        points = db.query(CollectionPoint).order_by(CollectionPoint.collection_name).all()
+
+        # ==== Styles ====
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        total_font = Font(bold=True, size=11)
+        total_fill = PatternFill("solid", fgColor="FFC000")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        right_align = Alignment(horizontal="right", vertical="center")
+        left_align = Alignment(horizontal="left", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin")
+        )
+        alt_fill = PatternFill("solid", fgColor="D9E2F3")
+        number_format_vn = '#,##0'
+
+        headers = ["STT", "Mã Hộ", "Tên Khách Hàng", "Công Nợ Hiện Tại"]
+        col_widths = [8, 14, 30, 22]
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        # -- Tab TỔNG HỢP --
+        ws_all = wb.create_sheet(title="TỔNG HỢP")
+        all_headers = ["STT", "Điểm Thu Mua", "Số Khách Hàng", "Tổng Công Nợ"]
+        all_widths = [8, 30, 18, 25]
+        for col_idx, h in enumerate(all_headers, 1):
+            cell = ws_all.cell(row=1, column=col_idx, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+
+        all_row = 2
+        for idx, cp in enumerate(cp_stats, 1):
+            name = cp.collection_name or "Chưa phân xưởng"
+            total = cp.total or 0
+            cnt = cp.cnt or 0
+            row_fill = alt_fill if idx % 2 == 1 else None
+            vals = [idx, name, cnt, total]
+            for col_idx, val in enumerate(vals, 1):
+                cell = ws_all.cell(row=all_row, column=col_idx, value=val)
+                cell.border = thin_border
+                if row_fill:
+                    cell.fill = row_fill
+                if col_idx == 1:
+                    cell.alignment = center_align
+                elif col_idx == 4:
+                    cell.alignment = right_align
+                    cell.number_format = number_format_vn
+                elif col_idx == 3:
+                    cell.alignment = center_align
+                    cell.number_format = number_format_vn
+                else:
+                    cell.alignment = left_align
+            all_row += 1
+
+        # Total row for TỔNG HỢP
+        total_vals = ["", "TỔNG CỘNG", grand_count, grand_total]
+        for col_idx, val in enumerate(total_vals, 1):
+            cell = ws_all.cell(row=all_row, column=col_idx, value=val)
+            cell.font = total_font
+            cell.fill = total_fill
+            cell.border = thin_border
+            if col_idx == 1:
+                cell.alignment = center_align
+            elif col_idx == 4:
+                cell.alignment = right_align
+                cell.number_format = number_format_vn
+            elif col_idx == 3:
+                cell.alignment = center_align
+                cell.number_format = number_format_vn
+            else:
+                cell.alignment = left_align
+
+        for col_idx, w in enumerate(all_widths, 1):
+            ws_all.column_dimensions[get_column_letter(col_idx)].width = w
+        ws_all.freeze_panes = "A2"
+
+        # -- Từng tab theo Điểm Thu Mua --
+        for cp_entity in points:
+            customers = (
+                db.query(Customers)
+                .filter(Customers.collection_point_id == cp_entity.id)
+                .order_by(Customers.id)
+                .all()
+            )
+            if not customers:
+                continue
+
+            sheet_name = (cp_entity.collection_name or "N/A")[:31]
+            ws = wb.create_sheet(title=sheet_name)
+
+            # Header row
+            for col_idx, h in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=h)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+                cell.border = thin_border
+
+            # Data rows
+            sum_debt = 0
+            for idx, cust in enumerate(customers, 1):
+                row_num = idx + 1
+                debt = cust.total_debt or 0
+                sum_debt += debt
+                row_fill = alt_fill if idx % 2 == 1 else None
+
+                vals = [idx, cust.id, cust.fullname or "", debt]
+                for col_idx, val in enumerate(vals, 1):
+                    cell = ws.cell(row=row_num, column=col_idx, value=val)
+                    cell.border = thin_border
+                    if row_fill:
+                        cell.fill = row_fill
+                    if col_idx == 1:
+                        cell.alignment = center_align
+                    elif col_idx == 4:
+                        cell.alignment = right_align
+                        cell.number_format = number_format_vn
+                    else:
+                        cell.alignment = left_align
+
+            # Total row
+            total_row_num = len(customers) + 2
+            total_vals = ["", "", "TỔNG CỘNG", sum_debt]
+            for col_idx, val in enumerate(total_vals, 1):
+                cell = ws.cell(row=total_row_num, column=col_idx, value=val)
+                cell.font = total_font
+                cell.fill = total_fill
+                cell.border = thin_border
+                if col_idx == 4:
+                    cell.alignment = right_align
+                    cell.number_format = number_format_vn
+                elif col_idx == 3:
+                    cell.alignment = right_align
+                else:
+                    cell.alignment = center_align
+
+            # Column widths + freeze
+            for col_idx, w in enumerate(col_widths, 1):
+                ws.column_dimensions[get_column_letter(col_idx)].width = w
+            ws.freeze_panes = "A2"
+
+        # ── 4. Gửi file Excel ──
+        today = datetime.now().date()
+        file_name = f"cong_no_{today.strftime('%Y_%m_%d')}.xlsx"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+
+        await client.send_document(
+            chat_id=message.chat.id,
+            document=tmp_path,
+            file_name=file_name,
+            caption=(
+                f"<b>BÁO CÁO CÔNG NỢ CHI TIẾT</b>\n\n"
+                f"<b>Ngày:</b> {today.strftime('%d/%m/%Y')}\n"
+                f"<b>Tổng Công Nợ:</b> <code>{fmt_vn(grand_total)}</code>\n"
+                f"<b>Số điểm thu mua:</b> {len(points)}\n"
+                f"<b>File:</b> <code>{file_name}</code>"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+    except Exception as e:
+        LogError(f"[ThongKeCongNo] Error: {traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra khi tạo báo cáo công nợ.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
