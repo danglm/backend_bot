@@ -1,13 +1,13 @@
 """
 Import dữ liệu Khách Hàng từ file 'HoDanTienNga_2025.xlsx' tab 'Danh Sách Chat ID'
-vào bảng customers. Xóa hết dữ liệu cũ trước khi import.
+vào bảng customers. Cập nhật dữ liệu nếu đã tồn tại, thêm mới nếu chưa có.
 """
 import openpyxl
 from app.db.session import SessionLocal
 from app.models.business import Customers, CollectionPoint
 
 # === Config ===
-EXCEL_FILE = "HoDanTienNga_2025.xlsx"
+EXCEL_FILE = "HoDanTienNga_2025_1.xlsx"
 SHEET_NAME = "Danh Sách Chat ID"
 
 def clean_chat_id(val) -> str | None:
@@ -87,19 +87,27 @@ def main():
 
         print(f"📊 Tổng dòng hợp lệ từ Excel: {len(rows_data)}")
 
-        # 1. Xóa hết dữ liệu cũ
-        old_count = db.query(Customers).count()
-        db.query(Customers).delete()
-        print(f"\n🗑️ Đã xóa {old_count} khách hàng cũ")
-
-        # 2. Insert dữ liệu mới
-        print(f"\n📥 Insert {len(rows_data)} khách hàng mới...")
+        # 1. Update hoặc Insert (Upsert) dữ liệu
+        print(f"\n📥 Xử lý {len(rows_data)} khách hàng từ Excel...")
+        updated_count = 0
+        inserted_count = 0
         for data in rows_data.values():
-            customer = Customers(**data)
-            db.add(customer)
+            existing_customer = db.query(Customers).filter(Customers.id == data["id"]).first()
+            if existing_customer:
+                # Update
+                existing_customer.fullname = data["fullname"]
+                existing_customer.collection_point_id = data["collection_point_id"]
+                existing_customer.total_debt = data["total_debt"]
+                existing_customer.is_subsidized = data["is_subsidized"]
+                updated_count += 1
+            else:
+                # Insert
+                new_customer = Customers(**data)
+                db.add(new_customer)
+                inserted_count += 1
 
         db.commit()
-        print(f"✅ Import thành công!")
+        print(f"✅ Import thành công! (Thêm mới: {inserted_count}, Cập nhật: {updated_count})")
 
         # 3. Verify
         new_count = db.query(Customers).count()
