@@ -545,12 +545,20 @@ async def checkin_reminder_worker():
                         groups[gn] = []
                     groups[gn].append(emp)
 
-                for chat_id_str, group_emps in groups.items():
-                    chat_id = chat_id_str
+                for group_name, group_emps in groups.items():
+                    # Resolve group_name -> chat_id from TelegramProjectMember
+                    from app.models.telegram import TelegramProjectMember
+                    tpm = db.query(TelegramProjectMember).filter(
+                        TelegramProjectMember.group_name == group_name
+                    ).first()
+                    
+                    if not tpm or not tpm.chat_id:
+                        continue
+                    
                     try:
-                        chat_id = int(chat_id_str)
-                    except ValueError:
-                        pass
+                        chat_id = int(tpm.chat_id)
+                    except (ValueError, TypeError):
+                        continue
                         
                     late_checkin_mentions = []
                     late_checkout_mentions = []
