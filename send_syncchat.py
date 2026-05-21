@@ -27,7 +27,7 @@ def load_chat_ids(file_path: str = "HoDanTienNga_2025.xlsx") -> list[dict]:
     ws = wb["Danh Sách Chat ID"]
 
     # Đọc header row để tìm vị trí cột
-    headers = [cell.value for cell in ws[1]]
+    headers = [cell.value for cell in ws[2]]
     print(f"[DEBUG] Headers: {headers}")
 
     # Tìm index các cột cần thiết (case-insensitive)
@@ -51,7 +51,7 @@ def load_chat_ids(file_path: str = "HoDanTienNga_2025.xlsx") -> list[dict]:
         raise ValueError("Không tìm thấy cột 'Chat ID' trong file Excel!")
 
     groups = []
-    for idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row, values_only=True), start=2):
+    for idx, row in enumerate(ws.iter_rows(min_row=3, max_row=ws.max_row, values_only=True), start=3):
         values = list(row)
         chat_id = values[col_map["chat_id"]] if col_map.get("chat_id") is not None else None
         ma_ho = values[col_map["ma_ho"]] if col_map.get("ma_ho") is not None else f"ROW{idx}"
