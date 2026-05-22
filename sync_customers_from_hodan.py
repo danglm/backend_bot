@@ -51,15 +51,17 @@ async def main():
         print(f"❌ Lỗi đọc file Excel: {e}")
         return
 
-    db = SessionLocal()
     try:
+        db = SessionLocal()
         # 1. Tìm Project "Tiến Nga"
         project = db.query(Projects).filter(Projects.project_name.ilike("%Tiến Nga%")).first()
         if not project:
             print("❌ Không tìm thấy dự án 'Tiến Nga' trong DB.")
+            db.close()
             return
         
         project_id = project.id
+        db.close()
         print(f"✅ Đã tìm thấy dự án Tiến Nga, ID: {project_id}")
 
         # 2. Đọc danh sách Chat ID từ Excel
@@ -119,73 +121,80 @@ async def main():
                         # Vẫn tiếp tục thử lấy members vì đôi khi get_chat lỗi nhưng get_chat_members vẫn được?
                         # Thực tế nếu get_chat lỗi thì get_chat_members cũng sẽ lỗi. Nhưng ta vẫn cho code chạy tiếp qua try/except.
 
-                    # Xóa dữ liệu cũ của nhóm này trong DB
-                    old_records = db.query(TelegramProjectMember).filter(
-                        TelegramProjectMember.chat_id == chat_id
-                    ).all()
-                    for old_record in old_records:
-                        db.delete(old_record)
+                    db = SessionLocal()
+                    try:
+                        # Xóa dữ liệu cũ của nhóm này trong DB
+                        old_records = db.query(TelegramProjectMember).filter(
+                            TelegramProjectMember.chat_id == chat_id
+                        ).all()
+                        for old_record in old_records:
+                            db.delete(old_record)
+                        
+                        if old_records:
+                            print(f"  🗑 Đã xóa {len(old_records)} bản ghi cũ.")
+
+                        # Lấy thành viên
+                        synced_count = 0
+                        admin_count = 0
+                        member_count = 0
                     
-                    if old_records:
-                        print(f"  🗑 Đã xóa {len(old_records)} bản ghi cũ.")
+                        owner_names = []
+                        admin_names = []
+                        member_names = []
 
-                    # Lấy thành viên
-                    synced_count = 0
-                    admin_count = 0
-                    member_count = 0
-                    
-                    owner_names = []
-                    admin_names = []
-                    member_names = []
+                        async for member in bot.get_chat_members(int(chat_id)):
+                            if not member.user or member.user.is_bot:
+                                continue
 
-                    async for member in bot.get_chat_members(int(chat_id)):
-                        if not member.user or member.user.is_bot:
-                            continue
+                            user_id = str(member.user.id)
+                            username = member.user.username
+                            full_name = f"{member.user.first_name or ''} {member.user.last_name or ''}".strip()
+                            status = member.status
 
-                        user_id = str(member.user.id)
-                        username = member.user.username
-                        full_name = f"{member.user.first_name or ''} {member.user.last_name or ''}".strip()
-                        status = member.status
-
-                        role_type = "MEMBER"
-                        slot_name = ""
-
-                        if status == ChatMemberStatus.OWNER:
-                            role_type = "OWNER"
-                            slot_name = "owner"
-                            owner_names.append(f"@{username}" if username else f"ID:{user_id}")
-                        elif status == ChatMemberStatus.ADMINISTRATOR:
-                            role_type = "ADMIN"
-                            admin_count += 1
-                            slot_name = f"admin_{admin_count:02d}"
-                            admin_names.append(f"@{username}" if username else f"ID:{user_id}")
-                        else:
                             role_type = "MEMBER"
-                            member_count += 1
-                            slot_name = f"member_{member_count:02d}"
-                            member_names.append(f"@{username}" if username else f"ID:{user_id}")
+                            slot_name = ""
 
-                        new_member = TelegramProjectMember(
-                            project_id=project_id,
-                            chat_id=chat_id,
-                            group_name=chat_title,
-                            user_id=user_id,
-                            user_name=username,
-                            full_name=full_name,
-                            role="member", # Vì đây là nhóm khách hàng, luôn là member role
-                            slot_name=slot_name,
-                            member_status=status.name if hasattr(status, 'name') else str(status),
-                            is_bot=False,
-                            custom_title="member_supplier",
-                            parent_id=parent_id,
-                            first_seen_at=datetime.datetime.now(),
-                            last_seen_at=datetime.datetime.now()
-                        )
-                        db.add(new_member)
-                        synced_count += 1
+                            if status == ChatMemberStatus.OWNER:
+                                role_type = "OWNER"
+                                slot_name = "owner"
+                                owner_names.append(f"@{username}" if username else f"ID:{user_id}")
+                            elif status == ChatMemberStatus.ADMINISTRATOR:
+                                role_type = "ADMIN"
+                                admin_count += 1
+                                slot_name = f"admin_{admin_count:02d}"
+                                admin_names.append(f"@{username}" if username else f"ID:{user_id}")
+                            else:
+                                role_type = "MEMBER"
+                                member_count += 1
+                                slot_name = f"member_{member_count:02d}"
+                                member_names.append(f"@{username}" if username else f"ID:{user_id}")
 
-                    db.commit()
-                    print(f"  ✅ Đã đồng bộ {synced_count} thành viên.")
+                            new_member = TelegramProjectMember(
+                                project_id=project_id,
+                                chat_id=chat_id,
+                                group_name=chat_title,
+                                user_id=user_id,
+                                user_name=username,
+                                full_name=full_name,
+                                role="member", # Vì đây là nhóm khách hàng, luôn là member role
+                                slot_name=slot_name,
+                                member_status=status.name if hasattr(status, 'name') else str(status),
+                                is_bot=False,
+                                custom_title="member_supplier",
+                                parent_id=parent_id,
+                                first_seen_at=datetime.datetime.now(),
+                                last_seen_at=datetime.datetime.now()
+                            )
+                            db.add(new_member)
+                            synced_count += 1
+
+                        db.commit()
+                        print(f"  ✅ Đã đồng bộ {synced_count} thành viên.")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"  ❌ Lỗi Database khi đồng bộ nhóm {chat_id}: {e}")
+                    finally:
+                        db.close()
 
                     # Gửi tin nhắn thông báo lên nhóm
                     from pyrogram.enums import ParseMode
@@ -207,8 +216,7 @@ async def main():
                         print(f"  ⚠️ Không thể gửi tin nhắn thông báo vào nhóm {chat_id}: {e}")
 
                 except Exception as e:
-                    db.rollback()
-                    print(f"  ❌ Lỗi khi đồng bộ nhóm {chat_id}: {e}")
+                    print(f"  ❌ Lỗi khi xử lý nhóm {chat_id}: {e}")
 
                 # Delay 2 giây giữa các nhóm theo yêu cầu để tránh bị nhầm là spam
                 if i < len(groups):
@@ -218,7 +226,6 @@ async def main():
     except Exception as e:
         print(f"❌ Lỗi hệ thống: {e}")
     finally:
-        db.close()
         print("🎉 Hoàn tất quá trình đồng bộ.")
 
 
