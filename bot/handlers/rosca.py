@@ -1189,7 +1189,7 @@ async def rosca_check_member_handler(client, message: Message) -> None:
     if args is None: return
 
     if len(args) < 2:
-        await message.reply_text("⚠️ Vui lòng cung cấp Mã Chân Hụi hoặc Mã Người Chơi cần kiểm tra.\nVí dụ: <code>/hui_kiem_tra_chan_hui AT001</code>", parse_mode=ParseMode.HTML)
+        await message.reply_text("⚠️ Vui lòng cung cấp Mã Chân Hụi cần kiểm tra.\nVí dụ: <code>/hui_kiem_tra_chan_hui AT2506_01</code>", parse_mode=ParseMode.HTML)
         return
         
     member_id = args[1].strip()
@@ -1200,11 +1200,8 @@ async def rosca_check_member_handler(client, message: Message) -> None:
         
         member = db.query(RoscaMember).filter(RoscaMember.id == member_id).first()
         if not member:
-            # Fallback: check if they entered user_id
-            member = db.query(RoscaMember).filter(RoscaMember.user_id == member_id).first()
-            if not member:
-                await message.reply_text(f"⚠️ Không tìm thấy Chân hụi hoặc Người chơi có mã: <b>{member_id}</b>", parse_mode=ParseMode.HTML)
-                return
+            await message.reply_text(f"⚠️ Không tìm thấy Chân hụi có mã: <b>{member_id}</b>", parse_mode=ParseMode.HTML)
+            return
                 
         rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
         player = db.query(UserRosca).filter(UserRosca.id == member.user_id).first()
@@ -1212,26 +1209,34 @@ async def rosca_check_member_handler(client, message: Message) -> None:
         # Đếm số kỳ đã đóng và tổng tiền đã đóng thực tế (dựa vào bảng RoscaContribution)
         from sqlalchemy.sql import func
         contrib_stats = db.query(
-            func.count(RoscaContribution.id),
-            func.sum(RoscaContribution.amount)
+            func.count(RoscaContribution.id)
         ).filter(
             RoscaContribution.member_id == member.id,
             RoscaContribution.status == "Paid"
         ).first()
         
         paid_rounds = contrib_stats[0] or 0
-        actual_total_contributed = contrib_stats[1] or 0
+        
+        # Chỉ tính tổng các khoản đóng thực tế (mang dấu âm)
+        total_paid_query = db.query(
+            func.sum(RoscaContribution.amount)
+        ).filter(
+            RoscaContribution.member_id == member.id,
+            RoscaContribution.status == "Paid",
+            RoscaContribution.amount < 0
+        ).first()
+        actual_total_contributed = total_paid_query[0] or 0
         
         rosca_code = rosca.code if rosca else "N/A"
         player_name = player.full_name if player else "N/A"
         
         suggested_profit_text = ""
-        if rosca and rosca.total_parts:
+        if rosca and rosca.total_parts and member.status not in ["Dead", "Withdrawn", "Completed"]:
             max_payment = rosca.base_amount if rosca.base_amount and rosca.base_amount > (rosca.max_bid_amount or 0) else (rosca.max_bid_amount or 0)
-            remaining_rounds = rosca.total_parts - paid_rounds
+            remaining_rounds = rosca.total_parts - paid_rounds - 1
             if remaining_rounds > 0 and max_payment > 0:
-                min_receive = actual_total_contributed + (remaining_rounds * max_payment) + (rosca.commission_fee or 0)
-                suggested_profit_text = f"\n\n💡 <i>Gợi ý: Mức hốt tối thiểu để có lời: {fmt_num(min_receive)} đ (Đã bao gồm Tiền thảo)</i>"
+                min_receive = abs(actual_total_contributed) + (remaining_rounds * max_payment)
+                suggested_profit_text = f"\n\n💡 <i>Gợi ý: Mức hốt tối thiểu để có lời: {fmt_num(min_receive)} đ (Không bao gồm Tiền thảo)</i>"
         
         text = f"""<b>THÔNG TIN CHÂN HỤI</b>
 - <b>Mã Chân Hụi:</b> <code>{member.id}</code>
@@ -1275,11 +1280,8 @@ async def rosca_check_contributions_handler(client, message: Message) -> None:
 
         member = db.query(RoscaMember).filter(RoscaMember.id == member_id).first()
         if not member:
-            # Fallback: check if they entered user_id
-            member = db.query(RoscaMember).filter(RoscaMember.user_id == member_id).first()
-            if not member:
-                await message.reply_text(f"⚠️ Không tìm thấy Chân hụi hoặc Người chơi có mã: <b>{member_id}</b>", parse_mode=ParseMode.HTML)
-                return
+            await message.reply_text(f"⚠️ Không tìm thấy Chân hụi có mã: <b>{member_id}</b>", parse_mode=ParseMode.HTML)
+            return
 
         rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
         player = db.query(UserRosca).filter(UserRosca.id == member.user_id).first()
@@ -1324,16 +1326,19 @@ async def rosca_check_contributions_handler(client, message: Message) -> None:
             # Determine status emoji
             if c.status == "Paid":
                 status_icon = ""
-                total_paid += (c.amount or 0)
                 count_paid += 1
+                if c.amount and c.amount < 0:
+                    total_paid += abs(c.amount)
             elif c.status == "Late":
                 status_icon = ""
-                total_paid += (c.amount or 0)
                 count_paid += 1
+                if c.amount and c.amount < 0:
+                    total_paid += abs(c.amount)
             else:
                 status_icon = ""
-                total_unpaid += (c.amount or 0)
                 count_unpaid += 1
+                if c.amount and c.amount < 0:
+                    total_unpaid += abs(c.amount)
 
             round_label = f"Kỳ {c.round_number}" if c.round_number else f"#{idx}"
             date_str = c.actual_payment_date.strftime("%d/%m/%Y %H:%M") if c.actual_payment_date else "Chưa đóng"
@@ -1453,7 +1458,8 @@ async def rosca_pay_contribution_handler(client, message: Message) -> None:
     def parse_float(val_str):
         if not val_str: return 0.0
         try:
-            return float(val_str.replace(",", "").replace(".", "").replace(" ", ""))
+            cleaned = val_str.replace("–", "-").replace("—", "-").replace(",", "").replace(".", "").replace(" ", "")
+            return float(cleaned)
         except:
             return 0.0
 
@@ -1474,8 +1480,8 @@ async def rosca_pay_contribution_handler(client, message: Message) -> None:
 
     round_number = parse_int(round_number_str)
     amount = parse_float(amount_str)
-    if amount <= 0:
-        await message.reply_text("⚠️ <b>Số Tiền Đóng</b> không hợp lệ.", parse_mode=ParseMode.HTML)
+    if amount == 0:
+        await message.reply_text("⚠️ <b>Số Tiền Đóng</b> không hợp lệ (phải khác 0).", parse_mode=ParseMode.HTML)
         return
 
     payment_date = parse_datetime(payment_date_str)
@@ -1491,15 +1497,6 @@ async def rosca_pay_contribution_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Không tìm thấy Dây hụi có mã: <b>{rosca_code}</b>", parse_mode=ParseMode.HTML)
             return
 
-        if rosca.min_bid_amount is not None and amount < rosca.min_bid_amount:
-            await message.reply_text(f"⚠️ <b>Số Tiền Đóng</b> ({amount:,.0f} đ) đang nhỏ hơn mức tối thiểu quy định ({rosca.min_bid_amount:,.0f} đ).", parse_mode=ParseMode.HTML)
-            return
-
-        max_allowed = rosca.base_amount if rosca.base_amount and rosca.base_amount > (rosca.max_bid_amount or 0) else rosca.max_bid_amount
-        if max_allowed is not None and amount > max_allowed:
-            await message.reply_text(f"⚠️ <b>Số Tiền Đóng</b> ({amount:,.0f} đ) không được vượt quá mức tối đa ({max_allowed:,.0f} đ).", parse_mode=ParseMode.HTML)
-            return
-
         member = db.query(RoscaMember).filter(RoscaMember.id == member_id).first()
         if not member:
             # Fallback: Check if they accidentally put user_id instead of member_id
@@ -1511,6 +1508,39 @@ async def rosca_pay_contribution_handler(client, message: Message) -> None:
         if not member:
             await message.reply_text(f"⚠️ Không tìm thấy Chân hụi hoặc Người chơi có mã: <b>{member_id}</b> trong Dây hụi này.", parse_mode=ParseMode.HTML)
             return
+
+        is_dead = member.status == "Dead"
+
+        if not is_dead:
+            if amount < 0:
+                base_amt = rosca.base_amount or 0.0
+                check_val = amount + base_amt
+                
+                min_bid = rosca.min_bid_amount
+                max_bid = rosca.max_bid_amount if rosca.max_bid_amount is not None else rosca.base_amount
+                
+                if min_bid is not None and check_val < min_bid:
+                    await message.reply_text(
+                        f"⚠️ <b>Số Tiền Đóng + Số Tiền Gốc</b> ({check_val:,.0f} đ) đang nhỏ hơn Mức Bỏ Hụi Tối Thiểu ({min_bid:,.0f} đ).", 
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
+                    
+                if max_bid is not None and check_val > max_bid:
+                    await message.reply_text(
+                        f"⚠️ <b>Số Tiền Đóng + Số Tiền Gốc</b> ({check_val:,.0f} đ) đang lớn hơn Mức Bỏ Hụi Tối Đa ({max_bid:,.0f} đ).", 
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
+            else:
+                if rosca.min_bid_amount is not None and amount < rosca.min_bid_amount:
+                    await message.reply_text(f"⚠️ <b>Số Tiền Đóng</b> ({amount:,.0f} đ) đang nhỏ hơn mức tối thiểu quy định ({rosca.min_bid_amount:,.0f} đ).", parse_mode=ParseMode.HTML)
+                    return
+
+                max_allowed = rosca.base_amount if rosca.base_amount and rosca.base_amount > (rosca.max_bid_amount or 0) else rosca.max_bid_amount
+                if max_allowed is not None and amount > max_allowed:
+                    await message.reply_text(f"⚠️ <b>Số Tiền Đóng</b> ({amount:,.0f} đ) không được vượt quá mức tối đa ({max_allowed:,.0f} đ).", parse_mode=ParseMode.HTML)
+                    return
 
         player = db.query(UserRosca).filter(UserRosca.id == member.user_id).first()
         player_name = player.full_name if player else "N/A"
@@ -1758,23 +1788,31 @@ async def rosca_withdraw_handler(client, message: Message) -> None:
 
         # Tính min_receive
         contrib_stats = db.query(
-            func.count(RoscaContribution.id),
-            func.sum(RoscaContribution.amount)
+            func.count(RoscaContribution.id)
         ).filter(
             RoscaContribution.member_id == member.id,
             RoscaContribution.status == "Paid"
         ).first()
         
         paid_rounds = contrib_stats[0] or 0
-        actual_total_contributed = contrib_stats[1] or 0
+        
+        # Chỉ tính tổng các khoản đóng thực tế (mang dấu âm)
+        total_paid_query = db.query(
+            func.sum(RoscaContribution.amount)
+        ).filter(
+            RoscaContribution.member_id == member.id,
+            RoscaContribution.status == "Paid",
+            RoscaContribution.amount < 0
+        ).first()
+        actual_total_contributed = total_paid_query[0] or 0
         
         max_payment = rosca.base_amount if rosca.base_amount and rosca.base_amount > (rosca.max_bid_amount or 0) else (rosca.max_bid_amount or 0)
-        remaining_rounds = (rosca.total_parts or 0) - paid_rounds
+        remaining_rounds = (rosca.total_parts or 0) - paid_rounds - 1
         
         commission_fee = rosca.commission_fee or 0
-        min_receive = actual_total_contributed + (remaining_rounds * max_payment) + commission_fee
-        actual_receive = amount - commission_fee
-        profit = amount - min_receive
+        actual_receive = amount
+        min_receive = abs(actual_total_contributed) + (remaining_rounds * max_payment)
+        profit = actual_receive - min_receive
         
         cache_key = str(uuid.uuid4())[:8]
         if not hasattr(bot, 'temp_rosca_withdraws'):
@@ -1782,9 +1820,11 @@ async def rosca_withdraw_handler(client, message: Message) -> None:
             
         bot.temp_rosca_withdraws[cache_key] = {
             "member_id": member.id,
-            "amount": amount,
+            "amount": actual_receive,
             "actual_receive": actual_receive,
-            "profit": profit
+            "profit": profit,
+            "rosca_id": rosca.id,
+            "next_round_number": paid_rounds + 1
         }
 
         profit_status = "LỜI" if profit >= 0 else "LỖ"
@@ -1797,11 +1837,10 @@ async def rosca_withdraw_handler(client, message: Message) -> None:
 - <b>Người Chơi:</b> {player.full_name}
 - <b>Số kỳ đã đóng:</b> {paid_rounds} kỳ
 - <b>Số tiền đã đóng:</b> {fmt_vn(actual_total_contributed)}
-- <b>Số tiền hốt (Chưa trừ thảo):</b> {fmt_vn(amount)}
+- <b>Số tiền hốt (Đã trừ thảo):</b> {fmt_vn(actual_receive)}
 - <b>Tiền thảo:</b> {fmt_vn(commission_fee)}
-- <b>Tiền thực nhận:</b> {fmt_vn(actual_receive)}
 
-💡 <b>Mức hốt tối thiểu để có lời:</b> {fmt_vn(min_receive)} (Đã bao gồm Tiền thảo)
+💡 <b>Mức hốt tối thiểu để có lời:</b> {fmt_vn(min_receive)} (Không bao gồm Tiền thảo)
 👉 <i>Kết quả nếu hốt với giá này:</i> Bạn sẽ <b>{profit_status}</b> {fmt_vn(abs(profit))}.
 
 Bạn có chắc chắn muốn xác nhận Rút/Hốt hụi và chuyển trạng thái Chân hụi sang "Dead"?
@@ -1835,11 +1874,15 @@ async def rosca_withdraw_confirm_callback(client, callback_query: CallbackQuery)
     member_id = data["member_id"]
     actual_receive = data["actual_receive"]
     profit = data["profit"]
+    rosca_id = data["rosca_id"]
+    next_round_number = data["next_round_number"]
+    amount = data["amount"]
     
     db = SessionLocal()
     try:
-        from app.models.rosca import RoscaMember
+        from app.models.rosca import RoscaMember, RoscaContribution
         from bot.utils.utils import fmt_vn
+        from datetime import datetime
         
         member = db.query(RoscaMember).filter(RoscaMember.id == member_id).first()
         if not member:
@@ -1850,9 +1893,21 @@ async def rosca_withdraw_confirm_callback(client, callback_query: CallbackQuery)
         member.total_profit = (member.total_profit or 0) + profit
         member.status = "Dead"
         
+        # Lưu giao dịch rút/hốt hụi với giá trị dương vào rosca_contributions (đã trừ tiền thảo)
+        new_contribution = RoscaContribution(
+            id=str(uuid.uuid4()),
+            rosca_id=rosca_id,
+            round_number=next_round_number,
+            member_id=member_id,
+            amount=amount,
+            actual_payment_date=datetime.now(),
+            status="Paid",
+            note=f"Hốt hụi kỳ {next_round_number}"
+        )
+        db.add(new_contribution)
         db.commit()
 
-        msg_text = f"✅ Đã xác nhận Rút/Hốt hụi thành công!\n- Chân hụi: <b>{member_id}</b>\n- Tiền nhận được (sau trừ thảo): <b>{fmt_vn(actual_receive)}</b>\n- Lợi nhuận: <b>{fmt_vn(profit)}</b>\n- Trạng thái: <b>Dead</b>"
+        msg_text = f"✅ Đã xác nhận Rút/Hốt hụi thành công!\n- Chân hụi: <b>{member_id}</b>\n- Tiền nhận được (sau trừ thảo): <b>{fmt_vn(actual_receive)}</b>\n- Lợi nhuận: <b>{fmt_vn(profit)}</b>\n- Trạng thái: <b>Dead</b>\n- Ghi nhận giao dịch hốt hụi: <b>+{fmt_vn(amount)}</b> (Kỳ {next_round_number})"
         await callback_query.message.edit_text(msg_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[RoscaWithdraw] Member {member_id} withdrew. Actual receive: {actual_receive}. Profit: {profit}. By {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
         
@@ -1868,3 +1923,346 @@ async def rosca_withdraw_confirm_callback(client, callback_query: CallbackQuery)
 @bot.on_callback_query(filters.regex(r"^cb_rw_cancel$"))
 async def rosca_withdraw_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.edit_text("❌ Đã hủy thao tác rút/hốt hụi.")
+
+
+
+# --- Rosca: Export Statistics to Excel (Thống Kê Hụi) ---
+@bot.on_message(filters.command(["hui_thong_ke_hui", "roscas_export_stats"]) | filters.regex(r"^@\w+\s+/(hui_thong_ke_hui|roscas_export_stats)\b"))
+@require_group_role("main", "member")
+async def roscas_export_stats_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["hui_thong_ke_hui", "roscas_export_stats"])
+    if args is None: return
+
+    player_id = args[1].strip() if len(args) >= 2 else None
+    db = SessionLocal()
+    try:
+        from app.models.rosca import UserRosca, RoscaMember, Rosca, RoscaContribution
+        import io
+        import os
+        import openpyxl
+        from openpyxl.utils import get_column_letter
+        from copy import copy
+        import datetime
+        from bot.utils.logger import LogInfo, LogError, LogType
+
+        # 1. Fetch user(s)
+        if player_id:
+            user = db.query(UserRosca).filter(
+                (UserRosca.id == player_id) | (UserRosca.username == player_id)
+            ).first()
+            if not user:
+                await message.reply_text(f"⚠️ Không tìm thấy người chơi có mã hoặc username: <b>{player_id}</b>", parse_mode=ParseMode.HTML)
+                return
+            users = [user]
+        else:
+            # Get all users who have at least one RoscaMember position
+            users = db.query(UserRosca).filter(
+                UserRosca.id.in_(db.query(RoscaMember.user_id))
+            ).all()
+            if not users:
+                await message.reply_text("⚠️ Hiện tại chưa có người chơi nào tham gia bát/dây hụi.", parse_mode=ParseMode.HTML)
+                return
+
+        # 2. Load template
+        template_path = "Template_Hui.xlsx"
+        if not os.path.exists(template_path):
+            await message.reply_text("❌ Không tìm thấy tệp mẫu Template_Hui.xlsx trên hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        wb = openpyxl.load_workbook(template_path, data_only=False)
+        ws_template = wb.active # The template sheet
+
+        # Keep a list of sheets to keep/generated
+        generated_sheets = []
+
+        # Styles copier helper
+        def copy_cell_style(src_cell, dst_cell):
+            if src_cell.has_style:
+                dst_cell.font = copy(src_cell.font)
+                dst_cell.fill = copy(src_cell.fill)
+                dst_cell.border = copy(src_cell.border)
+                dst_cell.alignment = copy(src_cell.alignment)
+                dst_cell.number_format = src_cell.number_format
+
+        # Scheduled date generator
+        def get_scheduled_date(start_date, period_type, round_idx):
+            if not start_date:
+                return None
+            delta = round_idx - 1
+            if period_type == "Hụi ngày" or period_type == "DAILY":
+                return start_date + datetime.timedelta(days=delta)
+            elif period_type == "Hụi tuần" or period_type == "WEEKLY":
+                return start_date + datetime.timedelta(weeks=delta)
+            elif period_type == "Hụi 2 tuần" or period_type == "BIWEEKLY":
+                return start_date + datetime.timedelta(weeks=delta * 2)
+            else: # MONTHLY or default
+                year = start_date.year + (start_date.month + delta - 1) // 12
+                month = (start_date.month + delta - 1) % 12 + 1
+                day = min(start_date.day, 28)
+                return datetime.date(year, month, day)
+
+        # Process each user
+        users_processed = 0
+        for user in users:
+            # Query members (positions)
+            members = db.query(RoscaMember).filter(RoscaMember.user_id == user.id).all()
+            if not members:
+                continue
+
+            # Group members by rosca_id
+            rosca_member_map = {}
+            for m in members:
+                if m.rosca_id not in rosca_member_map:
+                    rosca_member_map[m.rosca_id] = []
+                rosca_member_map[m.rosca_id].append(m)
+
+            # Sort positions for each rosca
+            for rid in rosca_member_map:
+                rosca_member_map[rid].sort(key=lambda x: x.id)
+
+            # Get Roscas
+            roscas_in_db = {r.id: r for r in db.query(Rosca).filter(Rosca.id.in_(rosca_member_map.keys())).all()}
+            sorted_rosca_ids = sorted(rosca_member_map.keys(), key=lambda rid: roscas_in_db[rid].code if rid in roscas_in_db else "")
+
+            if not sorted_rosca_ids:
+                continue
+
+            # Sanitize and limit sheet title (limit to 30 chars, remove special excel chars)
+            title = user.full_name or user.id or "N/A"
+            for char in ['\\', '/', '?', '*', '[', ']']:
+                title = title.replace(char, '')
+            title = title[:30].strip()
+
+            # Create sheet
+            ws = wb.create_sheet(title=title)
+            generated_sheets.append(ws)
+            users_processed += 1
+
+            # 3. Copy Column A and B styles and values from template
+            ws.column_dimensions["A"].width = ws_template.column_dimensions["A"].width or 19.5
+            ws.column_dimensions["B"].width = ws_template.column_dimensions["B"].width or 13.0
+
+            for r in range(1, 41):
+                # Column A
+                cell_src_a = ws_template.cell(row=r, column=1)
+                cell_dst_a = ws.cell(row=r, column=1)
+                cell_dst_a.value = cell_src_a.value
+                copy_cell_style(cell_src_a, cell_dst_a)
+
+                # Column B
+                cell_src_b = ws_template.cell(row=r, column=2)
+                cell_dst_b = ws.cell(row=r, column=2)
+                cell_dst_b.value = cell_src_b.value
+                copy_cell_style(cell_src_b, cell_dst_b)
+
+            # Find maximum rounds among user's roscas to dynamically size the history grid
+            max_rounds = 12
+            for rid in sorted_rosca_ids:
+                rosca = roscas_in_db.get(rid)
+                if rosca and rosca.total_parts and rosca.total_parts > max_rounds:
+                    max_rounds = rosca.total_parts
+
+            # Ensure column A & B are styled down to the dynamic SUM row if max_rounds > 12
+            for r in range(28, 28 + max_rounds):
+                cell_src_a = ws_template.cell(row=28, column=1)
+                cell_dst_a = ws.cell(row=r, column=1)
+                copy_cell_style(cell_src_a, cell_dst_a)
+
+                cell_src_b = ws_template.cell(row=28, column=2)
+                cell_dst_b = ws.cell(row=r, column=2)
+                copy_cell_style(cell_src_b, cell_dst_b)
+
+            sum_row_idx = 28 + max_rounds
+            # Write and style dynamic SUM label in Column A
+            cell_src_sum_a = ws_template.cell(row=40, column=1)
+            cell_dst_sum_a = ws.cell(row=sum_row_idx, column=1)
+            cell_dst_sum_a.value = cell_src_sum_a.value
+            copy_cell_style(cell_src_sum_a, cell_dst_sum_a)
+
+            cell_src_sum_b = ws_template.cell(row=40, column=2)
+            cell_dst_sum_b = ws.cell(row=sum_row_idx, column=2)
+            copy_cell_style(cell_src_sum_b, cell_dst_sum_b)
+
+            # Build columns dynamically starting at Column C (index 3)
+            curr_col = 3
+
+            for rid_idx, rid in enumerate(sorted_rosca_ids):
+                rosca = roscas_in_db.get(rid)
+                if not rosca:
+                    continue
+
+                rosca_members = rosca_member_map[rid]
+                num_positions = len(rosca_members)
+
+                # Add a 1-column spacer if not the first Rosca
+                if rid_idx > 0:
+                    col_letter = get_column_letter(curr_col)
+                    ws.column_dimensions[col_letter].width = 2.0
+                    for r in range(1, sum_row_idx + 1):
+                        src_cell = ws_template.cell(row=min(r, 40), column=5) # Col E style in template
+                        dst_cell = ws.cell(row=r, column=curr_col)
+                        copy_cell_style(src_cell, dst_cell)
+                    curr_col += 1
+
+                start_col = curr_col
+                end_col = start_col + 2 * num_positions - 1
+
+                # Copy styles for all columns of this Rosca
+                for p in range(num_positions):
+                    c_left = start_col + 2 * p
+                    c_right = c_left + 1
+
+                    col_letter_left = get_column_letter(c_left)
+                    col_letter_right = get_column_letter(c_right)
+
+                    ws.column_dimensions[col_letter_left].width = ws_template.column_dimensions["C"].width or 12.0
+                    ws.column_dimensions[col_letter_right].width = ws_template.column_dimensions["D"].width or 15.0
+
+                    for r in range(1, sum_row_idx + 1):
+                        if r < 28:
+                            src_l = ws_template.cell(row=r, column=3)
+                            src_r = ws_template.cell(row=r, column=4)
+                        elif r < sum_row_idx:
+                            src_l = ws_template.cell(row=28, column=3)
+                            src_r = ws_template.cell(row=28, column=4)
+                        else:
+                            src_l = ws_template.cell(row=40, column=3)
+                            src_r = ws_template.cell(row=40, column=4)
+
+                        dst_l = ws.cell(row=r, column=c_left)
+                        dst_r = ws.cell(row=r, column=c_right)
+
+                        copy_cell_style(src_l, dst_l)
+                        copy_cell_style(src_r, dst_r)
+
+                # Merge General Rosca Info headers (Rows 1 to 15)
+                ws.merge_cells(start_row=1, start_column=start_col, end_row=1, end_column=end_col)
+                for r in range(2, 16):
+                    ws.merge_cells(start_row=r, start_column=start_col, end_row=r, end_column=end_col)
+
+                # Fetch Rosca owner full name
+                owner = db.query(UserRosca).filter(UserRosca.id == rosca.user_id).first()
+                owner_name = owner.full_name if owner else "N/A"
+
+                # Populate Rosca properties
+                ws.cell(row=1, column=start_col).value = f"Dây hụi {rosca.code or ''}"
+                ws.cell(row=2, column=start_col).value = owner_name
+                ws.cell(row=3, column=start_col).value = rosca.code or "N/A"
+                ws.cell(row=4, column=start_col).value = rosca.base_amount
+                ws.cell(row=5, column=start_col).value = rosca.min_bid_amount
+                ws.cell(row=6, column=start_col).value = rosca.max_bid_amount
+                ws.cell(row=7, column=start_col).value = rosca.total_parts
+                ws.cell(row=8, column=start_col).value = rosca.commission_fee
+                ws.cell(row=9, column=start_col).value = rosca.start_date
+                ws.cell(row=10, column=start_col).value = rosca.end_date
+                ws.cell(row=11, column=start_col).value = rosca.payment_day
+                ws.cell(row=12, column=start_col).value = rosca.bidding_time
+                p_type = rosca.period_type
+                if hasattr(p_type, 'value'):
+                    p_type = p_type.value
+                ws.cell(row=13, column=start_col).value = str(p_type or "N/A")
+                ws.cell(row=14, column=start_col).value = rosca.status or "N/A"
+                ws.cell(row=15, column=start_col).value = rosca.note or ""
+
+                # Populate individual positions
+                for p, member in enumerate(rosca_members):
+                    c_left = start_col + 2 * p
+                    c_right = c_left + 1
+
+                    # Merge Position details headers (Rows 17 to 26)
+                    for r in range(17, 27):
+                        ws.merge_cells(start_row=r, start_column=c_left, end_row=r, end_column=c_right)
+
+                    # Get contributions
+                    contribs = db.query(RoscaContribution).filter(
+                        RoscaContribution.member_id == member.id
+                    ).all()
+
+                    # Sort contributions sequentially/chronologically
+                    round_nums = [c.round_number for c in contribs if c.round_number]
+                    if len(set(round_nums)) == len(contribs) and all(r > 0 for r in round_nums):
+                        contribs.sort(key=lambda x: x.round_number)
+                        contrib_map = {c.round_number: c for c in contribs}
+                    else:
+                        # Fallback for seeded duplicate round numbers
+                        contribs.sort(key=lambda x: (x.actual_payment_date or datetime.datetime.max, x.id))
+                        contrib_map = {idx + 1: c for idx, c in enumerate(contribs)}
+
+                    # Fill Position stats
+                    ws.cell(row=17, column=c_left).value = member.id
+                    ws.cell(row=18, column=c_left).value = member.parts_count or 1
+                    paid_count = sum(1 for c in contribs if c.status in ["Paid", "Late"])
+                    ws.cell(row=19, column=c_left).value = paid_count
+                    total_contributed = sum(c.amount for c in contribs if c.status in ["Paid", "Late"])
+                    ws.cell(row=20, column=c_left).value = total_contributed or member.total_contributed
+                    ws.cell(row=21, column=c_left).value = member.total_received or 0.0
+                    ws.cell(row=22, column=c_left).value = member.total_profit or 0.0
+                    ws.cell(row=23, column=c_left).value = member.profit_rate or 0.0
+                    ws.cell(row=24, column=c_left).value = member.status or "Playing"
+                    ws.cell(row=25, column=c_left).value = member.telegram_group or "N/A"
+                    ws.cell(row=26, column=c_left).value = member.note or ""
+
+                    # Fill Round History
+                    total_parts = rosca.total_parts or 12
+                    for round_idx in range(1, total_parts + 1):
+                        r = 27 + round_idx
+                        c_data = contrib_map.get(round_idx)
+
+                        if c_data:
+                            p_date = c_data.actual_payment_date
+                            if p_date:
+                                ws.cell(row=r, column=c_left).value = p_date.date()
+                            else:
+                                ws.cell(row=r, column=c_left).value = "Chưa đóng"
+                            ws.cell(row=r, column=c_right).value = c_data.amount
+                        else:
+                            # Project next payment dates
+                            sched_date = get_scheduled_date(rosca.start_date, rosca.period_type, round_idx)
+                            if sched_date:
+                                ws.cell(row=r, column=c_left).value = sched_date
+                            else:
+                                ws.cell(row=r, column=c_left).value = ""
+                            ws.cell(row=r, column=c_right).value = None
+
+                    # Set Sum Formula
+                    col_letter_right = get_column_letter(c_right)
+                    formula_str = f"=SUM({col_letter_right}28:{col_letter_right}{sum_row_idx - 1})"
+                    ws.cell(row=sum_row_idx, column=c_right).value = formula_str
+
+                curr_col = end_col + 1
+
+        if users_processed == 0:
+            await message.reply_text("⚠️ Không tìm thấy người chơi nào có chân hụi hợp lệ để thống kê.", parse_mode=ParseMode.HTML)
+            return
+
+        # Delete the default template sheet
+        if "Trang tính1" in wb.sheetnames:
+            wb.remove(wb["Trang tính1"])
+
+        # Save to BytesIO stream
+        out_stream = io.BytesIO()
+        wb.save(out_stream)
+        out_stream.seek(0)
+
+        # File name
+        if player_id:
+            filename = f"Thong_Ke_Hui_{player_id}.xlsx"
+            caption_text = f"📊 Thống kê hụi chi tiết cho người chơi: <b>{users[0].full_name}</b>"
+        else:
+            filename = "Thong_Ke_Hui_Tat_Ca.xlsx"
+            caption_text = "📊 Thống kê hụi tổng hợp cho tất cả người chơi."
+
+        # Send to Telegram
+        await message.reply_document(
+            document=out_stream,
+            file_name=filename,
+            caption=caption_text,
+            parse_mode=ParseMode.HTML
+        )
+        LogInfo(f"[RoscaExportStats] Exported excel stats for {player_id or 'all'}. Users processed: {users_processed}. By {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        LogError(f"Error in roscas_export_stats_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra trong quá trình kết xuất thống kê.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()

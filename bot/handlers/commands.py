@@ -929,6 +929,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("hui_xoa_chan_hui", "Xóa chân hụi"),
                     BotCommand("hui_kiem_tra_chan_hui", "Kiểm tra chân hụi"),
                     BotCommand("hui_kiem_tra_dong_hui", "Kiểm tra đóng hụi"),
+                    BotCommand("hui_thong_ke_hui", "Thống kê hụi"),
                     BotCommand("hui_rut_day_hui", "Rút dây hụi/hốt hụi"),
                 ]
             else:
@@ -936,6 +937,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                 commands_to_set = [
                     BotCommand("hui_kiem_tra_chan_hui", "Kiểm tra chân hụi"),
                     BotCommand("hui_kiem_tra_dong_hui", "Kiểm tra đóng hụi"),
+                    BotCommand("hui_thong_ke_hui", "Thống kê hụi"),
                     BotCommand("hui_dong_tien_chan_hui", "Đóng tiền chân hụi"),
                     BotCommand("hui_rut_day_hui", "Rút dây hụi/hốt hụi"),
                 ]
