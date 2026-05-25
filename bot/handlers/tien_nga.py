@@ -15812,6 +15812,14 @@ async def regen_fac_rep_callback(client, callback_query: CallbackQuery):
     finally:
         db.close()
 
+@bot.on_callback_query(filters.regex(r"^deny_fac_rep_(.+)_(.+)$"))
+async def deny_fac_rep_callback(client, callback_query: CallbackQuery):
+    new_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"❌ Đã từ chối bởi @{callback_query.from_user.username or callback_query.from_user.id}", callback_data="ignore")]
+    ])
+    await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+    await callback_query.answer("Đã từ chối báo cáo!")
+
 @bot.on_callback_query(filters.regex(r"^fund_confirm_(.+)$"))
 async def tien_nga_fund_confirm_callback(client, callback_query: CallbackQuery):
     investment_id = callback_query.matches[0].group(1)
@@ -15901,8 +15909,11 @@ async def tien_nga_fund_regen_callback(client, callback_query: CallbackQuery):
         so_du = (inv.total_income or 0) - (inv.total_expense or 0) + (inv.initial_capital or 0)
 
         markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Xác nhận", callback_data=f"fund_confirm_{inv.id}")],
-            [InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"fund_regen_{inv.id}")]
+            [
+                InlineKeyboardButton("Xác nhận", callback_data=f"fund_confirm_{inv.id}"),
+                InlineKeyboardButton("Từ chối", callback_data=f"fund_deny_{inv.id}"),
+                InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"fund_regen_{inv.id}")
+            ]
         ])
         
         text = (
@@ -15932,6 +15943,14 @@ async def tien_nga_fund_regen_callback(client, callback_query: CallbackQuery):
         await callback_query.answer("❌ Lỗi hệ thống", show_alert=True)
     finally:
         db.close()
+
+@bot.on_callback_query(filters.regex(r"^fund_deny_(.+)$"))
+async def tien_nga_fund_deny_callback(client, callback_query: CallbackQuery):
+    await callback_query.message.edit_text(
+        f"{callback_query.message.text}\n\n❌ <b>Đã từ chối</b> bởi @{callback_query.from_user.username or callback_query.from_user.id}.",
+        parse_mode=ParseMode.HTML
+    )
+    await callback_query.answer("Đã từ chối báo cáo!")
 
 # ===================== XÁC NHẬN / TẠO LẠI BÁO CÁO KHO =====================
 @bot.on_callback_query(filters.regex(r"^confirm_inv_rep_(.+)_(.+)$"))
@@ -16004,6 +16023,14 @@ async def regen_inv_rep_callback(client, callback_query: CallbackQuery):
     except Exception as e:
         LogError(f"Error regenerating inventory report: {e}", LogType.SYSTEM_STATUS)
         await callback_query.message.reply_text("❌ Có lỗi xảy ra khi tạo lại báo cáo.")
+
+@bot.on_callback_query(filters.regex(r"^deny_inv_rep_(.+)_(.+)$"))
+async def deny_inv_rep_callback(client, callback_query: CallbackQuery):
+    new_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"❌ Đã từ chối bởi @{callback_query.from_user.username or callback_query.from_user.id}", callback_data="ignore")]
+    ])
+    await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+    await callback_query.answer("Đã từ chối báo cáo!")
 
 # ===================== XÁC NHẬN / TẠO LẠI BÁO CÁO THU HOẠCH =====================
 @bot.on_callback_query(filters.regex(r"^confirm_harv_rep_(.+)_(.+)$"))
@@ -16084,6 +16111,14 @@ async def regen_harv_rep_callback(client, callback_query: CallbackQuery):
         await callback_query.message.reply_text("❌ Có lỗi xảy ra khi tạo lại báo cáo.")
     finally:
         db.close()
+
+@bot.on_callback_query(filters.regex(r"^deny_harv_rep_(.+)_(.+)$"))
+async def deny_harv_rep_callback(client, callback_query: CallbackQuery):
+    new_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"❌ Đã từ chối bởi @{callback_query.from_user.username or callback_query.from_user.id}", callback_data="ignore")]
+    ])
+    await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+    await callback_query.answer("Đã từ chối báo cáo!")
 
 # ===================== ỨNG TIỀN MÙA MỚI =====================
 @bot.on_message(filters.command(["tien_nga_cash_advance", "tien_nga_ung_tien"]) | filters.regex(r"^@\w+\s+/(tien_nga_cash_advance|tien_nga_ung_tien)\b"))

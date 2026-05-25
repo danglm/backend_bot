@@ -1603,6 +1603,7 @@ async def send_factory_purchase_report(db, project_id, current_date, client, spe
         buttons = [
             [
                 InlineKeyboardButton("Xác nhận", callback_data=f"confirm_fac_rep_{cp_id}_{current_date}"),
+                InlineKeyboardButton("Từ chối", callback_data=f"deny_fac_rep_{cp_id}_{current_date}"),
                 InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"regen_fac_rep_{cp_id}_{current_date}")
             ]
         ]
@@ -1903,8 +1904,11 @@ async def daily_fund_summary_worker():
                         from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                         from pyrogram.enums import ParseMode
                         markup = InlineKeyboardMarkup([
-                            [InlineKeyboardButton("Xác nhận", callback_data=f"fund_confirm_{investment.id}")],
-                            [InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"fund_regen_{investment.id}")]
+                            [
+                                InlineKeyboardButton("Xác nhận", callback_data=f"fund_confirm_{investment.id}"),
+                                InlineKeyboardButton("Từ chối", callback_data=f"fund_deny_{investment.id}"),
+                                InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"fund_regen_{investment.id}")
+                            ]
                         ])
                         
                         text = (
@@ -2023,6 +2027,7 @@ async def generate_and_send_inventory_report(client, target_date: datetime.date 
             buttons = [
                 [
                     InlineKeyboardButton("Xác nhận", callback_data=f"confirm_inv_rep_{inv_id}_{target_date}"),
+                    InlineKeyboardButton("Từ chối", callback_data=f"deny_inv_rep_{inv_id}_{target_date}"),
                     InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"regen_inv_rep_{inv_id}_{target_date}")
                 ]
             ]
@@ -2183,6 +2188,7 @@ async def send_harvest_summary_report(db, project_id, current_date, client, spec
         buttons = [
             [
                 InlineKeyboardButton("Xác nhận", callback_data=f"confirm_harv_rep_{aff}_{current_date}"),
+                InlineKeyboardButton("Từ chối", callback_data=f"deny_harv_rep_{aff}_{current_date}"),
                 InlineKeyboardButton("Tạo lại báo cáo", callback_data=f"regen_harv_rep_{aff}_{current_date}")
             ]
         ]
