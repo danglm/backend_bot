@@ -1681,7 +1681,8 @@ async def report_cashflow_handler(client, message: Message) -> None:
         
         valid_members = db.query(TelegramProjectMember).filter(
             TelegramProjectMember.project_id == active_project_id,
-            TelegramProjectMember.role == "member"
+            TelegramProjectMember.role == "member",
+            TelegramProjectMember.parent_id == chat_id
         ).all()
         
         valid_groups = []
