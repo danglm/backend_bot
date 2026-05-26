@@ -49,7 +49,7 @@ def fmt_num(val):
     try:
         if float(val) == int(val):
             return f"{int(val):,}".replace(",", ".")
-        return f"{float(val):,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return str(val)
 

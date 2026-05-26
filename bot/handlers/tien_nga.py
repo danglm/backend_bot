@@ -1577,7 +1577,7 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
     actual_weight = weight - tare_weight
     subsidy_price = unit_price + is_subsidized
     dry_rubber = round(actual_weight * degree / 100, 2)
-    total_amount = round(dry_rubber * subsidy_price, 0)
+    total_amount = round(actual_weight * degree / 100 * subsidy_price, 0)
 
     # Phân bổ theo lưu sổ
     if co_luu_so in ("yes", "y", "có", "co"):
@@ -3140,7 +3140,8 @@ async def tien_nga_paid_amount_callback(client, callback_query: CallbackQuery):
                 CollectionPoint, CollectionPoint.id == DailyPurchases.collection_point_id
             ).filter(
                 DailyPurchases.day >= start_date,
-                DailyPurchases.day <= end_date
+                DailyPurchases.day <= end_date,
+                DailyPurchases.paid_amount > 0
             ).group_by(
                 CollectionPoint.collection_name
             ).order_by(
@@ -3152,7 +3153,7 @@ async def tien_nga_paid_amount_callback(client, callback_query: CallbackQuery):
                 f"<b>{time_label}</b>\n"
                 f"<i>Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}</i>\n\n"
                 f"<b>TỔNG ĐÃ THANH TOÁN:</b> <code>{fmt_vn(total_paid)}</code>\n"
-                f"{'━' * 30}\n\n"
+                f"{'━' * 20}\n\n"
                 f"<b>CHI TIẾT THEO TỪNG XƯỞNG:</b>\n\n"
             )
 
@@ -3377,14 +3378,14 @@ async def tien_nga_save_amount_report_handler(client, message: Message) -> None:
                 f"<b>Mã Hộ:</b> <code>{hh_id}</code>\n"
                 f"<b>Tên KH:</b> {cust_name}\n"
                 f"<b>Xưởng:</b> {cp_name or 'N/A'}\n"
-                f"{'━' * 30}\n"
+                f"{'━' * 20}\n"
                 f"<b>Số lượt mua:</b> <code>{cnt}</code>\n"
                 f"<b>Tổng KL thực tế:</b> <code>{weight:,.1f} kg</code>\n"
                 f"<b>Tổng thành tiền:</b> <code>{fmt_vn(total)}</code>\n"
                 f"<b>Lưu sổ:</b> <code>{fmt_vn(saved)}</code>\n"
                 f"<b>Đã thanh toán:</b> <code>{fmt_vn(paid)}</code>\n"
                 f"<b>Tạm ứng:</b> <code>{fmt_vn(advance)}</code>\n"
-                f"{'━' * 30}\n"
+                f"{'━' * 20}\n"
                 f"<b>Còn lại:</b> <code>{fmt_vn(total - paid - saved - advance)}</code>"
             )
 
@@ -3604,7 +3605,8 @@ async def tien_nga_save_amount_callback(client, callback_query: CallbackQuery):
                 CollectionPoint, CollectionPoint.id == DailyPurchases.collection_point_id
             ).filter(
                 DailyPurchases.day >= start_date,
-                DailyPurchases.day <= end_date
+                DailyPurchases.day <= end_date,
+                DailyPurchases.saved_amount > 0
             ).group_by(
                 CollectionPoint.collection_name
             ).order_by(
@@ -3616,7 +3618,7 @@ async def tien_nga_save_amount_callback(client, callback_query: CallbackQuery):
                 f"<b>{time_label}</b>\n"
                 f"<i>Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}</i>\n\n"
                 f"<b>TỔNG LƯU SỔ:</b> <code>{fmt_vn(total_saved)}</code>\n"
-                f"{'━' * 30}\n\n"
+                f"{'━' * 20}\n\n"
                 f"<b>CHI TIẾT THEO TỪNG XƯỞNG:</b>\n\n"
             )
 
@@ -5839,7 +5841,7 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
             
         dry_rubber = round(actual_weight * degree / 100, 2)
         qty = actual_weight  # Use actual weight for DB import/export amounts
-        total_amount = round(dry_rubber * unit_price, 0)
+        total_amount = round(actual_weight * degree / 100 * unit_price, 0)
     else:
         qty = parse_float_vn(data.get("Số Lượng (Kg)", "") or data.get("Số Lượng", "0"))
         if qty <= 0:

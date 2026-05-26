@@ -7,7 +7,7 @@ from app.db.session import SessionLocal
 from app.models.business import Customers, CollectionPoint
 
 # === Config ===
-EXCEL_FILE = "HoDanTienNga_2025_1.xlsx"
+EXCEL_FILE = "HoDanTienNga_2025.xlsx"
 SHEET_NAME = "Danh Sách Chat ID"
 
 def clean_chat_id(val) -> str | None:
