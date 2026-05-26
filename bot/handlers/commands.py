@@ -772,7 +772,10 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_thong_ke_cong_no", "Thống kê công nợ"),
                     ## Điểm thu mua nguyên liệu
                     BotCommand("tien_nga_thu_mua_nguyen_lieu", "Nhập thu mua nguyên liệu"),
-                    BotCommand("tien_nga_xuat_kho", "Xuất kho nguyên liệu")
+                    BotCommand("tien_nga_xuat_kho", "Xuất kho nguyên liệu"),
+                    ## Ứng tiền
+                    BotCommand("tien_nga_ung_tien", "Ứng tiền"),
+                    BotCommand("tien_nga_khau_tru_tien_ung", "Khấu trừ tiền ứng"),
 
                 ])
 
@@ -822,6 +825,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_xuat_bao_cao_thu_chi", "Xuất báo cáo thu chi Excel"),
                     BotCommand("tien_nga_xuat_bc_tong_hop", "Báo cáo tổng hợp tài chính"),
                     BotCommand("tien_nga_ung_tien", "Ứng tiền"),
+                    BotCommand("tien_nga_khau_tru_tien_ung", "Khấu trừ tiền ứng"),
                     BotCommand("confirm_payment", "Duyệt phiếu chi"),
                     BotCommand("deny_payment", "Huỷ phiếu chi"),
                 ])

@@ -16214,12 +16214,272 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
             f"<i>Gợi ý: Cần thực hiện thêm lệnh /tien_nga_yeu_cau_thu_chi để ghi nhận chi quỹ.</i>",
             parse_mode=ParseMode.HTML
         )
+
+        # Gửi thông báo xuống nhóm member của hộ dân
+        if customer.telegram_group:
+            try:
+                from app.models.telegram import TelegramProjectMember
+                main_chat_id = str(message.chat.id)
+                members = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.group_name == customer.telegram_group,
+                    TelegramProjectMember.parent_id == main_chat_id
+                ).all()
+                chat_ids = list(set(m.chat_id for m in members if m.chat_id))
+
+                notify_text = (
+                    f"📢 <b>THÔNG BÁO ỨNG TIỀN</b>\n\n"
+                    f"<b>Mã Hộ:</b> <code>{customer.hoursehold_id}</code>\n"
+                    f"<b>Tên KH:</b> {customer.fullname}\n"
+                    f"{'━' * 20}\n"
+                    f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
+                    f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(customer.cash_advance)}</code>"
+                )
+
+                for chat_id in chat_ids:
+                    try:
+                        c_id = int(chat_id)
+                    except ValueError:
+                        if chat_id.startswith('@'):
+                            c_id = chat_id
+                        else:
+                            continue
+                    try:
+                        await client.send_message(
+                            chat_id=c_id,
+                            text=notify_text,
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception as send_err:
+                        LogError(
+                            f"[TienNga] Failed to send cash advance notification to {chat_id}: {send_err}",
+                            LogType.SYSTEM_STATUS
+                        )
+            except Exception as notify_err:
+                LogError(
+                    f"[TienNga] Error looking up member group for {hoursehold_id}: {notify_err}",
+                    LogType.SYSTEM_STATUS
+                )
     except Exception as e:
         LogError(f"Error handling tien_nga_cash_advance: {e}", LogType.SYSTEM_STATUS)
         db.rollback()
         await message.reply_text("❌ Có lỗi xảy ra khi thực hiện ứng tiền.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
+
+
+# ===================== KHẤU TRỪ TIỀN ỨNG (Cash Advance Deduction) =====================
+
+@bot.on_message(filters.command(["tien_nga_khau_tru_tien_ung"]) | filters.regex(r"^@\w+\s+/tien_nga_khau_tru_tien_ung\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_khau_tru_tien_ung"])
+    if args is None: return
+
+    if len(args) < 2:
+        await message.reply_text(
+            "⚠️ <b>Cú pháp:</b> <code>/tien_nga_khau_tru_tien_ung [Mã Hộ Dân]</code>\n\n"
+            "<i>Ví dụ: <code>/tien_nga_khau_tru_tien_ung X051</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    hoursehold_id = args[1].strip().upper()
+
+    from app.models.business import Customers
+
+    db = SessionLocal()
+    try:
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            await message.reply_text(
+                f"⚠️ Không tìm thấy hộ dân có mã <b>{hoursehold_id}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        cash_adv = customer.cash_advance or 0
+        total_dbt = customer.total_debt or 0
+
+        if cash_adv <= 0:
+            await message.reply_text(
+                f"⚠️ Hộ dân <b>{customer.fullname}</b> (<code>{hoursehold_id}</code>) "
+                f"không có tiền ứng để khấu trừ.\n\n"
+                f"<b>Số tiền ứng:</b> <code>{fmt_money(cash_adv)}</code>\n"
+                f"<b>Tổng công nợ:</b> <code>{fmt_money(total_dbt)}</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        if total_dbt <= 0:
+            await message.reply_text(
+                f"⚠️ Hộ dân <b>{customer.fullname}</b> (<code>{hoursehold_id}</code>) "
+                f"không có công nợ để khấu trừ.\n\n"
+                f"<b>Số tiền ứng:</b> <code>{fmt_money(cash_adv)}</code>\n"
+                f"<b>Tổng công nợ:</b> <code>{fmt_money(total_dbt)}</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Tính toán kết quả sau khấu trừ
+        if total_dbt >= cash_adv:
+            new_total_debt = total_dbt - cash_adv
+            new_cash_advance = 0
+            deducted = cash_adv
+            note = f"Công nợ ≥ Tiền ứng → Trừ toàn bộ tiền ứng vào công nợ"
+        else:
+            new_total_debt = 0
+            new_cash_advance = cash_adv - total_dbt
+            deducted = total_dbt
+            note = f"Công nợ < Tiền ứng → Trừ toàn bộ công nợ, tiền ứng còn lại"
+
+        buttons = [
+            [InlineKeyboardButton("Xác nhận", callback_data=f"kttu:ok:{hoursehold_id}")],
+            [InlineKeyboardButton("Hủy", callback_data="kttu:cancel")]
+        ]
+        keyboard = InlineKeyboardMarkup(buttons)
+
+        await message.reply_text(
+            f"<b>KHẤU TRỪ TIỀN ỨNG</b>\n\n"
+            f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
+            f"<b>Tên KH:</b> {customer.fullname}\n"
+            f"{'━' * 20}\n"
+            f"<b>Số tiền ứng hiện tại:</b> <code>{fmt_money(cash_adv)}</code>\n"
+            f"<b>Tổng công nợ hiện tại:</b> <code>{fmt_money(total_dbt)}</code>\n"
+            f"{'━' * 20}\n"
+            f"<b>Số tiền khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
+            f"<b>→ Số tiền ứng sau khấu trừ:</b> <code>{fmt_money(new_cash_advance)}</code>\n"
+            f"<b>→ Tổng công nợ sau khấu trừ:</b> <code>{fmt_money(new_total_debt)}</code>\n\n"
+            f"<i>{note}</i>\n\n"
+            f"Bạn có muốn xác nhận khấu trừ không?",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in tien_nga_khau_tru_tien_ung: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^kttu:ok:(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_group_role("main")
+async def kttu_confirm_callback(client, callback_query):
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    from app.models.business import Customers
+    from app.models.telegram import TelegramProjectMember
+
+    db = SessionLocal()
+    try:
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            await callback_query.answer("⚠️ Không tìm thấy hộ dân.", show_alert=True)
+            return
+
+        cash_adv = customer.cash_advance or 0
+        total_dbt = customer.total_debt or 0
+
+        if cash_adv <= 0 or total_dbt <= 0:
+            await callback_query.answer("⚠️ Không còn giá trị để khấu trừ.", show_alert=True)
+            return
+
+        # Thực hiện khấu trừ
+        if total_dbt >= cash_adv:
+            deducted = cash_adv
+            customer.total_debt = total_dbt - cash_adv
+            customer.cash_advance = 0
+        else:
+            deducted = total_dbt
+            customer.cash_advance = cash_adv - total_dbt
+            customer.total_debt = 0
+
+        db.commit()
+
+        LogInfo(
+            f"[TienNga] User {callback_query.from_user.id} deducted cash advance "
+            f"for household {hoursehold_id}: deducted={deducted}, "
+            f"new_cash_advance={customer.cash_advance}, new_total_debt={customer.total_debt}",
+            LogType.SYSTEM_STATUS
+        )
+
+        result_text = (
+            f"✅ <b>KHẤU TRỪ TIỀN ỨNG THÀNH CÔNG</b>\n\n"
+            f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
+            f"<b>Tên KH:</b> {customer.fullname}\n"
+            f"{'━' * 20}\n"
+            f"<b>Số tiền đã khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
+            f"<b>Số tiền ứng còn lại:</b> <code>{fmt_money(customer.cash_advance)}</code>\n"
+            f"<b>Tổng công nợ còn lại:</b> <code>{fmt_money(customer.total_debt)}</code>\n"
+            f"{'━' * 20}\n"
+            f"<i>Thực hiện bởi: {callback_query.from_user.first_name or ''} "
+            f"(@{callback_query.from_user.username or 'N/A'})</i>"
+        )
+
+        await callback_query.message.edit_text(result_text, parse_mode=ParseMode.HTML)
+        await callback_query.answer("✅ Đã khấu trừ thành công!")
+
+        # Gửi thông báo xuống nhóm member của hộ dân
+        if customer.telegram_group:
+            try:
+                main_chat_id = str(callback_query.message.chat.id)
+                members = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.group_name == customer.telegram_group,
+                    TelegramProjectMember.parent_id == main_chat_id
+                ).all()
+                chat_ids = list(set(m.chat_id for m in members if m.chat_id))
+
+                notify_text = (
+                    f"📢 <b>THÔNG BÁO KHẤU TRỪ TIỀN ỨNG</b>\n\n"
+                    f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
+                    f"<b>Tên KH:</b> {customer.fullname}\n"
+                    f"{'━' * 20}\n"
+                    f"<b>Số tiền đã khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
+                    f"<b>Số tiền ứng còn lại:</b> <code>{fmt_money(customer.cash_advance)}</code>\n"
+                    f"<b>Tổng công nợ còn lại:</b> <code>{fmt_money(customer.total_debt)}</code>"
+                )
+
+                for chat_id in chat_ids:
+                    try:
+                        c_id = int(chat_id)
+                    except ValueError:
+                        if chat_id.startswith('@'):
+                            c_id = chat_id
+                        else:
+                            continue
+                    try:
+                        await client.send_message(
+                            chat_id=c_id,
+                            text=notify_text,
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception as send_err:
+                        LogError(
+                            f"[TienNga] Failed to send KTTU notification to {chat_id}: {send_err}",
+                            LogType.SYSTEM_STATUS
+                        )
+            except Exception as notify_err:
+                LogError(
+                    f"[TienNga] Error looking up member group for {hoursehold_id}: {notify_err}",
+                    LogType.SYSTEM_STATUS
+                )
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in kttu_confirm_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi khi thực hiện khấu trừ.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^kttu:cancel$"))
+async def kttu_cancel_callback(client, callback_query):
+    await callback_query.message.edit_text(
+        "❌ Đã hủy khấu trừ tiền ứng.", parse_mode=ParseMode.HTML
+    )
+    await callback_query.answer("Đã hủy.")
 
 
 # ===================== THỐNG KÊ CÔNG NỢ (Total Debt) =====================
