@@ -56,6 +56,8 @@ class Employee(Base):
     total_debt = Column(Integer, default=0)   ## Công nợ nhân sự
     start_time = Column(DateTime) ## Thời gian checkin
     end_time = Column(DateTime) ## Thời gian checkout
+    sat_start_time = Column(DateTime) ## Giờ vào ca riêng Thứ 7 (override)
+    sat_end_time = Column(DateTime)   ## Giờ tan ca riêng Thứ 7 (override)
     created_at = Column(DateTime, default=datetime.datetime.now())
     updated_at = Column(DateTime, default=datetime.datetime.now(), onupdate=datetime.datetime.now())
 

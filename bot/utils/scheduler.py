@@ -570,8 +570,17 @@ async def checkin_reminder_worker():
                             
                             # Get their scheduled times
                             salary_info = db.query(Salary).filter(Salary.employee_id == employee_id).first()
-                            work_start = salary_info.start_time if salary_info and salary_info.start_time else datetime.time(8, 0)
-                            work_end = salary_info.end_time if salary_info and salary_info.end_time else datetime.time(17, 30)
+                            weekday = now.weekday()  # 0=Mon ... 5=Sat
+                            
+                            # Override cho Thứ 7 nếu NV có sat_start_time/sat_end_time
+                            if weekday == 5 and emp.sat_start_time and emp.sat_end_time:
+                                sat_st = emp.sat_start_time
+                                sat_et = emp.sat_end_time
+                                work_start = sat_st.time() if isinstance(sat_st, datetime.datetime) else sat_st
+                                work_end = sat_et.time() if isinstance(sat_et, datetime.datetime) else sat_et
+                            else:
+                                work_start = salary_info.start_time if salary_info and salary_info.start_time else datetime.time(8, 0)
+                                work_end = salary_info.end_time if salary_info and salary_info.end_time else datetime.time(17, 30)
                             
                             # Calculate time differences in minutes
                             now_time = now.time()
@@ -2335,9 +2344,13 @@ async def auto_attendance_worker():
                         if not _is_working_day(weekday, work_type):
                             continue
 
-                        # Lấy giờ vào/tan ca
-                        start_t = emp.start_time.time() if isinstance(emp.start_time, datetime.datetime) else emp.start_time
-                        end_t = emp.end_time.time() if isinstance(emp.end_time, datetime.datetime) else emp.end_time
+                        # Lấy giờ vào/tan ca (override cho Thứ 7 nếu có)
+                        if weekday == 5 and emp.sat_start_time and emp.sat_end_time:
+                            start_t = emp.sat_start_time.time() if isinstance(emp.sat_start_time, datetime.datetime) else emp.sat_start_time
+                            end_t = emp.sat_end_time.time() if isinstance(emp.sat_end_time, datetime.datetime) else emp.sat_end_time
+                        else:
+                            start_t = emp.start_time.time() if isinstance(emp.start_time, datetime.datetime) else emp.start_time
+                            end_t = emp.end_time.time() if isinstance(emp.end_time, datetime.datetime) else emp.end_time
 
                         # Resolve chat_id từ telegram_group
                         tg_group = emp.telegram_group.strip()

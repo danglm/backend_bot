@@ -67,6 +67,8 @@ class EmployeeBase(BaseModel):
     work_type: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    sat_start_time: Optional[datetime] = None
+    sat_end_time: Optional[datetime] = None
 
 class EmployeeCreate(EmployeeBase):
     pass
@@ -117,6 +119,8 @@ class EmployeeUpdate(BaseModel):
     work_type: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    sat_start_time: Optional[datetime] = None
+    sat_end_time: Optional[datetime] = None
 
 class EmployeeResponse(EmployeeBase):
     created_at: Optional[datetime] = None

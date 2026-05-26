@@ -43,6 +43,8 @@ Loại hợp đồng:
 Ảnh nhân viên: 
 Giờ vào ca (hh:mm): 
 Giờ tan ca (hh:mm): 
+Giờ vào ca T7 (hh:mm): 
+Giờ tan ca T7 (hh:mm): 
 Số giờ làm việc (giờ/ngày): 
 Lương cơ bản (VNĐ): 
 Lương tháng (VNĐ): 
@@ -84,6 +86,8 @@ _KNOWN_FIELD_LABELS = [
     "Tỷ lệ BHXH (%)",
     "Auto chấm công (có/không)",
     "Loại công (1-4)",
+    "Giờ vào ca T7 (hh:mm)",
+    "Giờ tan ca T7 (hh:mm)",
 ]
 
 
@@ -198,6 +202,8 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
         
         start_time = await _parse_time_or_reply(message, "Giờ vào ca", data.get("Giờ vào ca (hh:mm)", data.get("Giờ vào ca", "")).strip())
         end_time = await _parse_time_or_reply(message, "Giờ tan ca", data.get("Giờ tan ca (hh:mm)", data.get("Giờ tan ca", "")).strip())
+        sat_start_time = await _parse_time_or_reply(message, "Giờ vào ca T7", data.get("Giờ vào ca T7 (hh:mm)", data.get("Giờ vào ca T7", "")).strip())
+        sat_end_time = await _parse_time_or_reply(message, "Giờ tan ca T7", data.get("Giờ tan ca T7 (hh:mm)", data.get("Giờ tan ca T7", "")).strip())
     except ValueError:
         return
 
@@ -287,6 +293,8 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
             total_debt=0,
             start_time=start_time,
             end_time=end_time,
+            sat_start_time=sat_start_time,
+            sat_end_time=sat_end_time,
             created_at=datetime.datetime.now(),
             updated_at=datetime.datetime.now(),
         )
@@ -400,6 +408,8 @@ def _build_prefilled_update_form(emp: "Employee", command_name: str) -> str:
     
     start_time_str = emp.start_time.strftime("%H:%M") if emp.start_time else ""
     end_time_str = emp.end_time.strftime("%H:%M") if emp.end_time else ""
+    sat_start_time_str = emp.sat_start_time.strftime("%H:%M") if emp.sat_start_time else ""
+    sat_end_time_str = emp.sat_end_time.strftime("%H:%M") if emp.sat_end_time else ""
 
     form = f"""<b>FORM CẬP NHẬT NHÂN VIÊN</b>
 Dữ liệu hiện tại đã được điền sẵn. Chỉ sửa các trường cần thay đổi rồi gửi lại:
@@ -429,6 +439,8 @@ Loại hợp đồng: {emp.contract_type or ''}
 Ảnh nhân viên: {emp.employee_photo or ''}
 Giờ vào ca (hh:mm): {start_time_str}
 Giờ tan ca (hh:mm): {end_time_str}
+Giờ vào ca T7 (hh:mm): {sat_start_time_str}
+Giờ tan ca T7 (hh:mm): {sat_end_time_str}
 Số giờ làm việc (giờ/ngày): {working_hours_str}
 Lương cơ bản (VNĐ): {salary_str}
 Lương tháng (VNĐ): {monthly_salary_str}
@@ -618,6 +630,18 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
             if end_str:
                 employee.end_time = await _parse_time_or_reply(message, "Giờ tan ca", end_str)
                 updated_fields.append("Giờ tan ca")
+
+            # Xử lý riêng: Giờ vào ca T7
+            sat_start_str = data.get("Giờ vào ca T7 (hh:mm)", data.get("Giờ vào ca T7", "")).strip()
+            if sat_start_str:
+                employee.sat_start_time = await _parse_time_or_reply(message, "Giờ vào ca T7", sat_start_str)
+                updated_fields.append("Giờ vào ca T7")
+
+            # Xử lý riêng: Giờ tan ca T7
+            sat_end_str = data.get("Giờ tan ca T7 (hh:mm)", data.get("Giờ tan ca T7", "")).strip()
+            if sat_end_str:
+                employee.sat_end_time = await _parse_time_or_reply(message, "Giờ tan ca T7", sat_end_str)
+                updated_fields.append("Giờ tan ca T7")
 
             # Xử lý riêng: Số ngày phép năm
             leave_str = data.get("Số ngày phép năm", "").strip()
