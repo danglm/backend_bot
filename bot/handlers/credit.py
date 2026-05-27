@@ -1108,10 +1108,12 @@ async def credit_list_contract_handler(client, message: Message) -> None:
             await message.reply_text("⚠️ Nhóm này chưa được đồng bộ vào dự án nào.", parse_mode=ParseMode.HTML)
             return
 
-        project_id = current_group.project_id
+        # Lấy chat_id nhóm main hiện tại
+        main_chat_id = current_group.chat_id
 
+        # Tìm các nhóm member có parent_id trỏ về nhóm main hiện tại
         valid_members = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.project_id == project_id,
+            TelegramProjectMember.parent_id == main_chat_id,
             TelegramProjectMember.role == "member"
         ).all()
 

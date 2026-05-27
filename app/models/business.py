@@ -79,6 +79,7 @@ class LossControls(Base):
     transaction_count = Column(Integer)                      # Số giao dịch
     created_at = Column(DateTime, default=func.now())
     created_by = Column(String, nullable=True)               # User ID tạo
+    processing_type = Column(String, default="dry_production")  # wet_sale (bán mủ nước) / dry_production (sản xuất mủ khô)
 
 class FirewoodPurchases(Base):
     __tablename__ = "firewood_purchases"

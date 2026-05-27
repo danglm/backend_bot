@@ -1693,7 +1693,7 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT)
 async def tien_nga_check_losses_handler(client, message: Message) -> None:
-    from app.models.business import LossControls
+    from app.models.business import LossControls, PartnerBusinesses
     from app.models.inventory import ProductTransaction
 
     args = message.text.strip().split()
@@ -1709,14 +1709,6 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
     product_code = args[1].upper()
     db = SessionLocal()
     try:
-        # Lấy tổng số lượng Nhập Kho
-        import_txns = db.query(ProductTransaction).filter(
-            ProductTransaction.product_code == product_code,
-            ProductTransaction.transaction_type.ilike("Nhập")
-        ).all()
-        
-        total_import_qty = sum(txn.quantity or 0 for txn in import_txns)
-        
         # Lấy LossControls của mã hàng
         loss_control = db.query(LossControls).filter(LossControls.product_code == product_code).order_by(LossControls.created_at.desc()).first()
         
@@ -1724,18 +1716,12 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Không tìm thấy dữ liệu kiểm soát hao hụt cho mã hàng <b>{product_code}</b>. Vui lòng cập nhật bên thu mua trước.", parse_mode=ParseMode.HTML)
             return
             
+        total_wet_rubber = loss_control.total_wet_rubber or 0
         total_dry_rubber = loss_control.total_dry_rubber or 0
         total_amount = loss_control.total_amount or 0
         avg_unit_price = loss_control.avg_unit_price or 0
-        
-        # Tính số mủ hao hụt %
-        if total_dry_rubber > 0:
-            loss_percentage = 100 - (total_import_qty / total_dry_rubber) * 100
-        else:
-            loss_percentage = 0
-            
-        # Tính số tiền hao hụt
-        loss_money = total_amount - (avg_unit_price * total_import_qty)
+        avg_degree = loss_control.avg_degree or 0
+        processing_type = loss_control.processing_type or "dry_production"
         
         def fmt_money(val):
             if val is None or val == 0: return "0 VNĐ"
@@ -1750,23 +1736,90 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
             except:
                 return str(val)
 
-        await message.reply_text(
-            f"<b>KIỂM TRA HAO HỤT LÔ HÀNG</b>\n\n"
-            f"🔹 <b>Mã hàng:</b> <code>{product_code}</code>\n"
-            f"🔹 <b>Ngày thu mua:</b> {loss_control.day.strftime('%d/%m/%Y')}\n"
-            f"🔹 <b>Dự kiến hoàn thành:</b> {loss_control.estimated_completion.strftime('%d/%m/%Y') if loss_control.estimated_completion else '—'}\n"
-            f"🔹 <b>Giá thu mua TB:</b> <code>{fmt_money(avg_unit_price)}</code>/Kg\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🔸 <b>Tổng mủ khô (tạm tính):</b> {fmt_num(total_dry_rubber)} Kg\n"
-            f"🔸 <b>Tổng nhập kho thực tế:</b> {fmt_num(total_import_qty)} Kg\n\n"
-            f"🔻 <b>Tỷ lệ hao hụt:</b> {fmt_num(loss_percentage)}%\n"
-            f"🔻 <b>Số tiền hao hụt:</b> <code>{fmt_money(loss_money)}</code>\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Ghi chú:</i>\n"
-            f"- <i>Tỷ lệ hao hụt = 100 - (Tổng nhập kho / Tổng mủ khô) * 100</i>\n"
-            f"- <i>Tiền hao hụt = Tổng thành tiền - (Đơn giá TB x Tổng nhập kho)</i>",
-            parse_mode=ParseMode.HTML
-        )
+        if processing_type == "wet_sale":
+            # --- BÁN MỦ NƯỚC: so sánh thu mua vs xuất bán qua partner_businesses ---
+            sale_records = db.query(PartnerBusinesses).filter(
+                PartnerBusinesses.order_code == product_code
+            ).all()
+
+            sale_wet_rubber = sum(r.actual_weight or 0 for r in sale_records)
+            sale_dry_rubber = sum(r.dry_rubber or 0 for r in sale_records)
+            sale_total_amount = sum(r.total_amount or 0 for r in sale_records)
+            sale_count = len(sale_records)
+            sale_degree = (sale_dry_rubber / sale_wet_rubber * 100) if sale_wet_rubber > 0 else 0
+            sale_unit_price = sale_total_amount / sale_dry_rubber if sale_dry_rubber > 0 else 0
+
+            # Tính chênh lệch
+            diff_wet = total_wet_rubber - sale_wet_rubber
+            diff_dry = total_dry_rubber - sale_dry_rubber
+            diff_amount = total_amount - sale_total_amount
+            # Lợi nhuận / Lỗ = Tiền bán - Tiền mua
+            profit = sale_total_amount - total_amount
+
+            profit_label = "🟢 Lợi nhuận" if profit >= 0 else "🔴 Lỗ"
+            
+            await message.reply_text(
+                f"<b>KIỂM TRA HAO HỤT — BÁN MỦ NƯỚC</b>\n\n"
+                f"🔹 <b>Mã hàng:</b> <code>{product_code}</code>\n"
+                f"🔹 <b>Ngày thu mua:</b> {loss_control.day.strftime('%d/%m/%Y')}\n"
+                f"🔹 <b>Dự kiến hoàn thành:</b> {loss_control.estimated_completion.strftime('%d/%m/%Y') if loss_control.estimated_completion else '—'}\n\n"
+                f"━━━ <b>THU MUA</b> ━━━\n"
+                f"🔸 <b>Mủ Nước:</b> {fmt_num(total_wet_rubber)} Kg\n"
+                f"🔸 <b>Mủ Khô:</b> {fmt_num(total_dry_rubber)} Kg\n"
+                f"🔸 <b>Số Độ TB:</b> {fmt_num(avg_degree)}%\n"
+                f"🔸 <b>Giá Mua TB:</b> <code>{fmt_money(avg_unit_price)}</code>/Kg\n"
+                f"🔸 <b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n\n"
+                f"━━━ <b>XUẤT BÁN</b> ({sale_count} giao dịch) ━━━\n"
+                f"🔹 <b>Mủ Nước:</b> {fmt_num(sale_wet_rubber)} Kg\n"
+                f"🔹 <b>Mủ Khô:</b> {fmt_num(sale_dry_rubber)} Kg\n"
+                f"🔹 <b>Số Độ:</b> {fmt_num(sale_degree)}%\n"
+                f"🔹 <b>Đơn Giá:</b> <code>{fmt_money(sale_unit_price)}</code>/Kg\n"
+                f"🔹 <b>Thành Tiền:</b> <code>{fmt_money(sale_total_amount)}</code>\n\n"
+                f"━━━ <b>CHÊNH LỆCH</b> ━━━\n"
+                f"🔻 <b>Mủ Nước:</b> {fmt_num(diff_wet)} Kg\n"
+                f"🔻 <b>Mủ Khô:</b> {fmt_num(diff_dry)} Kg\n"
+                f"🔻 <b>Tiền:</b> <code>{fmt_money(abs(diff_amount))}</code>\n"
+                f"{profit_label}: <code>{fmt_money(abs(profit))}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"<i>Chênh lệch = Thu mua - Xuất bán</i>\n"
+                f"<i>Lợi nhuận = Tiền bán - Tiền mua</i>",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            # --- SẢN XUẤT MỦ KHÔ: so sánh thu mua vs nhập kho (logic cũ) ---
+            import_txns = db.query(ProductTransaction).filter(
+                ProductTransaction.product_code == product_code,
+                ProductTransaction.transaction_type.ilike("Nhập")
+            ).all()
+            
+            total_import_qty = sum(txn.quantity or 0 for txn in import_txns)
+            
+            # Tính số mủ hao hụt %
+            if total_dry_rubber > 0:
+                loss_percentage = 100 - (total_import_qty / total_dry_rubber) * 100
+            else:
+                loss_percentage = 0
+                
+            # Tính số tiền hao hụt
+            loss_money = total_amount - (avg_unit_price * total_import_qty)
+            
+            await message.reply_text(
+                f"<b>KIỂM TRA HAO HỤT LÔ HÀNG</b>\n\n"
+                f"🔹 <b>Mã hàng:</b> <code>{product_code}</code>\n"
+                f"🔹 <b>Ngày thu mua:</b> {loss_control.day.strftime('%d/%m/%Y')}\n"
+                f"🔹 <b>Dự kiến hoàn thành:</b> {loss_control.estimated_completion.strftime('%d/%m/%Y') if loss_control.estimated_completion else '—'}\n"
+                f"🔹 <b>Giá thu mua TB:</b> <code>{fmt_money(avg_unit_price)}</code>/Kg\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"🔸 <b>Tổng mủ khô (tạm tính):</b> {fmt_num(total_dry_rubber)} Kg\n"
+                f"🔸 <b>Tổng nhập kho thực tế:</b> {fmt_num(total_import_qty)} Kg\n\n"
+                f"🔻 <b>Tỷ lệ hao hụt:</b> {fmt_num(loss_percentage)}%\n"
+                f"🔻 <b>Số tiền hao hụt:</b> <code>{fmt_money(loss_money)}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"<i>Ghi chú:</i>\n"
+                f"- <i>Tỷ lệ hao hụt = 100 - (Tổng nhập kho / Tổng mủ khô) * 100</i>\n"
+                f"- <i>Tiền hao hụt = Tổng thành tiền - (Đơn giá TB x Tổng nhập kho)</i>",
+                parse_mode=ParseMode.HTML
+            )
         
     except Exception as e:
         LogError(f"Error in tien_nga_check_losses_handler: {e}", LogType.SYSTEM_STATUS)
@@ -1837,7 +1890,7 @@ async def tien_nga_control_losses_handler(client, message: Message) -> None:
                 f"{pc}",
                 callback_data=f"cl:dtl:{pc}:{date_str}:{est_date_str}"
             )])
-        buttons.append([InlineKeyboardButton("❌ Hủy", callback_data="cl:cancel")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="cl:cancel")])
 
         est_display = ""
         if est_date_str != "0":
@@ -1898,7 +1951,7 @@ async def control_losses_detail_callback(client, callback_query):
         total_dry_rubber = sum(p.dry_rubber or 0 for p in purchases)
         total_amount = sum(p.total_amount or 0 for p in purchases)
         total_transactions = len(purchases)
-        avg_degree = sum(p.degree or 0 for p in purchases) / total_transactions if total_transactions else 0
+        avg_degree = (total_dry_rubber / total_wet_rubber * 100) if total_wet_rubber > 0 else 0
         avg_unit_price = total_amount / total_dry_rubber if total_dry_rubber > 0 else 0
 
         def fmt_money(val):
@@ -1915,7 +1968,8 @@ async def control_losses_detail_callback(client, callback_query):
                 return str(val)
 
         buttons = [
-            [InlineKeyboardButton("Lưu", callback_data=f"cl:save:{product_code}:{date_str}:{est_date_str}")],
+            [InlineKeyboardButton("Lưu — Sản Xuất Mủ Khô", callback_data=f"cl:save:{product_code}:{date_str}:{est_date_str}:dry")],
+            [InlineKeyboardButton("Lưu — Bán Mủ Nước", callback_data=f"cl:save:{product_code}:{date_str}:{est_date_str}:wet")],
             [InlineKeyboardButton("Quay lại", callback_data=f"cl:back:{date_str}:{est_date_str}")],
             [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
         ]
@@ -1934,7 +1988,8 @@ async def control_losses_detail_callback(client, callback_query):
             f"<b>Tổng Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
             f"<b>Đơn Giá TB:</b> <code>{fmt_money(avg_unit_price)}</code>\n"
             f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"<i>Đơn giá TB = Tổng thành tiền / Tổng mủ khô</i>",
+            f"<i>Đơn giá TB = Tổng thành tiền / Tổng mủ khô</i>\n"
+            f"<i>Chọn loại hình để lưu:</i>",
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML
         )
@@ -1987,7 +2042,7 @@ async def control_losses_back_callback(client, callback_query):
                 f"{pc}",
                 callback_data=f"cl:dtl:{pc}:{date_str}:{est_date_str}"
             )])
-        buttons.append([InlineKeyboardButton("❌ Hủy", callback_data="cl:cancel")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="cl:cancel")])
 
         keyboard = InlineKeyboardMarkup(buttons)
         await callback_query.message.edit_text(
@@ -2005,7 +2060,7 @@ async def control_losses_back_callback(client, callback_query):
         db.close()
 
 # Callback: Lưu kiểm soát hao hụt vào DB
-@bot.on_callback_query(filters.regex(r"^cl:save:(.+):(\d{8}):(\d{8}|0)$"))
+@bot.on_callback_query(filters.regex(r"^cl:save:(.+):(\d{8}):(\d{8}|0):(dry|wet)$"))
 async def control_losses_save_callback(client, callback_query):
     from datetime import datetime
     from app.models.business import DailyPurchases, LossControls
@@ -2013,6 +2068,8 @@ async def control_losses_save_callback(client, callback_query):
     product_code = callback_query.matches[0].group(1)
     date_str = callback_query.matches[0].group(2)
     est_date_str = callback_query.matches[0].group(3)
+    proc_type_short = callback_query.matches[0].group(4)
+    processing_type = "wet_sale" if proc_type_short == "wet" else "dry_production"
 
     try:
         target_date = datetime.strptime(date_str, "%d%m%Y").date()
@@ -2037,7 +2094,7 @@ async def control_losses_save_callback(client, callback_query):
         
         if existing:
             buttons = [
-                [InlineKeyboardButton("Đồng ý", callback_data=f"cl:ovr:{product_code}:{date_str}:{est_date_str}")],
+                [InlineKeyboardButton("Đồng ý", callback_data=f"cl:ovr:{product_code}:{date_str}:{est_date_str}:{proc_type_short}")],
                 [InlineKeyboardButton("Quay lại", callback_data=f"cl:back:{date_str}:{est_date_str}")],
                 [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
             ]
@@ -2065,7 +2122,7 @@ async def control_losses_save_callback(client, callback_query):
         total_dry_rubber = sum(p.dry_rubber or 0 for p in purchases)
         total_amount = sum(p.total_amount or 0 for p in purchases)
         total_transactions = len(purchases)
-        avg_degree = sum(p.degree or 0 for p in purchases) / total_transactions if total_transactions else 0
+        avg_degree = (total_dry_rubber / total_wet_rubber * 100) if total_wet_rubber > 0 else 0
         avg_unit_price = total_amount / total_dry_rubber if total_dry_rubber > 0 else 0
 
         # Save to LossControls
@@ -2079,7 +2136,8 @@ async def control_losses_save_callback(client, callback_query):
             total_amount=total_amount,
             avg_unit_price=avg_unit_price,
             transaction_count=total_transactions,
-            created_by=str(callback_query.from_user.id)
+            created_by=str(callback_query.from_user.id),
+            processing_type=processing_type
         )
         db.add(new_loss_control)
         db.commit()
@@ -2111,7 +2169,7 @@ async def control_losses_cancel_callback(client, callback_query):
 
 
 # Callback: Xác nhận ghi đè
-@bot.on_callback_query(filters.regex(r"^cl:ovr:(.+):(\d{8}):(\d{8}|0)$"))
+@bot.on_callback_query(filters.regex(r"^cl:ovr:(.+):(\d{8}):(\d{8}|0):(dry|wet)$"))
 async def control_losses_overwrite_callback(client, callback_query):
     from datetime import datetime
     from app.models.business import DailyPurchases, LossControls
@@ -2119,6 +2177,8 @@ async def control_losses_overwrite_callback(client, callback_query):
     product_code = callback_query.matches[0].group(1)
     date_str = callback_query.matches[0].group(2)
     est_date_str = callback_query.matches[0].group(3)
+    proc_type_short = callback_query.matches[0].group(4)
+    processing_type = "wet_sale" if proc_type_short == "wet" else "dry_production"
 
     try:
         target_date = datetime.strptime(date_str, "%d%m%Y").date()
@@ -2158,7 +2218,7 @@ async def control_losses_overwrite_callback(client, callback_query):
         total_dry_rubber = sum(p.dry_rubber or 0 for p in purchases)
         total_amount = sum(p.total_amount or 0 for p in purchases)
         total_transactions = len(purchases)
-        avg_degree = sum(p.degree or 0 for p in purchases) / total_transactions if total_transactions else 0
+        avg_degree = (total_dry_rubber / total_wet_rubber * 100) if total_wet_rubber > 0 else 0
         avg_unit_price = total_amount / total_dry_rubber if total_dry_rubber > 0 else 0
 
         # Cập nhật bản ghi hiện tại
@@ -2170,6 +2230,7 @@ async def control_losses_overwrite_callback(client, callback_query):
         existing.avg_unit_price = avg_unit_price
         existing.transaction_count = total_transactions
         existing.created_by = str(callback_query.from_user.id)
+        existing.processing_type = processing_type
         from sqlalchemy.sql import func
         existing.created_at = func.now()
         
@@ -4655,6 +4716,138 @@ async def tien_nga_export_summary_callback(client, callback_query: CallbackQuery
                 col_letter = openpyxl.utils.get_column_letter(col_idx)
                 ws.column_dimensions[col_letter].width = width
             ws.freeze_panes = "A2"
+
+        # ============ CHI TIẾT XƯỞNG (Detail Tabs) ============
+        from app.models.business import Customers
+
+        detail_headers = [
+            "Ngày", "Mã Hộ", "Tên KH", "Mã Hàng",
+            "KL (kg)", "Trừ Bì (kg)", "KL Thực Tế (kg)",
+            "Số Độ (%)", "Mủ Khô (kg)", "Đơn Giá", "Trợ Giá",
+            "Thành Tiền", "Đã TT", "Lưu Sổ", "Tạm Ứng",
+        ]
+        detail_col_widths = [14, 12, 22, 16, 14, 14, 16, 12, 14, 14, 14, 18, 18, 18, 18]
+        detail_header_fill = PatternFill("solid", fgColor="1F4E79")
+
+        # Chỉ tạo tab chi tiết cho từng xưởng cụ thể (bỏ qua ALL)
+        detail_cp_list = [(p.id, p.collection_name) for p in points]
+        detail_cp_list.append((None, "Chưa phân xưởng"))
+
+        for cp_id, cp_name in detail_cp_list:
+            dq = db.query(DailyPurchases, Customers.fullname).outerjoin(
+                Customers, Customers.hoursehold_id == DailyPurchases.hoursehold_id
+            ).filter(
+                DailyPurchases.day >= start_date,
+                DailyPurchases.day <= end_date
+            )
+
+            if cp_id is not None:
+                dq = dq.filter(DailyPurchases.collection_point_id == cp_id)
+            else:
+                dq = dq.filter(DailyPurchases.collection_point_id == None)
+
+            dq = dq.order_by(DailyPurchases.day, DailyPurchases.hoursehold_id)
+            detail_rows = dq.all()
+
+            if not detail_rows:
+                continue
+
+            sheets_with_data += 1
+            detail_sheet_name = f"CT {cp_name}"[:31]
+            dws = wb.create_sheet(title=detail_sheet_name)
+
+            # Header row
+            for col_idx, header in enumerate(detail_headers, 1):
+                cell = dws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = detail_header_fill
+                cell.alignment = center_align
+                cell.border = thin_border
+
+            # Data rows
+            d_sum_weight = 0
+            d_sum_tare = 0
+            d_sum_actual = 0
+            d_sum_dry = 0
+            d_sum_amount = 0
+            d_sum_paid = 0
+            d_sum_saved = 0
+            d_sum_advance = 0
+
+            for idx, (purchase, cust_name) in enumerate(detail_rows):
+                row_num = idx + 2
+                row_fill = alt_fill if idx % 2 == 0 else None
+
+                pw = purchase.weight or 0
+                pt = purchase.tare_weight or 0
+                pa = purchase.actual_weight or 0
+                pdeg = purchase.degree or 0
+                pdr = purchase.dry_rubber or 0
+                pup = purchase.unit_price or 0
+                psp = purchase.subsidy_price or 0
+                pta = purchase.total_amount or 0
+                ppd = purchase.paid_amount or 0
+                psv = purchase.saved_amount or 0
+                padv = purchase.advance_amount or 0
+
+                d_sum_weight += pw
+                d_sum_tare += pt
+                d_sum_actual += pa
+                d_sum_dry += pdr
+                d_sum_amount += pta
+                d_sum_paid += ppd
+                d_sum_saved += psv
+                d_sum_advance += padv
+
+                values = [
+                    purchase.day.strftime("%d/%m/%Y"),
+                    purchase.hoursehold_id or "",
+                    cust_name or "",
+                    purchase.product_code or "",
+                    pw, pt, pa, pdeg, pdr, pup, psp, pta, ppd, psv, padv
+                ]
+
+                for col_idx, val in enumerate(values, 1):
+                    cell = dws.cell(row=row_num, column=col_idx, value=val)
+                    cell.border = thin_border
+                    if row_fill:
+                        cell.fill = row_fill
+                    if col_idx <= 4:
+                        cell.alignment = center_align if col_idx != 3 else left_align
+                    else:
+                        cell.alignment = right_align
+                        if col_idx in (5, 6, 7, 8, 9):
+                            cell.number_format = number_format_kg
+                        elif col_idx >= 10:
+                            cell.number_format = number_format_vn
+
+            # Total row
+            d_total_row = len(detail_rows) + 2
+            d_total_values = [
+                "TỔNG CỘNG", "", "", "",
+                d_sum_weight, d_sum_tare, d_sum_actual, "", d_sum_dry,
+                "", "", d_sum_amount, d_sum_paid, d_sum_saved, d_sum_advance
+            ]
+
+            for col_idx, val in enumerate(d_total_values, 1):
+                cell = dws.cell(row=d_total_row, column=col_idx, value=val if val != "" else None)
+                cell.font = total_font
+                cell.fill = total_fill
+                cell.border = thin_border
+                if col_idx <= 4:
+                    cell.alignment = center_align
+                else:
+                    cell.alignment = right_align
+                    if col_idx in (5, 6, 7, 9):
+                        cell.number_format = number_format_kg
+                    elif col_idx >= 10:
+                        cell.number_format = number_format_vn
+
+            # Column widths + freeze
+            for col_idx, width in enumerate(detail_col_widths, 1):
+                col_letter = openpyxl.utils.get_column_letter(col_idx)
+                dws.column_dimensions[col_letter].width = width
+            dws.freeze_panes = "A2"
 
         if sheets_with_data == 0:
             await callback_query.message.edit_text(
