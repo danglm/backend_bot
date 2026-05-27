@@ -1691,7 +1691,7 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT)
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_check_losses_handler(client, message: Message) -> None:
     from app.models.business import LossControls, PartnerBusinesses
     from app.models.inventory import ProductTransaction
