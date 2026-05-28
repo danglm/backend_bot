@@ -1308,38 +1308,89 @@ async def rosca_check_contributions_handler(client, message: Message) -> None:
             )
             return
 
+        total_paid = 0
+        total_unpaid = 0
+        count_paid = 0
+        count_unpaid = 0
+        last_paid_contrib = None
+
+        # Loop over contributions to compute metrics first
+        for idx, c in enumerate(contributions, start=1):
+            if c.status == "Paid":
+                count_paid += 1
+                if c.amount and c.amount < 0:
+                    total_paid += abs(c.amount)
+                    last_paid_contrib = c
+            elif c.status == "Late":
+                count_paid += 1
+                if c.amount and c.amount < 0:
+                    total_paid += abs(c.amount)
+                    last_paid_contrib = c
+            else:
+                count_unpaid += 1
+                if c.amount and c.amount < 0:
+                    total_unpaid += abs(c.amount)
+
+        # Simulation calculations
+        sim_text = ""
+        base_amount = rosca.base_amount or 0.0
+        total_parts = rosca.total_parts or 0
+        commission_fee = rosca.commission_fee or 0.0
+        total_parts_excluding_me = max(0, total_parts - 1)
+
+        if last_paid_contrib and member.status not in ["Dead", "Withdrawn", "Completed"]:
+            last_paid_amount = last_paid_contrib.amount
+            upcoming_bid = base_amount + last_paid_amount
+            upcoming_bid = max(0.0, upcoming_bid)
+            
+            # Tính Tổng hốt hụi giả
+            dead_rounds_count = count_paid
+            living_rounds_count = max(0, total_parts_excluding_me - dead_rounds_count)
+            total_withdrawn_amount = (dead_rounds_count * base_amount) + ((base_amount - upcoming_bid) * living_rounds_count) - commission_fee
+            
+            # Tính Mức hốt tối thiểu để có lời
+            max_payment = base_amount
+            if rosca.max_bid_amount is not None and rosca.max_bid_amount > base_amount:
+                max_payment = rosca.max_bid_amount
+            remaining_rounds = total_parts - dead_rounds_count - 1
+            min_receive = total_paid + (max_payment * max(0, remaining_rounds))
+            
+            simulated_profit = total_withdrawn_amount - min_receive
+            
+            sim_text = (
+                f"{'━' * 20}\n"
+                f"- <b>Lợi nhuận giả lập:</b> <b>{fmt_vn(simulated_profit)}</b>\n"
+                f"  <i>(Tiền bỏ hụi giả định: {fmt_vn(upcoming_bid)})</i>\n"
+                f"  <i>(Tổng hốt hụi giả định: {fmt_vn(total_withdrawn_amount)})</i>\n"
+                f"  <i>(Mức hốt tối thiểu để có lời: {fmt_vn(min_receive)})</i>\n"
+            )
+        else:
+            sim_text = (
+                f"{'━' * 20}\n"
+                f"- <b>Lợi nhuận giả lập:</b> N/A <i>(Chưa có kỳ đóng hụi nào được ghi nhận hoặc chân hụi đã hốt)</i>\n"
+            )
+
+        start_date_str = rosca.start_date.strftime("%d/%m/%Y") if rosca.start_date else "N/A"
+        end_date_str = rosca.end_date.strftime("%d/%m/%Y") if rosca.end_date else "N/A"
+
         # Build header
         text = (
             f"<b>LỊCH SỬ ĐÓNG HỤI</b>\n"
             f"- Chân hụi: <code>{member.id}</code>\n"
             f"- Người chơi: <b>{player_name}</b>\n"
             f"- Dây hụi: <b>{rosca_code}</b>\n"
+            f"- Tiền hụi tháng: <b>{fmt_vn(base_amount)}</b>\n"
+            f"- Số chân hụi: <b>{total_parts} chân</b>\n"
+            f"- Tiền thảo: <b>{fmt_vn(commission_fee)}</b>\n"
+            f"- Ngày bắt đầu: <b>{start_date_str}</b>\n"
+            f"- Ngày kết thúc: <b>{end_date_str}</b>\n"
+            f"{sim_text}"
             f"{'━' * 20}\n\n"
         )
 
-        total_paid = 0
-        total_unpaid = 0
-        count_paid = 0
-        count_unpaid = 0
-
         for idx, c in enumerate(contributions, start=1):
             # Determine status emoji
-            if c.status == "Paid":
-                status_icon = ""
-                count_paid += 1
-                if c.amount and c.amount < 0:
-                    total_paid += abs(c.amount)
-            elif c.status == "Late":
-                status_icon = ""
-                count_paid += 1
-                if c.amount and c.amount < 0:
-                    total_paid += abs(c.amount)
-            else:
-                status_icon = ""
-                count_unpaid += 1
-                if c.amount and c.amount < 0:
-                    total_unpaid += abs(c.amount)
-
+            status_icon = ""
             round_label = f"Kỳ {c.round_number}" if c.round_number else f"#{idx}"
             date_str = c.actual_payment_date.strftime("%d/%m/%Y %H:%M") if c.actual_payment_date else "Chưa đóng"
             amount_str = fmt_vn(c.amount) if c.amount else "0 VNĐ"
@@ -2266,3 +2317,115 @@ async def roscas_export_stats_handler(client, message: Message) -> None:
         await message.reply_text("❌ Có lỗi xảy ra trong quá trình kết xuất thống kê.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
+
+
+# --- Rosca: Simulate Interest (Tính Lãi Giả Lập) ---
+@bot.on_message(filters.command(["hui_tinh_lai_gia_lap"]) | filters.regex(r"^@\w+\s+/hui_tinh_lai_gia_lap\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_group_role("main", "member")
+async def rosca_tinh_lai_gia_lap_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["hui_tinh_lai_gia_lap"])
+    if args is None: return
+
+    if len(args) < 3:
+        await message.reply_text(
+            "⚠️ <b>Cú pháp lệnh không hợp lệ.</b>\n"
+            "Vui lòng nhập: <code>/hui_tinh_lai_gia_lap [mã dây hụi] [Số tiền bỏ sắp tới]</code>\n"
+            "Ví dụ: <code>/hui_tinh_lai_gia_lap DH01 100000</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    rosca_code = args[1].strip()
+    upcoming_bid_str = args[2].strip()
+
+    def parse_float(val_str):
+        if not val_str: return None
+        try:
+            return float(val_str.replace(",", "").replace(".", "").replace(" ", ""))
+        except:
+            return None
+
+    upcoming_bid = parse_float(upcoming_bid_str)
+    if upcoming_bid is None or upcoming_bid < 0:
+        await message.reply_text("⚠️ <b>Số tiền bỏ sắp tới</b> không hợp lệ. Vui lòng nhập một số dương.", parse_mode=ParseMode.HTML)
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.rosca import Rosca, RoscaMember, RoscaContribution, UserRosca
+        from bot.utils.utils import fmt_vn
+
+        # 1. Tìm dây hụi
+        rosca = db.query(Rosca).filter(Rosca.code == rosca_code).first()
+        if not rosca:
+            await message.reply_text(f"⚠️ Không tìm thấy Dây hụi có mã: <b>{rosca_code}</b>", parse_mode=ParseMode.HTML)
+            return
+
+        # 2. Các thông số gốc
+        total_parts = rosca.total_parts or 0
+        base_amount = rosca.base_amount or 0.0
+        commission_fee = rosca.commission_fee or 0.0
+
+        # 3. Tính toán các chỉ số
+        total_parts_excluding_me = max(0, total_parts - 1)
+
+        # Lấy chân hụi (RoscaMember) của người dùng hiện tại trong dây hụi này
+        user_id_str = str(message.from_user.id) if message.from_user else None
+        username_str = message.from_user.username if message.from_user else None
+
+        member = db.query(RoscaMember).filter(
+            RoscaMember.rosca_id == rosca.id
+        ).first()
+
+        # Số hụi chết = số lượng lần đóng hụi của chân hụi đó. Nếu không có thì = 0
+        dead_rounds_count = 0
+        if member:
+            dead_rounds_count = db.query(RoscaContribution).filter(
+                RoscaContribution.member_id == member.id,
+                RoscaContribution.status == "Paid"
+            ).count()
+
+        # Số hụi sống = Tổng chân ngoài mình - Số hụi chết
+        living_rounds_count = max(0, total_parts_excluding_me - dead_rounds_count)
+
+        # Tổng tiền hốt = (Số hụi chết * Số tiền gốc 1 chân) + ((Số tiền gốc 1 chân - Số tiền bỏ sắp tới) * Số hụi sống) - tiền thảo
+        total_withdrawn_amount = (dead_rounds_count * base_amount) + ((base_amount - upcoming_bid) * living_rounds_count) - commission_fee
+
+        # Tổng hụi chuẩn = Số tiền gốc 1 chân * Tổng chân ngoài mình
+        total_standard_amount = base_amount * total_parts_excluding_me
+
+        # Chi phí (%) = 100 - (Tổng tiền hốt / Tổng hụi chuẩn)*100
+        if total_standard_amount > 0:
+            cost_percentage = 100.0 - (total_withdrawn_amount / total_standard_amount) * 100.0
+        else:
+            cost_percentage = 0.0
+
+        # 4. Hiển thị kết quả
+        result_text = f"""<b>TÍNH LÃI GIẢ LẬP DÂY HỤI: {rosca_code}</b>
+━━━━━━━━━━━━━━━━━━━━━━
+- <b>Tổng số chân:</b> {total_parts} chân
+- <b>Tổng chân ngoài mình:</b> {total_parts_excluding_me} chân
+- <b>Số hụi chết (Kỳ đã qua):</b> {dead_rounds_count} kỳ
+- <b>Số hụi sống:</b> {living_rounds_count} kỳ
+ 
+- <b>Số tiền gốc 1 chân:</b> {fmt_vn(base_amount)}
+- <b>Số tiền bỏ sắp tới:</b> {fmt_vn(upcoming_bid)}
+- <b>Tiền thảo (Commission):</b> {fmt_vn(commission_fee)}
+━━━━━━━━━━━━━━━━━━━━━━
+👉 <b>KẾT QUẢ GIẢ LẬP:</b>
+- <b>Tổng tiền hốt:</b> <b>{fmt_vn(total_withdrawn_amount)}</b>
+- <b>Tổng hụi chuẩn:</b> <b>{fmt_vn(total_standard_amount)}</b>
+- <b>Chi phí:</b> <b>{cost_percentage:.2f}%</b>
+ 
+💡 <i>Lưu ý: Kết quả trên mang tính chất giả lập dựa theo số tiền bỏ sắp tới được cung cấp.</i>"""
+
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[RoscaSimulateInterest] Simulated rosca {rosca_code} with bid {upcoming_bid} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        LogError(f"Error in rosca_tinh_lai_gia_lap_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra trong quá trình tính lãi giả lập.")
+    finally:
+        db.close()
+

@@ -6168,6 +6168,9 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
             f"<b>Ghi Chú:</b> {notes or '—'}\n\n"
             f"<b>Công Nợ Hiện Tại:</b> {debt_str}"
             f"{inventory_msg}"
+            f"\n\n<b>Mã GD:</b> <code>{new_business.id}</code>"
+            f"\n\n<i>Để hủy giao dịch, reply tin nhắn này với</i> /huy_giao_dich_doi_tac"
+            f"\n<i>Thời hạn hủy: 30 phút</i>"
         )
 
         send_success_mgs = (
@@ -6216,6 +6219,141 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
         LogError(f"Error creating partner business: {tb.format_exc()}", LogType.SYSTEM_STATUS)
         db.rollback()
         await message.reply_text("❌ Có lỗi hệ thống khi lưu giao dịch.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# ── Hủy giao dịch Đối Tác (reply-based) ──
+@bot.on_message(filters.command(["huy_giao_dich_doi_tac"]) | filters.regex(r"^@\w+\s+/huy_giao_dich_doi_tac\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_cancel_partner_txn_handler(client, message: Message) -> None:
+    """Hủy giao dịch đối tác bằng cách reply tin nhắn thành công với /huy_giao_dich_doi_tac"""
+    if not message.reply_to_message:
+        await message.reply_text(
+            "⚠️ Vui lòng <b>Reply</b> tin nhắn giao dịch thành công rồi gửi /huy_giao_dich_doi_tac",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    replied_text = message.reply_to_message.text or ""
+    match = re.search(r"Mã GD:\s*([a-f0-9\-]{36})", replied_text)
+    if not match:
+        await message.reply_text(
+            "⚠️ Không tìm thấy <b>Mã Giao Dịch</b> trong tin nhắn đang reply.\n"
+            "Vui lòng reply đúng tin nhắn <b>GIAO DỊCH THÀNH CÔNG</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    txn_id = match.group(1)
+
+    # Kiểm tra thời hạn 30 phút
+    original_time = message.reply_to_message.date
+    now = datetime.utcnow()
+    if original_time.tzinfo is not None:
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+    elapsed = (now - original_time).total_seconds()
+    if elapsed > 30 * 60:
+        minutes_ago = int(elapsed // 60)
+        await message.reply_text(
+            f"⚠️ <b>Đã quá thời hạn hủy!</b>\n\n"
+            f"Giao dịch được tạo <b>{minutes_ago} phút</b> trước.\n"
+            f"Thời hạn hủy: <b>30 phút</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    from app.models.business import Partners, PartnerBusinesses
+    from app.models.inventory import Inventory
+
+    db = SessionLocal()
+    try:
+        txn = db.query(PartnerBusinesses).filter(PartnerBusinesses.id == txn_id).first()
+        if not txn:
+            await message.reply_text(
+                "⚠️ Giao dịch không tồn tại hoặc đã bị hủy trước đó.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        partner = db.query(Partners).filter(Partners.partner_id == txn.partner_id).first()
+        if not partner:
+            await message.reply_text(
+                "⚠️ Không tìm thấy đối tác liên kết với giao dịch này.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Xác định loại giao dịch và hoàn trả công nợ
+        if txn.export_amount and txn.export_amount > 0:
+            txn_type_display = "Xuất"
+            partner.total_debt = (partner.total_debt or 0) + txn.total_amount  # Xuất đã trừ nợ → cộng lại
+            qty = txn.export_amount
+        else:
+            txn_type_display = "Nhập"
+            partner.total_debt = (partner.total_debt or 0) - txn.total_amount  # Nhập đã cộng nợ → trừ lại
+            qty = txn.import_amount or 0
+
+        # Hoàn trả tồn kho (nếu giao dịch liên kết kho)
+        inventory_revert_msg = ""
+        storage_match = re.search(r"\[Kho:\s*(.+?)\s*\|", txn.notes or "")
+        if storage_match:
+            storage_name = storage_match.group(1)
+            inventory = db.query(Inventory).filter(Inventory.storage_name == storage_name).first()
+            if inventory:
+                old_inv_qty = inventory.quantity or 0
+                if txn.import_amount and txn.import_amount > 0:
+                    inventory.quantity = old_inv_qty - qty   # Nhập đã thêm hàng → bớt lại
+                else:
+                    inventory.quantity = old_inv_qty + qty   # Xuất đã bớt hàng → thêm lại
+                inventory_revert_msg = (
+                    f"\n<b>Kho:</b> {inventory.storage_name}\n"
+                    f"<b>Tồn kho cũ:</b> <code>{old_inv_qty:,.1f} Kg</code>\n"
+                    f"<b>Tồn kho mới:</b> <code>{inventory.quantity:,.1f} Kg</code>"
+                )
+
+        # Lưu thông tin trước khi xóa
+        partner_name = partner.partner_name
+        partner_id_val = txn.partner_id
+        total_amount = txn.total_amount
+        product_type = txn.product_type or ""
+        order_code = txn.order_code or "—"
+
+        # Xóa giao dịch
+        db.delete(txn)
+        db.commit()
+
+        def fmt_money(val):
+            if val is None or val == 0:
+                return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        user_display = message.from_user.first_name or message.from_user.username or str(message.from_user.id)
+        new_debt = partner.total_debt or 0
+
+        await message.reply_text(
+            f"<b>GIAO DỊCH ĐÃ BỊ HỦY</b>\n\n"
+            f"<b>Người hủy:</b> {user_display}\n"
+            f"<b>Đối tác:</b> {partner_name} (<code>{partner_id_val}</code>)\n"
+            f"<b>Loại:</b> {txn_type_display}\n"
+            f"<b>Sản phẩm:</b> {product_type}\n"
+            f"<b>Mã Đơn Hàng:</b> {order_code}\n"
+            f"<b>Thành tiền hoàn:</b> <code>{fmt_money(total_amount)}</code>\n"
+            f"<b>Công nợ hiện tại:</b> <code>{fmt_money(new_debt)}</code>"
+            f"{inventory_revert_msg}",
+            parse_mode=ParseMode.HTML
+        )
+
+        LogInfo(f"[TienNga] Partner txn cancelled {txn_id} by user {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        import traceback as tb
+        LogError(f"Error in cancel partner txn: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống khi hủy giao dịch.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 

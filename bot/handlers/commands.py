@@ -936,6 +936,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("hui_kiem_tra_dong_hui", "Kiểm tra đóng hụi"),
                     BotCommand("hui_thong_ke_hui", "Thống kê hụi"),
                     BotCommand("hui_rut_day_hui", "Rút dây hụi/hốt hụi"),
+                    BotCommand("hui_tinh_lai_gia_lap", "Tính lãi giả lập"),
                 ]
             else:
                 label = "Hụi (Người Chơi)"
@@ -945,6 +946,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("hui_thong_ke_hui", "Thống kê hụi"),
                     BotCommand("hui_dong_tien_chan_hui", "Đóng tiền chân hụi"),
                     BotCommand("hui_rut_day_hui", "Rút dây hụi/hốt hụi"),
+                    BotCommand("hui_tinh_lai_gia_lap", "Tính lãi giả lập"),
                 ]
 
         # ===================== GGOMOONSIN =====================
