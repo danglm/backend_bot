@@ -762,6 +762,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_thu_mua_hang_ngay", "Nhập mua mủ hàng ngày"),
                     BotCommand("tien_nga_kiem_soat_hao_hut", "Kiểm soát hao hụt"),
                     BotCommand("tien_nga_kiem_tra_hao_hut", "Kiểm tra hao hụt"),
+                    BotCommand("tien_nga_thong_ke_hao_hut", "Thống kê hao hụt Excel"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_mua", "Xuất báo cáo mua mủ KH"),
                     ## Báo cáo
                     BotCommand("tien_nga_truy_xuat_tt_thu_mua", "Truy xuất TT thu mua"),

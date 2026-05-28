@@ -1751,10 +1751,16 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
 
             # Tính chênh lệch
             diff_wet = total_wet_rubber - sale_wet_rubber
-            diff_dry = total_dry_rubber - sale_dry_rubber
             diff_amount = total_amount - sale_total_amount
             # Lợi nhuận / Lỗ = Tiền bán - Tiền mua
             profit = sale_total_amount - total_amount
+
+            # % Hao hụt mủ nước
+            loss_wet_pct = (diff_wet / total_wet_rubber * 100) if total_wet_rubber > 0 else 0
+
+            # Giá hòa vốn = Tổng tiền thu mua / Mủ khô xuất bán
+            # Đây là mức giá tối thiểu cần bán để hòa vốn thu mua ban đầu
+            breakeven_price = total_amount / sale_dry_rubber if sale_dry_rubber > 0 else 0
 
             profit_label = "🟢 Lợi nhuận" if profit >= 0 else "🔴 Lỗ"
             
@@ -1765,23 +1771,24 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
                 f"🔹 <b>Dự kiến hoàn thành:</b> {loss_control.estimated_completion.strftime('%d/%m/%Y') if loss_control.estimated_completion else '—'}\n\n"
                 f"━━━ <b>THU MUA</b> ━━━\n"
                 f"🔸 <b>Mủ Nước:</b> {fmt_num(total_wet_rubber)} Kg\n"
-                f"🔸 <b>Mủ Khô:</b> {fmt_num(total_dry_rubber)} Kg\n"
                 f"🔸 <b>Số Độ TB:</b> {fmt_num(avg_degree)}%\n"
                 f"🔸 <b>Giá Mua TB:</b> <code>{fmt_money(avg_unit_price)}</code>/Kg\n"
                 f"🔸 <b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n\n"
                 f"━━━ <b>XUẤT BÁN</b> ({sale_count} giao dịch) ━━━\n"
                 f"🔹 <b>Mủ Nước:</b> {fmt_num(sale_wet_rubber)} Kg\n"
-                f"🔹 <b>Mủ Khô:</b> {fmt_num(sale_dry_rubber)} Kg\n"
                 f"🔹 <b>Số Độ:</b> {fmt_num(sale_degree)}%\n"
                 f"🔹 <b>Đơn Giá:</b> <code>{fmt_money(sale_unit_price)}</code>/Kg\n"
                 f"🔹 <b>Thành Tiền:</b> <code>{fmt_money(sale_total_amount)}</code>\n\n"
                 f"━━━ <b>CHÊNH LỆCH</b> ━━━\n"
                 f"🔻 <b>Mủ Nước:</b> {fmt_num(diff_wet)} Kg\n"
-                f"🔻 <b>Mủ Khô:</b> {fmt_num(diff_dry)} Kg\n"
+                f"🔻 <b>% Hao hụt:</b> {fmt_num(loss_wet_pct)}%\n"
                 f"🔻 <b>Tiền:</b> <code>{fmt_money(abs(diff_amount))}</code>\n"
                 f"{profit_label}: <code>{fmt_money(abs(profit))}</code>\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"<i>Chênh lệch = Thu mua - Xuất bán</i>\n"
+                f"<b>Giá hòa vốn:</b> <code>{fmt_money(breakeven_price)}</code>/Kg\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"<i>% Hao hụt = (Chênh lệch MN / Tổng MN thu mua) × 100</i>\n"
+                f"<i>Giá hòa vốn = Tổng tiền mua / Mủ khô xuất bán</i>\n"
                 f"<i>Lợi nhuận = Tiền bán - Tiền mua</i>",
                 parse_mode=ParseMode.HTML
             )
@@ -16914,5 +16921,499 @@ async def tien_nga_thong_ke_cong_no_handler(client, message: Message) -> None:
     except Exception as e:
         LogError(f"[ThongKeCongNo] Error: {traceback.format_exc()}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra khi tạo báo cáo công nợ.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# --- Thống Kê Hao Hụt ---
+@bot.on_message(filters.command(["tien_nga_loss_statistics", "tien_nga_thong_ke_hao_hut"]) | filters.regex(r"^@\w+\s+/(tien_nga_loss_statistics|tien_nga_thong_ke_hao_hut)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+async def tien_nga_loss_statistics_handler(client, message: Message) -> None:
+    """Thống kê hao hụt: hiển thị button chọn khoảng thời gian hoặc nhập ngày trực tiếp."""
+    args = message.text.strip().split(None, 1)
+
+    # Kiểm tra nếu có tham số ngày
+    if len(args) >= 2:
+        date_part = args[1].strip()
+
+        # Kiểm tra định dạng dd/mm/yyyy - dd/mm/yyyy
+        range_match = re.match(r"(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})", date_part)
+        if range_match:
+            try:
+                start_date = datetime.strptime(range_match.group(1), "%d/%m/%Y").date()
+                end_date = datetime.strptime(range_match.group(2), "%d/%m/%Y").date()
+                if start_date > end_date:
+                    start_date, end_date = end_date, start_date
+                # Tạo callback data và gọi trực tiếp
+                sd_str = start_date.strftime("%d%m%Y")
+                ed_str = end_date.strftime("%d%m%Y")
+                await _generate_loss_statistics_excel(client, message, start_date, end_date)
+                return
+            except ValueError:
+                await message.reply_text(
+                    "⚠️ Định dạng ngày không hợp lệ.\n\n"
+                    "<i>Ví dụ: <code>/tien_nga_thong_ke_hao_hut 01/05/2026 - 31/05/2026</code></i>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        # Kiểm tra định dạng dd/mm/yyyy (1 ngày)
+        single_match = re.match(r"(\d{1,2}/\d{1,2}/\d{4})$", date_part)
+        if single_match:
+            try:
+                target_date = datetime.strptime(single_match.group(1), "%d/%m/%Y").date()
+                await _generate_loss_statistics_excel(client, message, target_date, target_date)
+                return
+            except ValueError:
+                await message.reply_text(
+                    "⚠️ Định dạng ngày không hợp lệ.\n\n"
+                    "<i>Ví dụ: <code>/tien_nga_thong_ke_hao_hut 27/05/2026</code></i>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+    # Hiển thị button chọn khoảng thời gian
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Hôm nay", callback_data="tn_lss_1d"),
+         InlineKeyboardButton("7 ngày", callback_data="tn_lss_7d"),
+         InlineKeyboardButton("14 ngày", callback_data="tn_lss_14d")],
+        [InlineKeyboardButton("1 tháng", callback_data="tn_lss_1m"),
+         InlineKeyboardButton("3 tháng", callback_data="tn_lss_3m"),
+         InlineKeyboardButton("6 tháng", callback_data="tn_lss_6m")],
+        [InlineKeyboardButton("1 năm", callback_data="tn_lss_1y")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_lss_cancel")]
+    ])
+    await message.reply_text(
+        "<b>THỐNG KÊ HAO HỤT</b>\n\n"
+        "Vui lòng chọn khoảng thời gian:\n\n"
+        "<i>Hoặc nhập trực tiếp:</i>\n"
+        "<code>/tien_nga_thong_ke_hao_hut 27/05/2026</code>\n"
+        "<code>/tien_nga_thong_ke_hao_hut 01/05/2026 - 31/05/2026</code>",
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lss_"))
+async def tien_nga_loss_statistics_callback(client, callback_query: CallbackQuery):
+    data = callback_query.data
+
+    if data == "tn_lss_cancel":
+        await callback_query.message.delete()
+        return
+
+    time_code = data[len("tn_lss_"):]
+
+    await callback_query.message.edit_text(
+        "⏳ <i>Đang tạo báo cáo thống kê hao hụt, vui lòng chờ...</i>",
+        parse_mode=ParseMode.HTML
+    )
+
+    today = datetime.now().date()
+    start_date = today
+    end_date = today
+
+    if time_code == "1d":
+        start_date = today
+    elif time_code == "7d":
+        start_date = today - timedelta(days=6)
+    elif time_code == "14d":
+        start_date = today - timedelta(days=13)
+    elif time_code == "1m":
+        start_date = today - timedelta(days=29)
+    elif time_code == "3m":
+        start_date = today - timedelta(days=89)
+    elif time_code == "6m":
+        start_date = today - timedelta(days=179)
+    elif time_code == "1y":
+        start_date = today - timedelta(days=364)
+
+    await _generate_loss_statistics_excel(client, callback_query.message, start_date, end_date)
+
+
+async def _generate_loss_statistics_excel(client, message, start_date, end_date):
+    """Tạo file Excel thống kê hao hụt với 4 tab."""
+    from app.models.business import LossControls, PartnerBusinesses, CollectionPoint
+    from app.models.inventory import ProductTransaction
+    from sqlalchemy import func
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import tempfile
+    import os
+
+    db = SessionLocal()
+    try:
+        # Lấy tất cả LossControls trong khoảng thời gian
+        loss_controls = db.query(LossControls).filter(
+            LossControls.day >= start_date,
+            LossControls.day <= end_date
+        ).order_by(LossControls.day).all()
+
+        if not loss_controls:
+            await message.reply_text(
+                f"⚠️ Không có dữ liệu hao hụt từ <b>{start_date.strftime('%d/%m/%Y')}</b> đến <b>{end_date.strftime('%d/%m/%Y')}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Lấy tất cả CollectionPoint để map code_prefix → tên xưởng
+        all_cps = db.query(CollectionPoint).all()
+        prefix_to_cp_name = {}
+        for cp in all_cps:
+            if cp.code_prefix:
+                prefix_to_cp_name[cp.code_prefix.upper()] = cp.collection_name
+
+        def get_cp_name_from_product_code(product_code):
+            """Từ product_code (VD: LT20260505) → tìm xưởng qua code_prefix."""
+            if not product_code:
+                return "Chưa phân xưởng"
+            # Tách prefix: lấy phần chữ cái đầu trước phần số
+            prefix_match = re.match(r"^([A-Za-z]+)", product_code)
+            if prefix_match:
+                prefix = prefix_match.group(1).upper()
+                return prefix_to_cp_name.get(prefix, f"Xưởng ({prefix})")
+            return "Chưa phân xưởng"
+
+        # Phân loại wet_sale và dry_production
+        wet_sale_records = [lc for lc in loss_controls if lc.processing_type == "wet_sale"]
+        dry_production_records = [lc for lc in loss_controls if lc.processing_type != "wet_sale"]
+
+        # ==== Styles ====
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        total_font = Font(bold=True, size=11)
+        total_fill = PatternFill("solid", fgColor="FFC000")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        right_align = Alignment(horizontal="right", vertical="center")
+        left_align = Alignment(horizontal="left", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin")
+        )
+        alt_fill = PatternFill("solid", fgColor="D9E2F3")
+        number_format_vn = '#,##0'
+        number_format_kg = '#,##0.00'
+        number_format_pct = '#,##0.00'
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        # ========================================
+        # TAB 1: Tổng hợp Mủ Nước (wet_sale)
+        # ========================================
+        def _create_wet_sale_sheet(ws, records, sheet_label=""):
+            wet_headers = [
+                "STT", "Mã Hàng", "Ngày Thu Mua", "Xưởng",
+                "MN Thu Mua (Kg)", "Số Độ TB (%)", "Giá Mua TB (VNĐ)",
+                "Thành Tiền Mua (VNĐ)",
+                "MN Xuất Bán (Kg)", "Số Độ Bán (%)", "Giá Bán (VNĐ/Kg)",
+                "Thành Tiền Bán (VNĐ)",
+                "Chênh Lệch MN (Kg)", "% Hao Hụt", "Giá Hòa Vốn (VNĐ/Kg)",
+                "Lợi Nhuận (VNĐ)"
+            ]
+            wet_col_widths = [6, 16, 16, 20, 18, 14, 18, 22, 18, 14, 18, 22, 18, 14, 20, 22]
+
+            for col_idx, header in enumerate(wet_headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+                cell.border = thin_border
+
+            # Sums for totals
+            sum_wet_buy = 0
+            sum_amount_buy = 0
+            sum_wet_sell = 0
+            sum_amount_sell = 0
+            sum_diff_wet = 0
+            sum_profit = 0
+
+            for idx, lc in enumerate(records):
+                row_num = idx + 2
+                row_fill = alt_fill if idx % 2 == 0 else None
+
+                # Lấy dữ liệu bán
+                sale_records_data = db.query(PartnerBusinesses).filter(
+                    PartnerBusinesses.order_code == lc.product_code
+                ).all()
+
+                sale_wet = sum(r.actual_weight or 0 for r in sale_records_data)
+                sale_dry = sum(r.dry_rubber or 0 for r in sale_records_data)
+                sale_total = sum(r.total_amount or 0 for r in sale_records_data)
+                sale_degree = (sale_dry / sale_wet * 100) if sale_wet > 0 else 0
+                sale_unit_price = sale_total / sale_dry if sale_dry > 0 else 0
+
+                buy_wet = lc.total_wet_rubber or 0
+                buy_amount = lc.total_amount or 0
+                avg_degree = lc.avg_degree or 0
+                avg_price = lc.avg_unit_price or 0
+
+                diff_wet = buy_wet - sale_wet
+                loss_pct = (diff_wet / buy_wet * 100) if buy_wet > 0 else 0
+                breakeven = buy_amount / sale_dry if sale_dry > 0 else 0
+                profit = sale_total - buy_amount
+
+                cp_name = get_cp_name_from_product_code(lc.product_code)
+
+                sum_wet_buy += buy_wet
+                sum_amount_buy += buy_amount
+                sum_wet_sell += sale_wet
+                sum_amount_sell += sale_total
+                sum_diff_wet += diff_wet
+                sum_profit += profit
+
+                values = [
+                    idx + 1,
+                    lc.product_code or "",
+                    lc.day.strftime("%d/%m/%Y") if lc.day else "",
+                    cp_name,
+                    buy_wet, avg_degree, avg_price, buy_amount,
+                    sale_wet, sale_degree, sale_unit_price, sale_total,
+                    diff_wet, loss_pct, breakeven, profit
+                ]
+
+                for col_idx, val in enumerate(values, 1):
+                    cell = ws.cell(row=row_num, column=col_idx, value=val)
+                    cell.border = thin_border
+                    if row_fill:
+                        cell.fill = row_fill
+                    if col_idx in (1, 2, 3, 4):
+                        cell.alignment = center_align
+                    else:
+                        cell.alignment = right_align
+                    # Number formats
+                    if col_idx in (5, 9, 13):
+                        cell.number_format = number_format_kg
+                    elif col_idx in (6, 10, 14):
+                        cell.number_format = number_format_pct
+                    elif col_idx in (7, 8, 11, 12, 15, 16):
+                        cell.number_format = number_format_vn
+
+            # Total row
+            if records:
+                total_row = len(records) + 2
+                sum_loss_pct = (sum_diff_wet / sum_wet_buy * 100) if sum_wet_buy > 0 else 0
+
+                total_values = [
+                    "", "TỔNG CỘNG", "", "",
+                    sum_wet_buy, "", "", sum_amount_buy,
+                    sum_wet_sell, "", "", sum_amount_sell,
+                    sum_diff_wet, sum_loss_pct, "", sum_profit
+                ]
+
+                for col_idx, val in enumerate(total_values, 1):
+                    cell = ws.cell(row=total_row, column=col_idx, value=val)
+                    cell.font = total_font
+                    cell.fill = total_fill
+                    cell.border = thin_border
+                    if col_idx in (1, 2, 3, 4):
+                        cell.alignment = center_align
+                    else:
+                        cell.alignment = right_align
+                    if col_idx in (5, 9, 13):
+                        cell.number_format = number_format_kg
+                    elif col_idx in (6, 10, 14):
+                        cell.number_format = number_format_pct
+                    elif col_idx in (7, 8, 11, 12, 15, 16):
+                        cell.number_format = number_format_vn
+
+            for col_idx, w in enumerate(wet_col_widths, 1):
+                ws.column_dimensions[get_column_letter(col_idx)].width = w
+            ws.freeze_panes = "A2"
+
+        # ========================================
+        # TAB 2: Tổng hợp Mủ Khô (dry_production)
+        # ========================================
+        def _create_dry_production_sheet(ws, records, sheet_label=""):
+            dry_headers = [
+                "STT", "Mã Hàng", "Ngày Thu Mua", "Xưởng",
+                "Mủ Khô Tạm Tính (Kg)", "Giá Mua TB (VNĐ/Kg)",
+                "Thành Tiền Mua (VNĐ)",
+                "Nhập Kho Thực Tế (Kg)",
+                "Tỷ Lệ Hao Hụt (%)", "Tiền Hao Hụt (VNĐ)"
+            ]
+            dry_col_widths = [6, 16, 16, 20, 22, 20, 22, 22, 18, 22]
+
+            for col_idx, header in enumerate(dry_headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+                cell.border = thin_border
+
+            sum_dry_calc = 0
+            sum_amount_buy = 0
+            sum_import_qty = 0
+            sum_loss_money = 0
+
+            for idx, lc in enumerate(records):
+                row_num = idx + 2
+                row_fill = alt_fill if idx % 2 == 0 else None
+
+                # Lấy dữ liệu nhập kho
+                import_txns = db.query(ProductTransaction).filter(
+                    ProductTransaction.product_code == lc.product_code,
+                    ProductTransaction.transaction_type.ilike("Nhập")
+                ).all()
+
+                total_import_qty = sum(txn.quantity or 0 for txn in import_txns)
+                buy_dry = lc.total_dry_rubber or 0
+                buy_amount = lc.total_amount or 0
+                avg_price = lc.avg_unit_price or 0
+
+                loss_pct = (100 - (total_import_qty / buy_dry) * 100) if buy_dry > 0 else 0
+                loss_money = buy_amount - (avg_price * total_import_qty)
+
+                cp_name = get_cp_name_from_product_code(lc.product_code)
+
+                sum_dry_calc += buy_dry
+                sum_amount_buy += buy_amount
+                sum_import_qty += total_import_qty
+                sum_loss_money += loss_money
+
+                values = [
+                    idx + 1,
+                    lc.product_code or "",
+                    lc.day.strftime("%d/%m/%Y") if lc.day else "",
+                    cp_name,
+                    buy_dry, avg_price, buy_amount,
+                    total_import_qty,
+                    loss_pct, loss_money
+                ]
+
+                for col_idx, val in enumerate(values, 1):
+                    cell = ws.cell(row=row_num, column=col_idx, value=val)
+                    cell.border = thin_border
+                    if row_fill:
+                        cell.fill = row_fill
+                    if col_idx in (1, 2, 3, 4):
+                        cell.alignment = center_align
+                    else:
+                        cell.alignment = right_align
+                    if col_idx in (5, 8):
+                        cell.number_format = number_format_kg
+                    elif col_idx == 9:
+                        cell.number_format = number_format_pct
+                    elif col_idx in (6, 7, 10):
+                        cell.number_format = number_format_vn
+
+            # Total row
+            if records:
+                total_row = len(records) + 2
+                total_loss_pct = (100 - (sum_import_qty / sum_dry_calc) * 100) if sum_dry_calc > 0 else 0
+
+                total_values = [
+                    "", "TỔNG CỘNG", "", "",
+                    sum_dry_calc, "", sum_amount_buy,
+                    sum_import_qty,
+                    total_loss_pct, sum_loss_money
+                ]
+
+                for col_idx, val in enumerate(total_values, 1):
+                    cell = ws.cell(row=total_row, column=col_idx, value=val)
+                    cell.font = total_font
+                    cell.fill = total_fill
+                    cell.border = thin_border
+                    if col_idx in (1, 2, 3, 4):
+                        cell.alignment = center_align
+                    else:
+                        cell.alignment = right_align
+                    if col_idx in (5, 8):
+                        cell.number_format = number_format_kg
+                    elif col_idx == 9:
+                        cell.number_format = number_format_pct
+                    elif col_idx in (6, 7, 10):
+                        cell.number_format = number_format_vn
+
+            for col_idx, w in enumerate(dry_col_widths, 1):
+                ws.column_dimensions[get_column_letter(col_idx)].width = w
+            ws.freeze_panes = "A2"
+
+        # ── Tab 1: Tổng hợp Mủ Nước ──
+        if wet_sale_records:
+            ws_wet = wb.create_sheet(title="Tổng hợp Mủ Nước")
+            _create_wet_sale_sheet(ws_wet, wet_sale_records)
+
+        # ── Tab 2: Tổng hợp Mủ Khô ──
+        if dry_production_records:
+            ws_dry = wb.create_sheet(title="Tổng hợp Mủ Khô")
+            _create_dry_production_sheet(ws_dry, dry_production_records)
+
+        # ── Tab 3: Mủ Nước theo từng Xưởng ──
+        if wet_sale_records:
+            # Group by xưởng
+            wet_by_factory = {}
+            for lc in wet_sale_records:
+                cp_name = get_cp_name_from_product_code(lc.product_code)
+                wet_by_factory.setdefault(cp_name, []).append(lc)
+
+            for factory_name, factory_records in sorted(wet_by_factory.items()):
+                sheet_name = f"MN - {factory_name}"[:31]
+                ws = wb.create_sheet(title=sheet_name)
+                _create_wet_sale_sheet(ws, factory_records, sheet_label=factory_name)
+
+        # ── Tab 4: Mủ Khô theo từng Xưởng ──
+        if dry_production_records:
+            dry_by_factory = {}
+            for lc in dry_production_records:
+                cp_name = get_cp_name_from_product_code(lc.product_code)
+                dry_by_factory.setdefault(cp_name, []).append(lc)
+
+            for factory_name, factory_records in sorted(dry_by_factory.items()):
+                sheet_name = f"MK - {factory_name}"[:31]
+                ws = wb.create_sheet(title=sheet_name)
+                _create_dry_production_sheet(ws, factory_records, sheet_label=factory_name)
+
+        # Nếu workbook rỗng
+        if len(wb.sheetnames) == 0:
+            await message.reply_text(
+                f"⚠️ Không có dữ liệu hao hụt từ <b>{start_date.strftime('%d/%m/%Y')}</b> đến <b>{end_date.strftime('%d/%m/%Y')}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Gửi file
+        now_str = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
+        file_name = f"thong_ke_hao_hut_{now_str}.xlsx"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+
+        wet_count = len(wet_sale_records)
+        dry_count = len(dry_production_records)
+
+        await client.send_document(
+            chat_id=message.chat.id,
+            document=tmp_path,
+            file_name=file_name,
+            caption=(
+                f"<b>THỐNG KÊ HAO HỤT</b>\n\n"
+                f"<b>Từ ngày:</b> {start_date.strftime('%d/%m/%Y')}\n"
+                f"<b>Đến ngày:</b> {end_date.strftime('%d/%m/%Y')}\n\n"
+                f"🔹 <b>Mủ Nước:</b> {wet_count} lô hàng\n"
+                f"🔸 <b>Mủ Khô:</b> {dry_count} lô hàng\n"
+                f"📊 <b>Tổng:</b> {wet_count + dry_count} lô hàng\n\n"
+                f"<b>File:</b> <code>{file_name}</code>"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+        LogInfo(
+            f"[TienNga] Loss statistics exported ({start_date} to {end_date}) by user {message.chat.id}",
+            LogType.SYSTEM_STATUS
+        )
+
+    except Exception as e:
+        LogError(f"[ThongKeHaoHut] Error: {traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra khi tạo báo cáo thống kê hao hụt.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
