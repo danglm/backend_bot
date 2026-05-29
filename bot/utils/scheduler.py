@@ -2593,3 +2593,218 @@ async def rosca_payment_notification_worker():
         except Exception as e:
             LogError(f"Critical error in rosca_payment_notification_worker: {e}", LogType.SYSTEM_STATUS)
             await asyncio.sleep(60)
+
+async def document_reminder_worker():
+    """
+    Background worker that checks for active Document Reminders
+    and sends alerts to target Telegram groups.
+    """
+    LogInfo("Document reminder worker started.", LogType.SYSTEM_STATUS)
+    while True:
+        try:
+            now = datetime.datetime.now()
+            
+            # Wait for userbot/bot client to be ready
+            client = bot
+            if not client.is_connected:
+                await asyncio.sleep(30)
+                continue
+                
+            db = SessionLocal()
+            try:
+                from app.models.document import Document, DocumentReminder
+                
+                # Fetch all active reminders
+                active_reminders = db.query(DocumentReminder).filter(
+                    DocumentReminder.status == "ACTIVE"
+                ).all()
+                
+                for reminder in active_reminders:
+                    # Resolve Document details if document_id is present
+                    doc = None
+                    if reminder.document_id:
+                        doc = db.query(Document).filter(Document.id == reminder.document_id).first()
+                    
+                    # Logic 1: Absolute date-time matching (reminder_date & reminder_time)
+                    is_time_to_notify = False
+                    reason_type = "scheduled"
+                    
+                    if reminder.reminder_date:
+                        rem_date = reminder.reminder_date
+                        rem_time_str = reminder.reminder_time or "09:00"
+                        try:
+                            t_parts = rem_time_str.split(":")
+                            rem_hour = int(t_parts[0])
+                            rem_min = int(t_parts[1])
+                        except Exception:
+                            rem_hour = 9
+                            rem_min = 0
+                            
+                        # If reminder_days_before is set, subtract it from reminder_date
+                        if reminder.reminder_days_before is not None:
+                            target_date = rem_date - datetime.timedelta(days=reminder.reminder_days_before)
+                        else:
+                            target_date = rem_date
+
+                        date_match = (target_date == now.date())
+                        hour_match = (now.hour == rem_hour)
+                        min_match = (now.minute == rem_min)
+                        notified_today = (reminder.last_notified_at is not None and reminder.last_notified_at.date() == now.date())
+                        
+                        if date_match and hour_match and min_match:
+                            if not notified_today:
+                                is_time_to_notify = True
+                                reason_type = "scheduled"
+                                
+                    # Logic 2: Relative Expiry Alert (reminder_days_before & expiry_date)
+                    elif reminder.reminder_days_before is not None and doc and doc.expiry_date:
+                        days_diff = (doc.expiry_date - now.date()).days
+                        days_diff_match = (days_diff == reminder.reminder_days_before)
+                        
+                        rem_time_str = reminder.reminder_time or "09:00"
+                        try:
+                            t_parts = rem_time_str.split(":")
+                            rem_hour = int(t_parts[0])
+                            rem_min = int(t_parts[1])
+                        except Exception:
+                            rem_hour = 9
+                            rem_min = 0
+                            
+                        hour_match = (now.hour == rem_hour)
+                        min_match = (now.minute == rem_min)
+                        notified_today = (reminder.last_notified_at is not None and reminder.last_notified_at.date() == now.date())
+                        
+                        if days_diff_match and hour_match and min_match:
+                            if not notified_today:
+                                is_time_to_notify = True
+                                reason_type = "expiry"
+                                
+                    if is_time_to_notify:
+                        LogInfo(f"[DocReminder] MATCHED trigger for reminder ID {reminder.id}! Reason: {reason_type}. Target Chat: {reminder.telegram_group_id}", LogType.SYSTEM_STATUS)
+                        # Find the target group to notify
+                        chat_id_str = reminder.telegram_group_id
+                        if not chat_id_str:
+                            continue
+                            
+                        try:
+                            target_chat_id = int(chat_id_str)
+                        except ValueError:
+                            # Try to look up in TelegramProjectMember as a backup
+                            from app.models.telegram import TelegramProjectMember
+                            tpm = db.query(TelegramProjectMember).filter(
+                                TelegramProjectMember.group_name == chat_id_str
+                            ).first()
+                            if tpm and tpm.chat_id:
+                                try:
+                                    target_chat_id = int(tpm.chat_id)
+                                except ValueError:
+                                    continue
+                            else:
+                                continue
+                                
+                        # Formulate the rich notification message
+                        doc_title = doc.title if doc else "Giấy tờ liên quan"
+                        doc_code = doc.document_code if doc else "N/A"
+                        doc_owner = doc.owner_name if doc else "N/A"
+                        doc_category = doc.category if doc else "N/A"
+                        expiry_str = doc.expiry_date.strftime("%d/%m/%Y") if (doc and doc.expiry_date) else "N/A"
+                        
+                        days_left_text = ""
+                        if doc and doc.expiry_date:
+                            days_left = (doc.expiry_date - now.date()).days
+                            if days_left > 0:
+                                days_left_text = f" (Còn {days_left} ngày)"
+                            elif days_left == 0:
+                                days_left_text = " (Hôm nay hết hạn!)"
+                            else:
+                                days_left_text = f" (Đã hết hạn {abs(days_left)} ngày)"
+                                
+                        reminder_msg = ""
+                        if reminder.reminder_content:
+                            reminder_msg = f"\n📝 <b>Nội dung nhắc nhở:</b>\n<i>{reminder.reminder_content}</i>\n"
+                        elif doc and doc.description:
+                            reminder_msg = f"\n📝 <b>Ghi chú giấy tờ:</b>\n<i>{doc.description}</i>\n"
+                            
+                        # Build HTML message
+                        msg_text = (
+                            f"🔔 <b>THÔNG BÁO LỊCH HẸN GIẤY TỜ</b> 🔔\n\n"
+                            f"<b>Tên giấy tờ:</b> {doc_title}\n"
+                            f"<b>Số hiệu:</b> <code>{doc_code}</code>\n"
+                            f"<b>Chủ sở hữu:</b> {doc_owner}\n"
+                            f"<b>Phân loại:</b> {doc_category}\n"
+                            f"<b>Ngày hết hạn:</b> {expiry_str}{days_left_text}\n"
+                            f"{reminder_msg}\n"
+                            f"<b>Lịch hẹn:</b> {reminder.reminder_time or '09:00'} hằng kỳ\n"
+                            f"<i>Thông báo tự động bởi hệ thống nhắc lịch hẹn.</i>"
+                        )
+                        
+                        try:
+                            await client.send_message(
+                                chat_id=target_chat_id,
+                                text=msg_text,
+                                parse_mode=ParseMode.HTML
+                            )
+                            LogInfo(f"[DocReminder] Sent reminder for {doc_title} to chat {target_chat_id}", LogType.SYSTEM_STATUS)
+                            
+                            # Update reminder status and execution state
+                            reminder.last_notified_at = now
+                            
+                            # Handle lifecycle intervals
+                            interval = (reminder.recurring_interval or "ONCE").upper()
+                            if interval == "ONCE":
+                                reminder.is_notified = True
+                                reminder.status = "INACTIVE"
+                            else:
+                                # Calculate next trigger date
+                                if reminder.reminder_date:
+                                    if interval == "DAILY":
+                                        reminder.reminder_date = reminder.reminder_date + datetime.timedelta(days=1)
+                                    elif interval == "WEEKLY":
+                                        reminder.reminder_date = reminder.reminder_date + datetime.timedelta(days=7)
+                                    elif interval == "MONTHLY":
+                                        # Standard monthly progression
+                                        try:
+                                            import calendar
+                                            r_date = reminder.reminder_date
+                                            m = r_date.month + 1 if r_date.month < 12 else 1
+                                            y = r_date.year if r_date.month < 12 else r_date.year + 1
+                                            d = min(r_date.day, calendar.monthrange(y, m)[1])
+                                            reminder.reminder_date = datetime.date(y, m, d)
+                                        except Exception:
+                                            reminder.reminder_date = reminder.reminder_date + datetime.timedelta(days=30)
+                                    elif interval == "YEARLY":
+                                        try:
+                                            r_date = reminder.reminder_date
+                                            y = r_date.year + 1
+                                            import calendar
+                                            d = min(r_date.day, calendar.monthrange(y, r_date.month)[1])
+                                            reminder.reminder_date = datetime.date(y, r_date.month, d)
+                                        except Exception:
+                                            reminder.reminder_date = reminder.reminder_date + datetime.timedelta(days=365)
+                                            
+                            db.commit()
+                        except Exception as send_err:
+                            LogError(f"[DocReminder] Failed to send reminder to {target_chat_id}: {send_err}", LogType.SYSTEM_STATUS)
+                            
+            except Exception as inner_err:
+                LogError(f"Error in document_reminder_worker logic: {inner_err}", LogType.SYSTEM_STATUS)
+            finally:
+                db.close()
+                
+            # Wait exactly until the next 30-second boundary (:00 or :30)
+            now_time = datetime.datetime.now()
+            if now_time.second < 30:
+                next_run = now_time.replace(second=30, microsecond=0)
+            else:
+                next_run = (now_time + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+                
+            sleep_time = (next_run - now_time).total_seconds()
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                await asyncio.sleep(1)
+                
+        except Exception as e:
+            LogError(f"Critical error in document_reminder_worker: {e}", LogType.SYSTEM_STATUS)
+            await asyncio.sleep(30)
+

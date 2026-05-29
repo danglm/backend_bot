@@ -2907,3 +2907,1164 @@ async def other_check_log_vehicle_handler(client, message: Message) -> None:
         await message.reply_text(f"❌ Có lỗi xảy ra khi tra cứu lịch sử xe: {str(e)}")
     finally:
         db.close()
+
+
+# =========================================================================================
+# LỆNH QUẢN LÝ GIẤY TỜ, HỒ SƠ & LỊCH HẸN NHẮC NHỞ
+# =========================================================================================
+
+# 1. TẠO GIẤY TỜ MỚI
+@bot.on_message(filters.command(["other_create_document", "other_tao_giay_to"]) | filters.regex(r"^@\w+\s+/(other_create_document|other_tao_giay_to)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def create_document_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_create_document", "other_tao_giay_to"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+
+    # Nếu chỉ gõ lệnh không có form → hiển thị form gợi ý
+    if len(lines) < 3:
+        form_template = """<b>FORM TẠO GIẤY TỜ / HỒ SƠ MỚI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<code>/other_tao_giay_to
+Mã Giấy Tờ: 
+Tên Giấy Tờ: 
+Số Hiệu: 
+Phân Loại: 
+Chủ Sở Hữu: 
+Ngày Cấp (dd/mm/yyyy): 
+Ngày Hết Hạn (dd/mm/yyyy): 
+Ghi Chú: 
+</code>
+
+<i>Tên Giấy Tờ là bắt buộc. Mã Giấy Tờ nếu để trống sẽ tự động sinh ngẫu nhiên.</i>"""
+        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        return
+
+    # Parse form data
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    doc_id = data.get("Mã Giấy Tờ", "").strip()
+    title = data.get("Tên Giấy Tờ", "").strip()
+    document_code = data.get("Số Hiệu", "").strip()
+    category = data.get("Phân Loại", "").strip()
+    owner_name = data.get("Chủ Sở Hữu", "").strip()
+    issue_date_str = data.get("Ngày Cấp (dd/mm/yyyy)", "").strip()
+    expiry_date_str = data.get("Ngày Hết Hạn (dd/mm/yyyy)", "").strip()
+    description = data.get("Ghi Chú", "").strip()
+
+    if not title:
+        await message.reply_text("⚠️ <b>Tên Giấy Tờ</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    # Parse dates
+    issue_date = None
+    if issue_date_str:
+        try:
+            issue_date = datetime.datetime.strptime(issue_date_str, "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text("⚠️ <b>Ngày cấp</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+            return
+
+    expiry_date = None
+    if expiry_date_str:
+        try:
+            expiry_date = datetime.datetime.strptime(expiry_date_str, "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text("⚠️ <b>Ngày hết hạn</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+            return
+
+    db = SessionLocal()
+    try:
+        from app.models.document import Document
+        
+        # Lấy Mã Giấy Tờ hoặc tự sinh
+        if not doc_id:
+            doc_id = args[1].strip() if len(args) > 1 else str(uuid.uuid4())
+        
+        # Kiểm tra trùng ID
+        existing_doc = db.query(Document).filter(Document.id == doc_id).first()
+        if existing_doc:
+            await message.reply_text(f"⚠️ Mã Giấy Tờ <b>{doc_id}</b> đã tồn tại trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        new_doc = Document(
+            id=doc_id,
+            title=title,
+            document_code=document_code or None,
+            category=category or None,
+            owner_name=owner_name or None,
+            description=description or None,
+            issue_date=issue_date,
+            expiry_date=expiry_date,
+            status="ACTIVE"
+        )
+        db.add(new_doc)
+        db.commit()
+        db.refresh(new_doc)
+
+        result_text = (
+            f"<b>Tạo giấy tờ thành công!</b>\n\n"
+            f"<b>Tên giấy tờ:</b> {title}\n"
+            f"<b>Số hiệu:</b> <code>{new_doc.document_code or 'N/A'}</code>\n"
+            f"<b>Chủ sở hữu:</b> {new_doc.owner_name or 'N/A'}\n"
+            f"<b>Hạn dùng:</b> {expiry_date_str or 'N/A'}\n"
+            f"<b>Mã Giấy Tờ:</b> <code>{new_doc.id}</code>\n\n"
+            f"💡 <i>Để thêm lịch hẹn thông báo cho giấy tờ này, hãy gõ lệnh:</i>\n"
+            f"<code>/other_them_lich_hen {new_doc.id}</code>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[CreateDocument] Created document {title} (ID: {new_doc.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in create_document_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra khi tạo giấy tờ: {str(e)}")
+    finally:
+        db.close()
+
+
+# 2. THÊM LỊCH HẸN NHẮC NHỞ MỚI
+@bot.on_message(filters.command(["other_add_reminder", "other_them_lich_hen"]) | filters.regex(r"^@\w+\s+/(other_add_reminder|other_them_lich_hen)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def create_reminder_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_add_reminder", "other_them_lich_hen"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+
+    # Nếu chỉ gõ lệnh không có form → hiển thị form gợi ý
+    if len(lines) < 3:
+        doc_id_val = args[1].strip() if len(args) > 1 else "[Mã giấy tờ]"
+        form_template = f"""<b>FORM THÊM LỊCH HẸN NHẮC NHỞ</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/other_them_lich_hen {doc_id_val}
+Nhóm Telegram (chat_id): 
+Nhắc Trước (ngày): 
+Ngày Nhắc Nhở (dd/mm/yyyy): 
+Giờ Nhắc Nhở (hh:mm): 09:00
+Chu Kỳ: ONCE
+Nội Dung Nhắc Nhở: 
+</pre>
+
+<i>Dòng đầu tiên: <code>/other_them_lich_hen [Mã giấy tờ]</code> (Mã tự chọn hoặc chuỗi UUID của giấy tờ).
+Nhóm Telegram: ID nhóm Telegram nhận thông báo (để trống sẽ nhận tại nhóm hiện tại).
+Nhắc Trước (ngày): Nhắc trước X ngày khi giấy tờ hết hạn.
+Ngày Nhắc Nhở: Ngày hẹn nhắc cụ thể (nếu nhắc đúng ngày cố định).
+Chu kỳ: ONCE (Một lần), DAILY (Hàng ngày), WEEKLY (Hàng tuần), MONTHLY (Hàng tháng), YEARLY (Hàng năm).
+Nội Dung Nhắc Nhở: Tin nhắn tùy chỉnh gửi lên Telegram khi đến hẹn.</i>"""
+        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        return
+
+    if len(args) < 2:
+        await message.reply_text(
+            "⚠️ Vui lòng cung cấp <b>Mã Giấy Tờ</b>.\n"
+            "Ví dụ: <code>/other_them_lich_hen HD001</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    doc_id_str = args[1].strip()
+
+    # Parse form data
+    data = {}
+    for line in lines[1:]:
+        if "Giờ Nhắc Nhở (hh:mm):" in line:
+            data["Giờ Nhắc Nhở (hh:mm)"] = line.split("Giờ Nhắc Nhở (hh:mm):", 1)[1].strip()
+        elif ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    db = SessionLocal()
+    try:
+        from app.models.document import Document, DocumentReminder
+        # Kiểm tra document tồn tại
+        doc = db.query(Document).filter(Document.id == doc_id_str).first()
+        if not doc:
+            await message.reply_text(f"⚠️ Không tìm thấy giấy tờ nào với Mã Giấy Tờ: <code>{doc_id_str}</code>", parse_mode=ParseMode.HTML)
+            return
+
+        tg_group_input = data.get("Nhóm Telegram (chat_id)", data.get("Nhóm Telegram", "")).strip()
+        telegram_group_id = tg_group_input if tg_group_input else str(message.chat.id)
+
+        reminder_days_str = data.get("Nhắc Trước (ngày)", "").strip()
+        reminder_date_str = data.get("Ngày Nhắc Nhở (dd/mm/yyyy)", "").strip()
+        reminder_time = data.get("Giờ Nhắc Nhở (hh:mm)", "09:00").strip()
+        recurring_interval = data.get("Chu Kỳ", "ONCE").strip().upper()
+        reminder_content = data.get("Nội Dung Nhắc Nhở", "").strip()
+
+        # Validate reminder configuration
+        reminder_days_before = None
+        if reminder_days_str:
+            try:
+                reminder_days_before = int(reminder_days_str)
+            except ValueError:
+                await message.reply_text("⚠️ <b>Số ngày nhắc trước</b> phải là số nguyên.", parse_mode=ParseMode.HTML)
+                return
+
+        reminder_date = None
+        if reminder_date_str:
+            try:
+                reminder_date = datetime.datetime.strptime(reminder_date_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ <b>Ngày nhắc nhở</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        if reminder_days_before is None and reminder_date is None:
+            await message.reply_text("⚠️ Bạn cần cấu hình ít nhất một trong hai: <b>Nhắc Trước (ngày hết hạn)</b> hoặc <b>Ngày Nhắc Nhở (cố định)</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        valid_intervals = ["ONCE", "DAILY", "WEEKLY", "MONTHLY", "YEARLY"]
+        if recurring_interval not in valid_intervals:
+            await message.reply_text(f"⚠️ Chu kỳ <b>{recurring_interval}</b> không hợp lệ. Các chu kỳ hợp lệ: {', '.join(valid_intervals)}", parse_mode=ParseMode.HTML)
+            return
+
+        # Tạo lịch nhắc nhở
+        new_reminder = DocumentReminder(
+            id=uuid.uuid4(),
+            document_id=doc.id,
+            telegram_group_id=telegram_group_id,
+            reminder_days_before=reminder_days_before,
+            reminder_date=reminder_date,
+            reminder_time=reminder_time,
+            recurring_interval=recurring_interval,
+            reminder_content=reminder_content or None,
+            status="ACTIVE"
+        )
+        db.add(new_reminder)
+        db.commit()
+        db.refresh(new_reminder)
+
+        result_text = (
+            f"<b>Thêm lịch hẹn nhắc nhở thành công!</b>\n\n"
+            f"<b>Giấy tờ liên kết:</b> {doc.title}\n"
+            f"<b>Hẹn nhắc ngày:</b> {reminder_date_str or 'Tính theo ngày hết hạn'}\n"
+            f"<b>Giờ hẹn:</b> <code>{reminder_time}</code>\n"
+            f"<b>Chu kỳ:</b> <b>{recurring_interval}</b>\n"
+            f"<b>Mã Lịch Hẹn:</b> <code>{new_reminder.id}</code>\n\n"
+            f"<b>Nội dung tin nhắn:</b>\n<i>{reminder_content or 'Thông báo mặc định'}</i>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[CreateReminder] Created reminder for doc {doc.title} (ID: {new_reminder.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in create_reminder_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra khi thêm lịch hẹn: {str(e)}")
+    finally:
+        db.close()
+
+
+# 3. CẬP NHẬT GIẤY TỜ
+@bot.on_message(filters.command(["other_update_document", "other_cap_nhat_giay_to"]) | filters.regex(r"^@\w+\s+/(other_update_document|other_cap_nhat_giay_to)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def update_document_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_update_document", "other_cap_nhat_giay_to"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+    db = SessionLocal()
+    try:
+        from app.models.document import Document
+
+        if len(args) < 2:
+            await message.reply_text("⚠️ Vui lòng cung cấp <b>Mã Giấy Tờ (UUID)</b>. Ví dụ: <code>/other_cap_nhat_giay_to UUID</code>", parse_mode=ParseMode.HTML)
+            return
+
+        doc_id_str = args[1].strip()
+        doc = db.query(Document).filter(Document.id == doc_id_str).first()
+        if not doc:
+            await message.reply_text(f"⚠️ Không tìm thấy giấy tờ với mã UUID: <code>{doc_id_str}</code>", parse_mode=ParseMode.HTML)
+            return
+
+        # Nếu chỉ gõ lệnh + mã → hiển thị form pre-filled
+        if len(lines) < 3:
+            issue_str = doc.issue_date.strftime("%d/%m/%Y") if doc.issue_date else ""
+            expiry_str = doc.expiry_date.strftime("%d/%m/%Y") if doc.expiry_date else ""
+
+            form_template = f"""<b>FORM CẬP NHẬT GIẤY TỜ / HỒ SƠ</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<pre>/other_cap_nhat_giay_to {doc.id}
+Tên Giấy Tờ: {doc.title or ""}
+Số Hiệu: {doc.document_code or ""}
+Phân Loại: {doc.category or ""}
+Chủ Sở Hữu: {doc.owner_name or ""}
+Ngày Cấp (dd/mm/yyyy): {issue_str}
+Ngày Hết Hạn (dd/mm/yyyy): {expiry_str}
+Ghi Chú: {doc.description or ""}
+</pre>"""
+            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            return
+
+        # Parse form data
+        data = {}
+        for line in lines[1:]:
+            if ":" in line:
+                key, val = line.split(":", 1)
+                data[key.strip()] = val.strip()
+
+        title = data.get("Tên Giấy Tờ", "").strip()
+        document_code = data.get("Số Hiệu", "").strip()
+        category = data.get("Phân Loại", "").strip()
+        owner_name = data.get("Chủ Sở Hữu", "").strip()
+        issue_date_str = data.get("Ngày Cấp (dd/mm/yyyy)", "").strip()
+        expiry_date_str = data.get("Ngày Hết Hạn (dd/mm/yyyy)", "").strip()
+        description = data.get("Ghi Chú", "").strip()
+
+        # Cập nhật thông tin
+        if title: doc.title = title
+        doc.document_code = document_code if document_code else doc.document_code
+        doc.category = category if category else doc.category
+        doc.owner_name = owner_name if owner_name else doc.owner_name
+        doc.description = description if description else doc.description
+
+        if issue_date_str:
+            try:
+                doc.issue_date = datetime.datetime.strptime(issue_date_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ Ngày cấp không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        if expiry_date_str:
+            try:
+                doc.expiry_date = datetime.datetime.strptime(expiry_date_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ Ngày hết hạn không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        db.commit()
+        db.refresh(doc)
+
+        result_text = (
+            f"<b>Cập nhật giấy tờ thành công!</b>\n\n"
+            f"<b>Tên giấy tờ:</b> {doc.title}\n"
+            f"<b>Số hiệu:</b> <code>{doc.document_code or 'N/A'}</code>\n"
+            f"<b>Chủ sở hữu:</b> {doc.owner_name or 'N/A'}\n"
+            f"<b>Hạn dùng:</b> {expiry_date_str or 'N/A'}\n"
+            f"<b>Mã Giấy Tờ:</b> <code>{doc.id}</code>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[UpdateDocument] Updated document {doc.title} (ID: {doc.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in update_document_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra khi cập nhật giấy tờ: {str(e)}")
+    finally:
+        db.close()
+
+
+def build_reminders_pagination_keyboard(db, page: int = 1, limit: int = 10):
+    from app.models.document import Document, DocumentReminder
+    
+    # Query all active reminders
+    reminders = db.query(DocumentReminder).filter(DocumentReminder.status == "ACTIVE").all()
+    total = len(reminders)
+    
+    start = (page - 1) * limit
+    end = start + limit
+    page_items = reminders[start:end]
+    
+    buttons = []
+    for rem in page_items:
+        doc_title = "N/A"
+        if rem.document_id:
+            doc = db.query(Document).filter(Document.id == rem.document_id).first()
+            if doc:
+                doc_title = doc.title
+                
+        if rem.reminder_date:
+            date_label = rem.reminder_date.strftime("%d/%m")
+        elif rem.reminder_days_before is not None:
+            date_label = f"Báo trước {rem.reminder_days_before} ngày"
+        else:
+            date_label = "Chưa hẹn"
+            
+        time_label = rem.reminder_time or "09:00"
+        btn_text = f"📁 {doc_title[:20]} ({date_label} {time_label})"
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"up_rem_sel:{rem.id}")])
+        
+    # Navigation row
+    nav_row = []
+    if page > 1:
+        nav_row.append(InlineKeyboardButton("Trước", callback_data=f"up_rem_pg:{page-1}"))
+    if end < total:
+        nav_row.append(InlineKeyboardButton("Sau", callback_data=f"up_rem_pg:{page+1}"))
+        
+    if nav_row:
+        buttons.append(nav_row)
+        
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="up_rem_cancel")])
+    return InlineKeyboardMarkup(buttons), total
+
+
+@bot.on_message(filters.command(["other_update_reminder", "other_cap_nhat_lich_hen"]) | filters.regex(r"^@\w+\s+/(other_update_reminder|other_cap_nhat_lich_hen)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def update_reminder_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_update_reminder", "other_cap_nhat_lich_hen"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+    db = SessionLocal()
+    try:
+        from app.models.document import Document, DocumentReminder
+
+        # Phân trang nếu không truyền đối số
+        if len(args) < 2 and len(lines) < 3:
+            markup, total = build_reminders_pagination_keyboard(db, page=1)
+            if total == 0:
+                await message.reply_text("⚠️ <b>Không có lịch hẹn nhắc nhở nào đang hoạt động.</b>", parse_mode=ParseMode.HTML)
+                return
+            await message.reply_text(
+                "<b>Chọn Lịch Hẹn cần cập nhật:</b>\n"
+                f"<i>Tổng số lịch hẹn hoạt động: {total}</i>",
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        rem_id_str = args[1].strip()
+        reminder = db.query(DocumentReminder).filter(DocumentReminder.id == rem_id_str).first()
+        if not reminder:
+            await message.reply_text(f"⚠️ Không tìm thấy lịch hẹn với mã UUID: <code>{rem_id_str}</code>", parse_mode=ParseMode.HTML)
+            return
+
+        # Nếu chỉ gõ lệnh + mã → hiển thị form pre-filled
+        if len(lines) < 3:
+            rem_date_str = reminder.reminder_date.strftime("%d/%m/%Y") if reminder.reminder_date else ""
+            form_template = f"""<b>FORM CẬP NHẬT LỊCH HẸN NHẮC NHỞ</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<pre>/other_cap_nhat_lich_hen {reminder.id}
+Nhóm Telegram (chat_id): {reminder.telegram_group_id or ""}
+Nhắc Trước (ngày): {reminder.reminder_days_before if reminder.reminder_days_before is not None else ""}
+Ngày Nhắc Nhở (dd/mm/yyyy): {rem_date_str}
+Giờ Nhắc Nhở (hh:mm): {reminder.reminder_time or "09:00"}
+Chu Kỳ: {reminder.recurring_interval or "ONCE"}
+Nội Dung Nhắc Nhở: {reminder.reminder_content or ""}
+Trạng Thái: {reminder.status or "ACTIVE"}
+</pre>
+<i>Trạng thái: ACTIVE, INACTIVE</i>"""
+            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            return
+
+        # Parse form data
+        data = {}
+        for line in lines[1:]:
+            if "Giờ Nhắc Nhở (hh:mm):" in line:
+                data["Giờ Nhắc Nhở (hh:mm)"] = line.split("Giờ Nhắc Nhở (hh:mm):", 1)[1].strip()
+            elif ":" in line:
+                key, val = line.split(":", 1)
+                data[key.strip()] = val.strip()
+
+        tg_group_input = data.get("Nhóm Telegram (chat_id)", data.get("Nhóm Telegram", "")).strip()
+        reminder_days_str = data.get("Nhắc Trước (ngày)", "").strip()
+        reminder_date_str = data.get("Ngày Nhắc Nhở (dd/mm/yyyy)", "").strip()
+        reminder_time = data.get("Giờ Nhắc Nhở (hh:mm)", "").strip()
+        recurring_interval = data.get("Chu Kỳ", "").strip().upper()
+        reminder_content = data.get("Nội Dung Nhắc Nhở", "").strip()
+        status = data.get("Trạng Thái", "").strip().upper()
+
+        if tg_group_input:
+            reminder.telegram_group_id = tg_group_input
+
+        if reminder_days_str:
+            try:
+                reminder.reminder_days_before = int(reminder_days_str)
+            except ValueError:
+                await message.reply_text("⚠️ Số ngày nhắc trước phải là số nguyên.", parse_mode=ParseMode.HTML)
+                return
+
+        if reminder_date_str:
+            try:
+                reminder.reminder_date = datetime.datetime.strptime(reminder_date_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ Ngày nhắc nhở không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        if reminder_time: reminder.reminder_time = reminder_time
+        if recurring_interval: reminder.recurring_interval = recurring_interval
+        reminder.reminder_content = reminder_content if reminder_content else reminder.reminder_content
+        if status in ["ACTIVE", "INACTIVE"]: reminder.status = status
+
+        db.commit()
+        db.refresh(reminder)
+
+        # Lấy thông tin giấy tờ
+        doc_title = "N/A"
+        if reminder.document_id:
+            doc = db.query(Document).filter(Document.id == reminder.document_id).first()
+            if doc: doc_title = doc.title
+
+        result_text = (
+            f"<b>Cập nhật lịch hẹn nhắc nhở thành công!</b>\n\n"
+            f"<b>Giấy tờ liên kết:</b> {doc_title}\n"
+            f"<b>Hẹn nhắc ngày:</b> {reminder_date_str or 'Tính theo ngày hết hạn'}\n"
+            f"<b>Giờ hẹn:</b> <code>{reminder.reminder_time}</code>\n"
+            f"<b>Chu kỳ:</b> <b>{reminder.recurring_interval}</b>\n"
+            f"<b>Trạng thái:</b> <b>{reminder.status}</b>\n"
+            f"<b>Mã Lịch Hẹn:</b> <code>{reminder.id}</code>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[UpdateReminder] Updated reminder (ID: {reminder.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in update_reminder_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra khi cập nhật lịch hẹn: {str(e)}")
+    finally:
+        db.close()
+
+
+# 5. XÓA GIẤY TỜ (ARCHIVE GIẤY TỜ & INACTIVE LỊCH HẸN LIÊN QUAN)
+def build_documents_delete_pagination_keyboard(db, page: int = 1, limit: int = 10):
+    from app.models.document import Document
+    
+    # Query all active documents
+    docs = db.query(Document).filter(Document.status == "ACTIVE").all()
+    total = len(docs)
+    
+    start = (page - 1) * limit
+    end = start + limit
+    page_items = docs[start:end]
+    
+    buttons = []
+    for doc in page_items:
+        btn_text = f"📁 {doc.title[:20]} ({doc.document_code or doc.id[:8]})"
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"del_doc_sel:{doc.id}")])
+        
+    # Navigation row
+    nav_row = []
+    if page > 1:
+        nav_row.append(InlineKeyboardButton("⬅️ Trước", callback_data=f"del_doc_pg:{page-1}"))
+    if end < total:
+        nav_row.append(InlineKeyboardButton("Sau ➡️", callback_data=f"del_doc_pg:{page+1}"))
+        
+    if nav_row:
+        buttons.append(nav_row)
+        
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="del_doc_cancel")])
+    return InlineKeyboardMarkup(buttons), total
+
+
+def build_reminders_delete_pagination_keyboard(db, page: int = 1, limit: int = 10):
+    from app.models.document import Document, DocumentReminder
+    
+    # Query all active reminders
+    reminders = db.query(DocumentReminder).filter(DocumentReminder.status == "ACTIVE").all()
+    total = len(reminders)
+    
+    start = (page - 1) * limit
+    end = start + limit
+    page_items = reminders[start:end]
+    
+    buttons = []
+    for rem in page_items:
+        doc_title = "N/A"
+        if rem.document_id:
+            doc = db.query(Document).filter(Document.id == rem.document_id).first()
+            if doc:
+                doc_title = doc.title
+                
+        if rem.reminder_date:
+            date_label = rem.reminder_date.strftime("%d/%m")
+        elif rem.reminder_days_before is not None:
+            date_label = f"Báo trước {rem.reminder_days_before} ngày"
+        else:
+            date_label = "Chưa hẹn"
+            
+        time_label = rem.reminder_time or "09:00"
+        btn_text = f"🔔 {doc_title[:20]} ({date_label} {time_label})"
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"del_rem_sel:{rem.id}")])
+        
+    # Navigation row
+    nav_row = []
+    if page > 1:
+        nav_row.append(InlineKeyboardButton("⬅️ Trước", callback_data=f"del_rem_pg:{page-1}"))
+    if end < total:
+        nav_row.append(InlineKeyboardButton("Sau ➡️", callback_data=f"del_rem_pg:{page+1}"))
+        
+    if nav_row:
+        buttons.append(nav_row)
+        
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="del_rem_cancel")])
+    return InlineKeyboardMarkup(buttons), total
+
+
+@bot.on_message(filters.command(["other_delete_document", "other_xoa_giay_to"]) | filters.regex(r"^@\w+\s+/(other_delete_document|other_xoa_giay_to)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def delete_document_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_delete_document", "other_xoa_giay_to"])
+    if args is None: return
+
+    db = SessionLocal()
+    try:
+        from app.models.document import Document, DocumentReminder
+
+        if len(args) < 2:
+            markup, total = build_documents_delete_pagination_keyboard(db, page=1)
+            if total == 0:
+                await message.reply_text("⚠️ <b>Không có giấy tờ nào đang hoạt động để xóa.</b>", parse_mode=ParseMode.HTML)
+                return
+            await message.reply_text(
+                "<b>Chọn Giấy Tờ cần xóa/lưu trữ:</b>\n"
+                f"<i>Tổng số giấy tờ hoạt động: {total}</i>",
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        doc_id_str = args[1].strip()
+        doc = db.query(Document).filter(Document.id == doc_id_str).first()
+        if not doc:
+            await message.reply_text(f"⚠️ Không tìm thấy giấy tờ với mã UUID: <code>{doc_id_str}</code>", parse_mode=ParseMode.HTML)
+            return
+
+        # Thực hiện soft-delete giấy tờ và các nhắc nhở kèm theo
+        doc.status = "ARCHIVED"
+        
+        reminders = db.query(DocumentReminder).filter(DocumentReminder.document_id == doc.id).all()
+        for rem in reminders:
+            rem.status = "INACTIVE"
+
+        db.commit()
+
+        result_text = (
+            f"<b>Đã lưu trữ (vô hiệu hóa) giấy tờ thành công!</b>\n\n"
+            f"<b>Tên giấy tờ:</b> {doc.title}\n"
+            f"<b>Mã Giấy Tờ:</b> <code>{doc.id}</code>\n"
+            f"<b>Trạng thái:</b> <b>{doc.status}</b>\n"
+            f"<b>Số lịch hẹn đã tắt:</b> {len(reminders)} lịch hẹn."
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[DeleteDocument] Archived document {doc.title} (ID: {doc.id}) and disabled {len(reminders)} reminders by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in delete_document_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra khi xóa giấy tờ: {str(e)}")
+    finally:
+        db.close()
+
+
+# 6. XÓA LỊCH HẸN NHẮC NHỞ (INACTIVE LỊCH HẸN)
+@bot.on_message(filters.command(["other_delete_reminder", "other_xoa_lich_hen"]) | filters.regex(r"^@\w+\s+/(other_delete_reminder|other_xoa_lich_hen)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def delete_reminder_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_delete_reminder", "other_xoa_lich_hen"])
+    if args is None: return
+
+    db = SessionLocal()
+    try:
+        from app.models.document import DocumentReminder
+
+        if len(args) < 2:
+            markup, total = build_reminders_delete_pagination_keyboard(db, page=1)
+            if total == 0:
+                await message.reply_text("⚠️ <b>Không có lịch hẹn nhắc nhở nào đang hoạt động để tắt.</b>", parse_mode=ParseMode.HTML)
+                return
+            await message.reply_text(
+                "<b>Chọn Lịch Hẹn cần tắt:</b>\n"
+                f"<i>Tổng số lịch hẹn hoạt động: {total}</i>",
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        rem_id_str = args[1].strip()
+        reminder = db.query(DocumentReminder).filter(DocumentReminder.id == rem_id_str).first()
+        if not reminder:
+            await message.reply_text(f"⚠️ Không tìm thấy lịch hẹn với mã UUID: <code>{rem_id_str}</code>", parse_mode=ParseMode.HTML)
+            return
+
+        reminder.status = "INACTIVE"
+        db.commit()
+
+        result_text = (
+            f"<b>Đã tắt lịch hẹn nhắc nhở thành công!</b>\n\n"
+            f"<b>Mã Lịch Hẹn:</b> <code>{reminder.id}</code>\n"
+            f"<b>Trạng thái mới:</b> <b>{reminder.status}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[DeleteReminder] Inactivated reminder {reminder.id} by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in delete_reminder_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra khi tắt lịch hẹn: {str(e)}")
+    finally:
+        db.close()
+
+
+# 7. XEM DANH SÁCH GIẤY TỜ & LỊCH HẸN NHẮC NHỞ
+def build_documents_list_keyboard(total_docs: int, page: int = 1, limit: int = 10):
+    buttons = []
+    nav_row = []
+    
+    start = (page - 1) * limit
+    end = start + limit
+    
+    if page > 1:
+        nav_row.append(InlineKeyboardButton("Trước", callback_data=f"list_doc_pg:{page-1}"))
+    if end < total_docs:
+        nav_row.append(InlineKeyboardButton("Sau", callback_data=f"list_doc_pg:{page+1}"))
+        
+    if nav_row:
+        buttons.append(nav_row)
+        
+    return InlineKeyboardMarkup(buttons) if buttons else None
+
+
+@bot.on_message(filters.command(["other_list_documents", "other_danh_sach_giay_to"]) | filters.regex(r"^@\w+\s+/(other_list_documents|other_danh_sach_giay_to)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Other")
+async def list_documents_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_list_documents", "other_danh_sach_giay_to"])
+    if args is None: return
+
+    page = 1
+    if len(args) > 1:
+        try:
+            page = int(args[1])
+        except ValueError:
+            page = 1
+
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        from app.models.document import Document, DocumentReminder
+        from app.models.business import Projects
+
+        # Tìm project_id liên kết với nhóm này
+        tpm = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(message.chat.id)
+        ).first()
+        project_id = tpm.project_id if tpm else None
+
+        # Fetch active documents in project
+        query = db.query(Document).filter(Document.status == "ACTIVE")
+        documents = query.order_by(Document.created_at.desc()).all()
+        total_docs = len(documents)
+
+        if not documents:
+            await message.reply_text("ℹ️ <b>Danh sách giấy tờ / hồ sơ đang trống.</b>", parse_mode=ParseMode.HTML)
+            return
+
+        limit = 10
+        start = (page - 1) * limit
+        end = start + limit
+        page_docs = documents[start:end]
+
+        if not page_docs:
+            await message.reply_text(f"⚠️ Trang <b>{page}</b> không có dữ liệu.", parse_mode=ParseMode.HTML)
+            return
+
+        project = db.query(Projects).filter(Projects.id == tpm.project_id).first() if tpm else None
+        project_name = project.project_name if project else "Chung"
+
+        response = "📁 <b>DANH SÁCH GIẤY TỜ & HỒ SƠ ĐANG QUẢN LÝ</b> 📁\n"
+        response += f"<i>Dự án: {project_name}</i>\n"
+        if tpm and tpm.group_name:
+            response += f"<i>Nhóm: {tpm.group_name}</i>\n"
+        
+        if total_docs > limit:
+            total_pages = (total_docs + limit - 1) // limit
+            response += f"<i>Trang: {page}/{total_pages}</i>\n"
+            
+        response += "========================================\n\n"
+
+        for idx, doc in enumerate(page_docs, start + 1):
+            expiry_str = doc.expiry_date.strftime("%d/%m/%Y") if doc.expiry_date else "Vô thời hạn"
+            days_left_text = ""
+            if doc.expiry_date:
+                days_left = (doc.expiry_date - datetime.date.today()).days
+                if days_left > 0:
+                    days_left_text = f" (Còn {days_left} ngày)"
+                elif days_left == 0:
+                    days_left_text = " (Hôm nay hết hạn!)"
+                else:
+                    days_left_text = f" (Đã hết hạn {abs(days_left)} ngày)"
+
+            response += (
+                f"{idx}. <b>{doc.title}</b>\n"
+                f"   • Số hiệu: <code>{doc.document_code or 'N/A'}</code>\n"
+                f"   • Phân loại: {doc.category or 'N/A'}\n"
+                f"   • Hạn dùng: <b>{expiry_str}</b>{days_left_text}\n"
+                f"   • Mã Giấy Tờ: <code>{doc.id}</code>\n"
+            )
+
+            # Lấy các lịch hẹn nhắc nhở ACTIVE gắn với giấy tờ này
+            rems = db.query(DocumentReminder).filter(
+                DocumentReminder.document_id == doc.id,
+                DocumentReminder.status == "ACTIVE"
+            ).all()
+
+            if rems:
+                response += "   🔔 <u>Lịch hẹn nhắc nhở:</u>\n"
+                for r in rems:
+                    rem_d_str = r.reminder_date.strftime("%d/%m/%Y") if r.reminder_date else f"Nhắc trước {r.reminder_days_before} ngày"
+                    group_member = db.query(TelegramProjectMember).filter(
+                        TelegramProjectMember.chat_id == r.telegram_group_id
+                    ).first()
+                    group_label = group_member.group_name if (group_member and group_member.group_name) else r.telegram_group_id or "Chưa cấu hình"
+
+                    response += (
+                        f"     - Hẹn: <b>{rem_d_str}</b> lúc {r.reminder_time or '09:00'} ({r.recurring_interval})\n"
+                        f"     - Nhóm: {group_label}\n"
+                    )
+            else:
+                response += "   • <i>Chưa có lịch hẹn nhắc nhở nào.</i>\n"
+            
+            response += "----------------------------------------\n"
+
+        markup = build_documents_list_keyboard(total_docs, page=page, limit=limit)
+        await message.reply_text(response, parse_mode=ParseMode.HTML, reply_markup=markup)
+
+    except Exception as e:
+        LogError(f"Error in list_documents_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra khi lấy danh sách giấy tờ: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== CALLBACKS CẬP NHẬT LỊCH HẸN NHẮC NHỞ =====================
+
+@bot.on_callback_query(filters.regex(r"^up_rem_cancel$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def up_rem_cancel_cb(client, callback_query: CallbackQuery):
+    try:
+        await callback_query.message.delete()
+        await callback_query.answer("Đã hủy.")
+    except Exception as e:
+        LogError(f"Error in up_rem_cancel_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi hủy.", show_alert=True)
+
+
+@bot.on_callback_query(filters.regex(r"^up_rem_pg:(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def up_rem_pg_cb(client, callback_query: CallbackQuery):
+    page = int(callback_query.matches[0].group(1))
+    db = SessionLocal()
+    try:
+        markup, total = build_reminders_pagination_keyboard(db, page=page)
+        await callback_query.message.edit_text(
+            "<b>Chọn Lịch Hẹn cần cập nhật:</b>\n"
+            f"<i>Tổng số lịch hẹn hoạt động: {total}</i>",
+            reply_markup=markup,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in up_rem_pg_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi chuyển trang.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^up_rem_sel:(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def up_rem_sel_cb(client, callback_query: CallbackQuery):
+    rem_id_str = callback_query.matches[0].group(1).strip()
+    db = SessionLocal()
+    try:
+        from app.models.document import DocumentReminder
+        reminder = db.query(DocumentReminder).filter(DocumentReminder.id == rem_id_str).first()
+        if not reminder:
+            await callback_query.answer("❌ Không tìm thấy lịch hẹn hoặc đã bị xóa.", show_alert=True)
+            return
+
+        rem_date_str = reminder.reminder_date.strftime("%d/%m/%Y") if reminder.reminder_date else ""
+        form_template = f"""<b>FORM CẬP NHẬT LỊCH HẸN NHẮC NHỞ</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<pre>/other_cap_nhat_lich_hen {reminder.id}
+Nhóm Telegram (chat_id): {reminder.telegram_group_id or ""}
+Nhắc Trước (ngày): {reminder.reminder_days_before if reminder.reminder_days_before is not None else ""}
+Ngày Nhắc Nhở (dd/mm/yyyy): {rem_date_str}
+Giờ Nhắc Nhở (hh:mm): {reminder.reminder_time or "09:00"}
+Chu Kỳ: {reminder.recurring_interval or "ONCE"}
+Nội Dung Nhắc Nhở: {reminder.reminder_content or ""}
+Trạng Thái: {reminder.status or "ACTIVE"}
+</pre>
+<i>Trạng thái: ACTIVE, INACTIVE</i>"""
+
+        await callback_query.message.edit_text(form_template, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in up_rem_sel_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi lấy thông tin lịch hẹn.", show_alert=True)
+    finally:
+        db.close()
+
+
+# ===================== CALLBACKS XÓA GIẤY TỜ & LỊCH HẸN =====================
+
+@bot.on_callback_query(filters.regex(r"^del_doc_cancel$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def del_doc_cancel_cb(client, callback_query: CallbackQuery):
+    try:
+        await callback_query.message.delete()
+        await callback_query.answer("Đã hủy.")
+    except Exception as e:
+        LogError(f"Error in del_doc_cancel_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi hủy.", show_alert=True)
+
+
+@bot.on_callback_query(filters.regex(r"^del_doc_pg:(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def del_doc_pg_cb(client, callback_query: CallbackQuery):
+    page = int(callback_query.matches[0].group(1))
+    db = SessionLocal()
+    try:
+        markup, total = build_documents_delete_pagination_keyboard(db, page=page)
+        await callback_query.message.edit_text(
+            "<b>Chọn Giấy Tờ cần xóa/lưu trữ:</b>\n"
+            f"<i>Tổng số giấy tờ hoạt động: {total}</i>",
+            reply_markup=markup,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in del_doc_pg_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi chuyển trang.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^del_doc_sel:(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def del_doc_sel_cb(client, callback_query: CallbackQuery):
+    doc_id_str = callback_query.matches[0].group(1).strip()
+    db = SessionLocal()
+    try:
+        from app.models.document import Document, DocumentReminder
+        doc = db.query(Document).filter(Document.id == doc_id_str).first()
+        if not doc:
+            await callback_query.answer("❌ Không tìm thấy giấy tờ hoặc đã bị xóa.", show_alert=True)
+            return
+
+        doc.status = "ARCHIVED"
+        reminders = db.query(DocumentReminder).filter(DocumentReminder.document_id == doc.id).all()
+        for rem in reminders:
+            rem.status = "INACTIVE"
+
+        db.commit()
+
+        result_text = (
+            f"<b>Đã lưu trữ (vô hiệu hóa) giấy tờ thành công!</b>\n\n"
+            f"<b>Tên giấy tờ:</b> {doc.title}\n"
+            f"<b>Mã Giấy Tờ:</b> <code>{doc.id}</code>\n"
+            f"<b>Trạng thái:</b> <b>{doc.status}</b>\n"
+            f"<b>Số lịch hẹn đã tắt:</b> {len(reminders)} lịch hẹn."
+        )
+        await callback_query.message.edit_text(result_text, parse_mode=ParseMode.HTML)
+        await callback_query.answer("Đã lưu trữ giấy tờ.")
+        LogInfo(f"[DeleteDocumentCallback] Archived document {doc.title} (ID: {doc.id}) and disabled {len(reminders)} reminders by @{callback_query.from_user.username or callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in del_doc_sel_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi xóa giấy tờ.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^del_rem_cancel$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def del_rem_cancel_cb(client, callback_query: CallbackQuery):
+    try:
+        await callback_query.message.delete()
+        await callback_query.answer("Đã hủy.")
+    except Exception as e:
+        LogError(f"Error in del_rem_cancel_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi hủy.", show_alert=True)
+
+
+@bot.on_callback_query(filters.regex(r"^del_rem_pg:(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def del_rem_pg_cb(client, callback_query: CallbackQuery):
+    page = int(callback_query.matches[0].group(1))
+    db = SessionLocal()
+    try:
+        markup, total = build_reminders_delete_pagination_keyboard(db, page=page)
+        await callback_query.message.edit_text(
+            "<b>Chọn Lịch Hẹn cần tắt:</b>\n"
+            f"<i>Tổng số lịch hẹn hoạt động: {total}</i>",
+            reply_markup=markup,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in del_rem_pg_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi chuyển trang.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^del_rem_sel:(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+async def del_rem_sel_cb(client, callback_query: CallbackQuery):
+    rem_id_str = callback_query.matches[0].group(1).strip()
+    db = SessionLocal()
+    try:
+        from app.models.document import DocumentReminder
+        reminder = db.query(DocumentReminder).filter(DocumentReminder.id == rem_id_str).first()
+        if not reminder:
+            await callback_query.answer("❌ Không tìm thấy lịch hẹn hoặc đã bị xóa.", show_alert=True)
+            return
+
+        reminder.status = "INACTIVE"
+        db.commit()
+
+        result_text = (
+            f"<b>Đã tắt lịch hẹn nhắc nhở thành công!</b>\n\n"
+            f"<b>Mã Lịch Hẹn:</b> <code>{reminder.id}</code>\n"
+            f"<b>Trạng thái mới:</b> <b>{reminder.status}</b>"
+        )
+        await callback_query.message.edit_text(result_text, parse_mode=ParseMode.HTML)
+        await callback_query.answer("Đã tắt lịch hẹn.")
+        LogInfo(f"[DeleteReminderCallback] Inactivated reminder {reminder.id} by @{callback_query.from_user.username or callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in del_rem_sel_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi tắt lịch hẹn.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^list_doc_pg:(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Other")
+async def list_doc_pg_cb(client, callback_query: CallbackQuery):
+    page = int(callback_query.matches[0].group(1))
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        from app.models.document import Document, DocumentReminder
+        from app.models.business import Projects
+
+        tpm = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(callback_query.message.chat.id)
+        ).first()
+
+        query = db.query(Document).filter(Document.status == "ACTIVE")
+        documents = query.order_by(Document.created_at.desc()).all()
+        total_docs = len(documents)
+
+        if not documents:
+            await callback_query.message.edit_text("ℹ️ <b>Danh sách giấy tờ / hồ sơ đang trống.</b>", parse_mode=ParseMode.HTML)
+            return
+
+        limit = 10
+        start = (page - 1) * limit
+        end = start + limit
+        page_docs = documents[start:end]
+
+        if not page_docs:
+            await callback_query.answer("⚠️ Trang này không có dữ liệu.", show_alert=True)
+            return
+
+        project = db.query(Projects).filter(Projects.id == tpm.project_id).first() if tpm else None
+        project_name = project.project_name if project else "Chung"
+
+        response = "📁 <b>DANH SÁCH GIẤY TỜ & HỒ SƠ ĐANG QUẢN LÝ</b> 📁\n"
+        response += f"<i>Dự án: {project_name}</i>\n"
+        if tpm and tpm.group_name:
+            response += f"<i>Nhóm: {tpm.group_name}</i>\n"
+        
+        if total_docs > limit:
+            total_pages = (total_docs + limit - 1) // limit
+            response += f"<i>Trang: {page}/{total_pages}</i>\n"
+            
+        response += "========================================\n\n"
+
+        for idx, doc in enumerate(page_docs, start + 1):
+            expiry_str = doc.expiry_date.strftime("%d/%m/%Y") if doc.expiry_date else "Vô thời hạn"
+            days_left_text = ""
+            if doc.expiry_date:
+                days_left = (doc.expiry_date - datetime.date.today()).days
+                if days_left > 0:
+                    days_left_text = f" (Còn {days_left} ngày)"
+                elif days_left == 0:
+                    days_left_text = " (Hôm nay hết hạn!)"
+                else:
+                    days_left_text = f" (Đã hết hạn {abs(days_left)} ngày)"
+
+            response += (
+                f"{idx}. <b>{doc.title}</b>\n"
+                f"   • Số hiệu: <code>{doc.document_code or 'N/A'}</code>\n"
+                f"   • Phân loại: {doc.category or 'N/A'}\n"
+                f"   • Hạn dùng: <b>{expiry_str}</b>{days_left_text}\n"
+                f"   • Mã Giấy Tờ: <code>{doc.id}</code>\n"
+            )
+
+            # Lấy các lịch hẹn nhắc nhở ACTIVE gắn với giấy tờ này
+            rems = db.query(DocumentReminder).filter(
+                DocumentReminder.document_id == doc.id,
+                DocumentReminder.status == "ACTIVE"
+            ).all()
+
+            if rems:
+                response += "   🔔 <u>Lịch hẹn nhắc nhở:</u>\n"
+                for r in rems:
+                    rem_d_str = r.reminder_date.strftime("%d/%m/%Y") if r.reminder_date else f"Nhắc trước {r.reminder_days_before} ngày"
+                    group_member = db.query(TelegramProjectMember).filter(
+                        TelegramProjectMember.chat_id == r.telegram_group_id
+                    ).first()
+                    group_label = group_member.group_name if (group_member and group_member.group_name) else r.telegram_group_id or "Chưa cấu hình"
+
+                    response += (
+                        f"     - Hẹn: <b>{rem_d_str}</b> lúc {r.reminder_time or '09:00'} ({r.recurring_interval})\n"
+                        f"     - Nhóm: {group_label}\n"
+                    )
+            else:
+                response += "   • <i>Chưa có lịch hẹn nhắc nhở nào.</i>\n"
+            
+            response += "----------------------------------------\n"
+
+        markup = build_documents_list_keyboard(total_docs, page=page, limit=limit)
+        await callback_query.message.edit_text(response, parse_mode=ParseMode.HTML, reply_markup=markup)
+        await callback_query.answer()
+
+    except Exception as e:
+        LogError(f"Error in list_doc_pg_cb: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi chuyển trang.", show_alert=True)
+    finally:
+        db.close()
+

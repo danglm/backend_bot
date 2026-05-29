@@ -32,6 +32,7 @@ from app.models import telegram
 from app.models import vehicle
 from app.models import inventory
 from app.models import rosca
+from app.models import document
 from app.core.config import settings
 
 config.set_main_option("sqlalchemy.url", settings.DB_Config.SQLALCHEMY_DATABASE_URI.replace('%', '%%'))
