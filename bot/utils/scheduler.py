@@ -699,6 +699,7 @@ async def recurring_task_worker():
                     
                     client = bot
                     
+                    should_trigger = False
                     for task in tasks:
                         if not task.updated_at:
                             continue
@@ -706,7 +707,6 @@ async def recurring_task_worker():
                         cycle_lower = task.cycle.lower()
                         ref_date = task.updated_at.date()
                         
-                        should_trigger = False
                         new_start = None
                         new_end = None
                         
@@ -1560,7 +1560,7 @@ async def send_factory_purchase_report(db, project_id, current_date, client, spe
         mapped_group_name = settings.FACTORY_GROUP_MAPPING.get(cp_name)
         
         if mapped_group_name:
-            for chat_id, group_name in main_groups:
+            for chat_id, group_name, _title in main_groups:
                 if group_name == mapped_group_name:
                     target_chat_ids.append(chat_id)
                     
