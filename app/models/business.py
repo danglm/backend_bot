@@ -201,6 +201,7 @@ class Households(Base):
     address = Column(String)                                 # Địa chỉ
     total_debt = Column(Float, default=0.0)                  # Công nợ
     tapping_price = Column(Float, default=0.0)               # Đơn giá cạo mủ
+    labor_price = Column(Float, default=0.0)                 # Tiền công
     bank_account = Column(String)                            # Số TK ngân hàng
     bank_name = Column(String)                               # Tên ngân hàng
     status = Column(String, default="ACTIVE")                # Trạng thái
@@ -231,3 +232,22 @@ class CropTreeLog(Base):
     notes = Column(String, nullable=True)                    # Ghi chú
     crop_type = Column(String, default="cao_su")             # Loại cây: cao_su / sau_rieng
     created_at = Column(DateTime, default=lambda: __import__('datetime').datetime.now())
+
+
+class SuppliesExpense(Base):
+    __tablename__ = "supplies_expenses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    day = Column(Date)                                       # Ngày mua / sử dụng
+    land_code = Column(String, index=True, nullable=True)     # Mã đất trồng trọt (liên kết AgriculturalLand)
+    supplies_name = Column(String)                           # Tên vật tư (Phân bón NPK, thuốc trừ sâu,...)
+    supplier = Column(String, nullable=True)                 # Nhà cung cấp / Cửa hàng mua
+    quantity = Column(Float, default=0.0)                    # Số lượng
+    unit = Column(String)                                    # Đơn vị tính (Bao, Chai, Cái, Kg,...)
+    unit_price = Column(Float, default=0.0)                  # Đơn giá
+    total_amount = Column(Float, default=0.0)                # Thành tiền (Số lượng * Đơn giá)
+    purpose = Column(String, nullable=True)                  # Mục đích sử dụng
+    crop_type = Column(String, default="chung")              # Loại cây trồng: cao_su / sau_rieng / chung
+    buyer = Column(String, nullable=True)                    # Người mua / Người thực hiện
+    notes = Column(String, nullable=True)                    # Ghi chú thêm
+    created_at = Column(DateTime, default=func.now())

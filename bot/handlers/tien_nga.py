@@ -7342,7 +7342,7 @@ async def tien_nga_chart_custom_callback(client, callback_query: CallbackQuery):
 
 @bot.on_message(filters.command(["tien_nga_payment_of_debt", "tien_nga_thanh_toan_cong_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_payment_of_debt|tien_nga_thanh_toan_cong_no)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
     args = message.text.split()
@@ -13449,6 +13449,7 @@ async def tien_nga_list_household_handler(client, message: Message) -> None:
                     f"   Địa Chỉ: {h.address or '—'}\n"
                     f"   Công Nợ: <code>{fmt_money(h.total_debt)}</code>\n"
                     f"   Đơn Giá Cạo Mủ: <code>{fmt_money(h.tapping_price)}</code>\n"
+                    f"   Tiền Công: <code>{fmt_money(h.labor_price)}</code>\n"
                     f"   Ngân Hàng: {h.bank_name or '—'}\n"
                     f"   Số TK: <code>{h.bank_account or '—'}</code>\n\n"
                 )
@@ -13459,7 +13460,7 @@ async def tien_nga_list_household_handler(client, message: Message) -> None:
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Hộ Dân"
-            headers = ["STT", "Mã Hộ Dân", "Mã Thu Mua", "Mã Đất", "Họ Tên", "Username", "Nhóm TG", "SĐT", "Địa Chỉ", "Công Nợ", "ĐG Cạo Mủ", "Ngân Hàng", "Số TK"]
+            headers = ["STT", "Mã Hộ Dân", "Mã Thu Mua", "Mã Đất", "Họ Tên", "Username", "Nhóm TG", "SĐT", "Địa Chỉ", "Công Nợ", "ĐG Cạo Mủ", "Tiền Công", "Ngân Hàng", "Số TK"]
             hdr_font = Font(bold=True, color="FFFFFF")
             hdr_fill = PatternFill(start_color="1565C0", end_color="1565C0", fill_type="solid")
             thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
@@ -13473,11 +13474,11 @@ async def tien_nga_list_household_handler(client, message: Message) -> None:
                 vals = [row_idx - 1, h.household_code, h.purchase_code or "", h.land_code or "",
                         h.fullname or "", h.username or "", h.telegram_group or "",
                         h.phone or "", h.address or "",
-                        h.total_debt or 0, h.tapping_price or 0, h.bank_name or "", h.bank_account or ""]
+                        h.total_debt or 0, h.tapping_price or 0, h.labor_price or 0, h.bank_name or "", h.bank_account or ""]
                 for col_idx, v in enumerate(vals, 1):
                     cell = ws.cell(row=row_idx, column=col_idx, value=v)
                     cell.border = thin_border
-            col_widths = [6, 14, 14, 12, 20, 16, 16, 14, 25, 15, 14, 15, 18]
+            col_widths = [6, 14, 14, 12, 20, 16, 16, 14, 25, 15, 14, 14, 15, 18]
             for i, w in enumerate(col_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -14523,6 +14524,12 @@ async def tien_nga_check_household_handler(client, message: Message) -> None:
                 f"<b>Cây Đang Trồng:</b> {land.planting_trees or 0}"
             )
 
+        price_lines = ""
+        if hh.tapping_price or not hh.labor_price:
+            price_lines += f"<b>Đơn Giá Cạo Mủ:</b> <code>{fmt_money(hh.tapping_price)}</code>\n"
+        if hh.labor_price:
+            price_lines += f"<b>Tiền Công:</b> <code>{fmt_money(hh.labor_price)}</code>\n"
+
         await message.reply_text(
             f"<b>THÔNG TIN HỘ DÂN</b>\n\n"
             f"<b>Mã Hộ Dân:</b> <code>{hh.household_code}</code>\n"
@@ -14533,7 +14540,7 @@ async def tien_nga_check_household_handler(client, message: Message) -> None:
             f"<b>SĐT:</b> {hh.phone or '—'}\n"
             f"<b>Địa Chỉ:</b> {hh.address or '—'}\n"
             f"<b>Mã Đất:</b> <code>{hh.land_code or '—'}</code>\n"
-            f"<b>Đơn Giá Cạo Mủ:</b> <code>{fmt_money(hh.tapping_price)}</code>\n"
+            + price_lines +
             f"<b>Công Nợ:</b> <code>{fmt_money(hh.total_debt)}</code>\n"
             f"<b>Số TK:</b> <code>{hh.bank_account or '—'}</code>\n"
             f"<b>Ngân Hàng:</b> {hh.bank_name or '—'}"
@@ -14733,6 +14740,151 @@ async def _kdh_select_period(client, cb):
     )
     await cb.answer()
     await _do_check_daily_harvest(client, cb.message, start_date, end_date, land_code=lc)
+
+@bot.on_message(filters.command(["tien_nga_update_household", "tien_nga_cap_nhat_ho_dan"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_household|tien_nga_cap_nhat_ho_dan)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_update_household_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+    from app.models.business import Households
+
+    if len(lines) < 2:
+        args = lines[0].split()
+        if len(args) < 2:
+            await message.reply_text("⚠️ Cú pháp: <code>/tien_nga_cap_nhat_ho_dan [Mã Hộ Dân]</code>", parse_mode=ParseMode.HTML)
+            return
+        hh_code = args[1].upper()
+        db = SessionLocal()
+        try:
+            hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
+            if not hh:
+                await message.reply_text(f"⚠️ Không tìm thấy hộ dân với mã <b>{hh_code}</b>.", parse_mode=ParseMode.HTML)
+                return
+
+            def fmt_money(val):
+                if val is None or val == 0: return "0"
+                return str(int(val))
+
+            is_durian = (hh.labor_price and hh.labor_price > 0) or not hh.purchase_code
+
+            if is_durian:
+                form = f"""<b>CẬP NHẬT HỘ DÂN (SẦU RIÊNG)</b>
+
+Sao chép form dưới, chỉnh sửa và gửi lại:
+
+<pre>/tien_nga_cap_nhat_ho_dan
+Mã Hộ Dân: {hh.household_code}
+Mã Đất: {hh.land_code or ''}
+Họ Và Tên: {hh.fullname or ''}
+Username: {hh.username or ''}
+Nhóm Telegram: {hh.telegram_group or ''}
+SĐT: {hh.phone or ''}
+Địa Chỉ: {hh.address or ''}
+Công Nợ: {fmt_money(hh.total_debt)}
+Tiền Công: {fmt_money(hh.labor_price)}
+Số TK: {hh.bank_account or ''}
+Ngân Hàng: {hh.bank_name or ''}</pre>"""
+            else:
+                form = f"""<b>CẬP NHẬT HỘ DÂN (CAO SU)</b>
+
+Sao chép form dưới, chỉnh sửa và gửi lại:
+
+<pre>/tien_nga_cap_nhat_ho_dan
+Mã Hộ Dân: {hh.household_code}
+Mã Hộ Thu Mua: {hh.purchase_code or ''}
+Mã Đất: {hh.land_code or ''}
+Họ Và Tên: {hh.fullname or ''}
+Username: {hh.username or ''}
+Nhóm Telegram: {hh.telegram_group or ''}
+SĐT: {hh.phone or ''}
+Địa Chỉ: {hh.address or ''}
+Công Nợ: {fmt_money(hh.total_debt)}
+Đơn Giá Cạo Mủ: {fmt_money(hh.tapping_price)}
+Số TK: {hh.bank_account or ''}
+Ngân Hàng: {hh.bank_name or ''}</pre>"""
+            await message.reply_text(form, parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    hh_code = data.get("Mã Hộ Dân", "").strip().upper()
+    if not hh_code:
+        await message.reply_text("⚠️ <b>Mã Hộ Dân</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    db = SessionLocal()
+    try:
+        hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
+        if not hh:
+            await message.reply_text(f"⚠️ Không tìm thấy hộ dân với mã <b>{hh_code}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        if "Mã Hộ Thu Mua" in data and data["Mã Hộ Thu Mua"]:
+            new_pc = data["Mã Hộ Thu Mua"].upper()
+            dup = db.query(Households).filter(Households.purchase_code == new_pc, Households.household_code != hh_code).first()
+            if dup:
+                await message.reply_text(f"⚠️ Mã thu mua <b>{new_pc}</b> đã được sử dụng.", parse_mode=ParseMode.HTML)
+                return
+            hh.purchase_code = new_pc
+        if "Mã Đất" in data: hh.land_code = data["Mã Đất"].upper() or None
+        if "Họ Và Tên" in data: hh.fullname = data["Họ Và Tên"] or None
+        if "Username" in data: hh.username = data["Username"].lstrip("@") or None
+        if "Nhóm Telegram" in data: hh.telegram_group = data["Nhóm Telegram"] or None
+        if "SĐT" in data: hh.phone = data["SĐT"] or None
+        if "Địa Chỉ" in data: hh.address = data["Địa Chỉ"] or None
+        if "Công Nợ" in data: hh.total_debt = parse_float_vn(data["Công Nợ"])
+        if "Đơn Giá Cạo Mủ" in data: hh.tapping_price = parse_float_vn(data["Đơn Giá Cạo Mủ"])
+        if "Tiền Công" in data: hh.labor_price = parse_float_vn(data["Tiền Công"])
+        if "Số TK" in data: hh.bank_account = data["Số TK"] or None
+        if "Ngân Hàng" in data: hh.bank_name = data["Ngân Hàng"] or None
+        db.commit()
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        is_durian = "Tiền Công" in data or (hh.labor_price and hh.labor_price > 0) or not hh.purchase_code
+
+        price_lines = ""
+        if not is_durian:
+            price_lines = (
+                f"<b>Mã Thu Mua:</b> <code>{hh.purchase_code or '—'}</code>\n"
+                f"<b>Đơn Giá Cạo Mủ:</b> <code>{fmt_money(hh.tapping_price)}</code>\n"
+            )
+        else:
+            price_lines = (
+                f"<b>Tiền Công:</b> <code>{fmt_money(hh.labor_price)}</code>\n"
+            )
+
+        await message.reply_text(
+            f"✅ <b>Cập Nhật Hộ Dân Thành Công!</b>\n\n"
+            f"<b>Mã Hộ Dân:</b> <code>{hh.household_code}</code>\n"
+            + price_lines +
+            f"<b>Mã Đất:</b> <code>{hh.land_code or '—'}</code>\n"
+            f"<b>Họ Tên:</b> {hh.fullname or '—'}\n"
+            f"<b>Username:</b> @{hh.username or '—'}\n"
+            f"<b>Nhóm Telegram:</b> {hh.telegram_group or '—'}\n"
+            f"<b>SĐT:</b> {hh.phone or '—'}\n"
+            f"<b>Địa Chỉ:</b> {hh.address or '—'}\n"
+            f"<b>Công Nợ:</b> <code>{fmt_money(hh.total_debt)}</code>\n"
+            f"<b>Số TK:</b> <code>{hh.bank_account or '—'}</code>\n"
+            f"<b>Ngân Hàng:</b> {hh.bank_name or '—'}",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error updating household: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
 
 async def _do_check_daily_harvest(client, message, start_date, end_date, land_code=None):
     from app.models.business import Households, DailyHarvest
@@ -14965,26 +15117,21 @@ async def _do_check_daily_harvest(client, message, start_date, end_date, land_co
 async def tien_nga_create_household_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
-        form = """<b>FORM TẠO HỘ DÂN</b>
-
-Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
-
-<pre>/tien_nga_tao_ho_dan
-Mã Hộ Dân: 
-Mã Hộ Thu Mua: 
-Mã Đất: 
-Họ Và Tên: 
-Username: 
-Nhóm Telegram: 
-SĐT: 
-Địa Chỉ: 
-Công Nợ: 0
-Đơn Giá Cạo Mủ: 0
-Số TK: 
-Ngân Hàng: </pre>
-
-<i>Ghi chú: VD Mã Hộ Dân: HD001, Mã Thu Mua: TM001, Mã Đất: DCS001.</i>"""
-        await message.reply_text(form, parse_mode=ParseMode.HTML)
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Cao Su", callback_data="tn_create_hh|cao_su"),
+                InlineKeyboardButton("Sầu Riêng", callback_data="tn_create_hh|sau_rieng")
+            ],
+            [
+                InlineKeyboardButton("Hủy", callback_data="tn_create_hh|cancel")
+            ]
+        ])
+        await message.reply_text(
+            "<b>TẠO HỘ DÂN MỚI</b>\n\n"
+            "Vui lòng chọn loại hộ dân cần tạo:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
         return
 
     data = {}
@@ -15003,13 +15150,16 @@ Ngân Hàng: </pre>
     address = data.get("Địa Chỉ", "").strip()
     total_debt = parse_float_vn(data.get("Công Nợ", "0"))
     tapping_price = parse_float_vn(data.get("Đơn Giá Cạo Mủ", "0"))
+    labor_price = parse_float_vn(data.get("Tiền Công", "0"))
     bank_account = data.get("Số TK", "").strip()
     bank_name = data.get("Ngân Hàng", "").strip()
+
+    is_durian = "Tiền Công" in data
 
     if not household_code:
         await message.reply_text("⚠️ <b>Mã Hộ Dân</b> là bắt buộc.", parse_mode=ParseMode.HTML)
         return
-    if not purchase_code:
+    if not is_durian and not purchase_code:
         await message.reply_text("⚠️ <b>Mã Hộ Thu Mua</b> là bắt buộc.", parse_mode=ParseMode.HTML)
         return
     if not fullname:
@@ -15024,15 +15174,17 @@ Ngân Hàng: </pre>
         if db.query(Households).filter(Households.household_code == household_code).first():
             await message.reply_text(f"⚠️ Mã hộ dân <b>{household_code}</b> đã tồn tại.", parse_mode=ParseMode.HTML)
             return
-        if db.query(Households).filter(Households.purchase_code == purchase_code).first():
-            await message.reply_text(f"⚠️ Mã hộ thu mua <b>{purchase_code}</b> đã tồn tại.", parse_mode=ParseMode.HTML)
-            return
+        if purchase_code:
+            if db.query(Households).filter(Households.purchase_code == purchase_code).first():
+                await message.reply_text(f"⚠️ Mã hộ thu mua <b>{purchase_code}</b> đã tồn tại.", parse_mode=ParseMode.HTML)
+                return
 
         new_hh = Households(
-            id=uuid_lib.uuid4(), household_code=household_code, purchase_code=purchase_code,
+            id=uuid_lib.uuid4(), household_code=household_code, purchase_code=purchase_code or None,
             land_code=land_code or None, fullname=fullname, username=username or None,
             telegram_group=telegram_group or None, phone=phone or None,
             address=address or None, total_debt=total_debt, tapping_price=tapping_price,
+            labor_price=labor_price,
             bank_account=bank_account or None, bank_name=bank_name or None, status="ACTIVE"
         )
         db.add(new_hh)
@@ -15042,10 +15194,21 @@ Ngân Hàng: </pre>
             if val is None or val == 0: return "0 VNĐ"
             return f"{int(val):,} VNĐ".replace(",", ".")
 
+        price_lines = ""
+        if not is_durian:
+            price_lines = (
+                f"<b>Mã Thu Mua:</b> <code>{purchase_code}</code>\n"
+                f"<b>Đơn Giá Cạo Mủ:</b> <code>{fmt_money(tapping_price)}</code>\n"
+            )
+        else:
+            price_lines = (
+                f"<b>Tiền Công:</b> <code>{fmt_money(labor_price)}</code>\n"
+            )
+
         await message.reply_text(
             f"✅ <b>Tạo Hộ Dân Thành Công!</b>\n\n"
             f"<b>Mã Hộ Dân:</b> <code>{household_code}</code>\n"
-            f"<b>Mã Thu Mua:</b> <code>{purchase_code}</code>\n"
+            + price_lines +
             f"<b>Mã Đất:</b> <code>{land_code or '—'}</code>\n"
             f"<b>Họ Tên:</b> {fullname}\n"
             f"<b>Username:</b> @{username or '—'}\n"
@@ -15053,7 +15216,6 @@ Ngân Hàng: </pre>
             f"<b>SĐT:</b> {phone or '—'}\n"
             f"<b>Địa Chỉ:</b> {address or '—'}\n"
             f"<b>Công Nợ:</b> <code>{fmt_money(total_debt)}</code>\n"
-            f"<b>Đơn Giá Cạo Mủ:</b> <code>{fmt_money(tapping_price)}</code>\n"
             f"<b>Số TK:</b> <code>{bank_account or '—'}</code>\n"
             f"<b>Ngân Hàng:</b> {bank_name or '—'}",
             parse_mode=ParseMode.HTML
@@ -15064,6 +15226,59 @@ Ngân Hàng: </pre>
         await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
+
+@bot.on_callback_query(filters.regex(r"^tn_create_hh\|(cao_su|sau_rieng|cancel)$"))
+async def tn_create_hh_callback(client, cb: CallbackQuery) -> None:
+    action = cb.matches[0].group(1)
+    if action == "cancel":
+        await cb.message.delete()
+        await cb.answer("Đã hủy.")
+        return
+
+    if action == "cao_su":
+        form = """<b>FORM TẠO HỘ DÂN (CAO SU)</b>
+
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/tien_nga_tao_ho_dan
+Mã Hộ Dân: 
+Mã Hộ Thu Mua: 
+Mã Đất: 
+Họ Và Tên: 
+Username: 
+Nhóm Telegram: 
+SĐT: 
+Địa Chỉ: 
+Công Nợ: 0
+Đơn Giá Cạo Mủ: 0
+Số TK: 
+Ngân Hàng: </pre>
+
+<i>Ghi chú: VD Mã Hộ Dân: HD001, Mã Thu Mua: TM001.</i>"""
+        await cb.message.edit_text(form, parse_mode=ParseMode.HTML)
+        await cb.answer()
+        return
+
+    if action == "sau_rieng":
+        form = """<b>FORM TẠO HỘ DÂN (SẦU RIÊNG)</b>
+
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/tien_nga_tao_ho_dan
+Mã Hộ Dân: 
+Mã Đất: 
+Họ Và Tên: 
+Username: 
+Nhóm Telegram: 
+SĐT: 
+Địa Chỉ: 
+Công Nợ: 0
+Tiền Công: 
+Số TK: 
+Ngân Hàng: </pre>"""
+        await cb.message.edit_text(form, parse_mode=ParseMode.HTML)
+        await cb.answer()
+        return
 
 @bot.on_message(filters.command(["tien_nga_update_household", "tien_nga_cap_nhat_ho_dan"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_household|tien_nga_cap_nhat_ho_dan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -18640,5 +18855,379 @@ async def _generate_loss_statistics_excel(client, message, start_date, end_date)
     except Exception as e:
         LogError(f"[ThongKeHaoHut] Error: {traceback.format_exc()}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra khi tạo báo cáo thống kê hao hụt.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# =========================================================================================
+# QUẢN LÝ CHI PHÍ VẬT TƯ NÔNG NGHIỆP
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_them_vat_tu"]) | filters.regex(r"^@\w+\s+/tien_nga_them_vat_tu\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_add_supplies_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+    if len(lines) < 2:
+        form = """<b>THÊM CHI PHÍ VẬT TƯ NÔNG NGHIỆP</b>
+
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/tien_nga_them_vat_tu
+Mã Đất: 
+Ngày: 
+Tên Vật Tư: 
+Số Lượng: 0
+Đơn Vị: 
+Đơn Giá: 0
+Nhà Cung Cấp: 
+Mục Đích: 
+Loại Cây: chung / cao_su / sau_rieng
+Người Mua: 
+Ghi Chú: </pre>
+
+<b>💡 Gợi ý điền:</b>
+- <b>Đơn Vị:</b> Bao, Chai, Cái, Kg,...
+- <b>Đơn Giá:</b> Nhập số tiền VNĐ (Ví dụ: 250000)
+- <b>Ngày:</b> Định dạng dd/mm/yyyy (Ví dụ: 30/05/2026)
+- <b>Mã Đất:</b> Ví dụ DCS001 (để trống nếu chi chung)
+- <b>Loại Cây:</b> chung, cao_su, hoặc sau_rieng"""
+        await message.reply_text(form, parse_mode=ParseMode.HTML)
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    land_code = data.get("Mã Đất", data.get("Ma Dat", "")).strip().upper()
+    day_str = data.get("Ngày", data.get("Ngay", "")).strip()
+    supplies_name = data.get("Tên Vật Tư", data.get("Ten Vat Tu", "")).strip()
+    quantity_str = data.get("Số Lượng", data.get("So Luong", "0")).strip()
+    unit = data.get("Đơn Vị", data.get("Don Vi", "")).strip()
+    unit_price_str = data.get("Đơn Giá", data.get("Don Gia", "0")).strip()
+    supplier = data.get("Nhà Cung Cấp", data.get("Nha Cung Cap", "")).strip() or None
+    purpose = data.get("Mục Đích", data.get("Muc Dich", "")).strip() or None
+    crop_type = data.get("Loại Cây", data.get("Loai Cay", "chung")).strip().lower()
+    buyer = data.get("Người Mua", data.get("Nguoi Mua", "")).strip() or None
+    notes = data.get("Ghi Chú", data.get("Ghi Chu", "")).strip() or None
+
+    if not supplies_name:
+        await message.reply_text("⚠️ <b>Tên Vật Tư</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+    if not unit:
+        await message.reply_text("⚠️ <b>Đơn Vị</b> tính là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+    if not day_str:
+        await message.reply_text("⚠️ <b>Ngày</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        day = datetime.strptime(day_str, "%d/%m/%Y").date()
+    except Exception:
+        await message.reply_text("⚠️ Định dạng <b>Ngày</b> không hợp lệ. VD: <code>dd/mm/yyyy</code>.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        quantity = float(parse_float_vn(quantity_str))
+    except Exception:
+        await message.reply_text("⚠️ <b>Số Lượng</b> phải là số hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        clean_price_str = unit_price_str.replace("VNĐ", "").replace("VND", "").replace("đ", "").replace("Đ", "").strip()
+        unit_price = float(parse_float_vn(clean_price_str))
+    except Exception:
+        await message.reply_text("⚠️ <b>Đơn Giá</b> phải là số hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    if crop_type not in ["cao_su", "sau_rieng", "chung"]:
+        crop_type = "chung"
+
+    db = SessionLocal()
+    try:
+        # Check land code if provided
+        if land_code:
+            from app.models.business import AgriculturalLand
+            land = db.query(AgriculturalLand).filter(
+                AgriculturalLand.land_code == land_code,
+                AgriculturalLand.status == "ACTIVE"
+            ).first()
+            if not land:
+                await message.reply_text(f"⚠️ Mã đất <b>{land_code}</b> không tồn tại hoặc đã bị xóa.", parse_mode=ParseMode.HTML)
+                return
+
+        from app.models.business import SuppliesExpense
+        import uuid as uuid_lib
+
+        total_amount = quantity * unit_price
+        new_expense = SuppliesExpense(
+            id=uuid_lib.uuid4(), day=day, land_code=land_code or None,
+            supplies_name=supplies_name, supplier=supplier, quantity=quantity,
+            unit=unit, unit_price=unit_price, total_amount=total_amount,
+            purpose=purpose, crop_type=crop_type, buyer=buyer, notes=notes
+        )
+        db.add(new_expense)
+        db.commit()
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        crop_label = {"cao_su": "Cao Su 🪵", "sau_rieng": "Sầu Riêng 🥭", "chung": "Dùng Chung 🌐"}.get(crop_type, "")
+
+        await message.reply_text(
+            f"✅ <b>Thêm Chi Phí Vật Tư Thành Công!</b>\n\n"
+            f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
+            f"<b>Vật Tư:</b> {supplies_name}\n"
+            f"<b>Số Lượng:</b> {quantity} {unit}\n"
+            f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
+            f"<b>Tổng Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
+            f"<b>Mã Đất:</b> <code>{land_code or '—'}</code>\n"
+            f"<b>Nhà Cung Cấp:</b> {supplier or '—'}\n"
+            f"<b>Mục Đích:</b> {purpose or '—'}\n"
+            f"<b>Loại Cây:</b> {crop_label}\n"
+            f"<b>Người Mua:</b> {buyer or '—'}\n"
+            f"<b>Ghi Chú:</b> {notes or '—'}\n\n"
+            f"<i>ID bản ghi:</i> <code>{new_expense.id}</code>",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error adding supplies expense: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_xoa_vat_tu"]) | filters.regex(r"^@\w+\s+/tien_nga_xoa_vat_tu\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_delete_supplies_handler(client, message: Message) -> None:
+    args = message.text.split()
+    if len(args) < 2:
+        await message.reply_text("⚠️ Cú pháp: <code>/tien_nga_xoa_vat_tu [ID bản ghi]</code>", parse_mode=ParseMode.HTML)
+        return
+
+    expense_id = args[1].strip()
+    from app.models.business import SuppliesExpense
+
+    db = SessionLocal()
+    try:
+        expense = db.query(SuppliesExpense).filter(SuppliesExpense.id == expense_id).first()
+        if not expense:
+            await message.reply_text(f"⚠️ Không tìm thấy chi phí vật tư với ID: <code>{expense_id}</code>", parse_mode=ParseMode.HTML)
+            return
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Xác Nhận Xóa", callback_data=f"del_sp_confirm:{expense_id}"),
+             InlineKeyboardButton("Hủy", callback_data="del_sp_cancel")]
+        ])
+        await message.reply_text(
+            f"⚠️ <b>Xác nhận xóa chi phí vật tư này?</b>\n\n"
+            f"<b>Ngày:</b> {expense.day.strftime('%d/%m/%Y') if expense.day else '—'}\n"
+            f"<b>Vật Tư:</b> {expense.supplies_name}\n"
+            f"<b>Tổng Tiền:</b> <code>{fmt_money(expense.total_amount)}</code>\n"
+            f"<b>Mã Đất:</b> <code>{expense.land_code or '—'}</code>",
+            reply_markup=keyboard, parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error checking supplies expense delete: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^del_sp_(confirm|cancel)"))
+async def del_sp_callback(client, callback_query) -> None:
+    data = callback_query.data
+    if data == "del_sp_cancel":
+        await callback_query.message.delete()
+        return
+
+    expense_id = data.split(":")[1]
+    from app.models.business import SuppliesExpense
+
+    db = SessionLocal()
+    try:
+        expense = db.query(SuppliesExpense).filter(SuppliesExpense.id == expense_id).first()
+        if expense:
+            db.delete(expense)
+            db.commit()
+            await callback_query.message.edit_text(f"✅ Đã xóa bản ghi chi phí vật tư thành công.", parse_mode=ParseMode.HTML)
+        else:
+            await callback_query.answer("⚠️ Bản ghi không tồn tại hoặc đã bị xóa.", show_alert=True)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error deleting supplies expense: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text("❌ Lỗi hệ thống.")
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["tien_nga_kt_vat_tu"]) | filters.regex(r"^@\w+\s+/tien_nga_kt_vat_tu\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_check_supplies_handler(client, message: Message) -> None:
+    args = message.text.strip().split(maxsplit=1)
+    
+    import datetime
+    today = datetime.date.today()
+    start_date = today.replace(day=1)
+    end_date = today
+    land_code_filter = "ALL"
+
+    if len(args) >= 2:
+        parts = args[1].split()
+        if len(parts) >= 1:
+            val = parts[0].upper()
+            if "-" not in val and "/" not in val:
+                land_code_filter = val
+                parts = parts[1:]
+        
+        date_str = " ".join(parts)
+        if "-" in date_str:
+            try:
+                d_parts = date_str.split("-")
+                start_date = datetime.datetime.strptime(d_parts[0].strip(), "%d/%m/%Y").date()
+                end_date = datetime.datetime.strptime(d_parts[1].strip(), "%d/%m/%Y").date()
+            except Exception:
+                await message.reply_text("⚠️ Định dạng ngày không hợp lệ. VD: <code>01/05/2026 - 30/05/2026</code>", parse_mode=ParseMode.HTML)
+                return
+
+    from app.models.business import SuppliesExpense
+    db = SessionLocal()
+    try:
+        query = db.query(SuppliesExpense).filter(
+            SuppliesExpense.day >= start_date,
+            SuppliesExpense.day <= end_date
+        )
+        if land_code_filter != "ALL":
+            query = query.filter(SuppliesExpense.land_code == land_code_filter)
+        
+        expenses = query.order_by(SuppliesExpense.day).all()
+        if not expenses:
+            land_label = f" Lô {land_code_filter}" if land_code_filter != "ALL" else ""
+            await message.reply_text(
+                f"📋 Không tìm thấy chi phí vật tư nào{land_label} từ ngày <b>{start_date.strftime('%d/%m/%Y')}</b> đến <b>{end_date.strftime('%d/%m/%Y')}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        total_amount = sum(e.total_amount or 0 for e in expenses)
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        import openpyxl, tempfile, os
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Chi Phí Vật Tư"
+
+        hdr_font = Font(bold=True, color="FFFFFF", size=11)
+        hdr_fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid")
+        total_font = Font(bold=True, size=11)
+        total_fill = PatternFill(start_color="E8F5E9", end_color="E8F5E9", fill_type="solid")
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+        center = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells("A1:K1")
+        title_cell = ws.cell(row=1, column=1, value=f"BÁO CÁO CHI PHÍ VẬT TƯ NÔNG NGHIỆP")
+        title_cell.font = Font(bold=True, size=14, color="2E7D32")
+        title_cell.alignment = center
+
+        ws.merge_cells("A2:K2")
+        sub_title = f"Từ ngày: {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')} | Lô đất: {land_code_filter}"
+        ws.cell(row=2, column=1, value=sub_title).alignment = center
+
+        headers = ["STT", "Ngày", "Mã Đất", "Tên Vật Tư", "Số Lượng", "Đơn Vị", "Đơn Giá", "Thành Tiền", "Loại Cây", "Nhà Cung Cấp", "Mục Đích / Ghi Chú"]
+        col_widths = [6, 13, 11, 22, 11, 10, 13, 15, 14, 20, 30]
+
+        for col_idx, hd in enumerate(headers, 1):
+            cell = ws.cell(row=4, column=col_idx, value=hd)
+            cell.font = hdr_font
+            cell.fill = hdr_fill
+            cell.border = thin_border
+            cell.alignment = center
+
+        c_row = 5
+        for i, exp in enumerate(expenses, 1):
+            crop_label = {"cao_su": "Cao Su", "sau_rieng": "Sầu Riêng", "chung": "Chung"}.get(exp.crop_type, "Chung")
+            notes_str = f"{exp.purpose or ''}"
+            if exp.notes:
+                notes_str += f" ({exp.notes})"
+
+            vals = [
+                i,
+                exp.day.strftime("%d/%m/%Y") if exp.day else "",
+                exp.land_code or "—",
+                exp.supplies_name,
+                exp.quantity or 0,
+                exp.unit or "",
+                exp.unit_price or 0,
+                exp.total_amount or 0,
+                crop_label,
+                exp.supplier or "—",
+                notes_str or "—"
+            ]
+            for col_idx, v in enumerate(vals, 1):
+                cell = ws.cell(row=c_row, column=col_idx, value=v)
+                cell.border = thin_border
+                if col_idx in [5, 7, 8]:
+                    cell.number_format = '#,##0'
+
+            c_row += 1
+
+        ws.cell(row=c_row, column=1, value="TỔNG CỘNG").font = total_font
+        ws.merge_cells(start_row=c_row, start_column=1, end_row=c_row, end_column=3)
+        
+        for col_idx in range(1, 12):
+            cell = ws.cell(row=c_row, column=col_idx)
+            cell.fill = total_fill
+            cell.border = thin_border
+            cell.font = total_font
+            
+        ws.cell(row=c_row, column=8, value=total_amount).number_format = '#,##0'
+
+        for i, w in enumerate(col_widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+
+        caption = (
+            f"<b>BÁO CÁO CHI PHÍ VẬT TƯ NÔNG NGHIỆP</b>\n\n"
+            f"<b>Thời gian:</b> {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}\n"
+            f"<b>Bộ lọc đất:</b> <code>{land_code_filter}</code>\n"
+            f"<b>Số giao dịch:</b> {len(expenses)}\n"
+            f"<b>Tổng chi phí:</b> <b>{fmt_money(total_amount)}</b>"
+        )
+
+        file_name = f"chi_phi_vat_tu_{start_date.strftime('%d%m%Y')}_{end_date.strftime('%d%m%Y')}.xlsx"
+        await message.reply_document(
+            document=tmp_path,
+            file_name=file_name,
+            caption=caption,
+            parse_mode=ParseMode.HTML
+        )
+        os.remove(tmp_path)
+    except Exception as e:
+        LogError(f"Error in check supplies handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống khi xuất báo cáo.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
