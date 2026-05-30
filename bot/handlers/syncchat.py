@@ -115,7 +115,6 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
                 [InlineKeyboardButton("Quản lý đối tác", callback_data=f"sync_dept_{project_id}_partner")],
                 [InlineKeyboardButton("Quản lý kho", callback_data=f"sync_dept_{project_id}_inventory")],
                 [InlineKeyboardButton("Quản lý Cổ Đông", callback_data=f"sync_dept_{project_id}_sh")],
-                [InlineKeyboardButton("Thu hoạch cao su", callback_data=f"sync_dept_{project_id}_harvest")],
                 [
                     InlineKeyboardButton("Trở lại", callback_data="sync_back_to_proj"),
                     InlineKeyboardButton("Hủy", callback_data="sync_cancel")
@@ -124,6 +123,24 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
             reply_markup = InlineKeyboardMarkup(buttons)
             await callback_query.message.edit_text(
                 "<b>DỰ ÁN TIẾN NGA</b>\n\nVui lòng chọn phòng ban / loại nhóm:",
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # --- Thu Hoạch project sub-menu ---
+        if project and "thu hoạch" in project.project_name.lower():
+            buttons = [
+                [InlineKeyboardButton("Thu hoạch Cao Su", callback_data=f"sync_dept_{project_id}_hcs")],
+                [InlineKeyboardButton("Thu hoạch Sầu Riêng", callback_data=f"sync_dept_{project_id}_hsr")],
+                [
+                    InlineKeyboardButton("Trở lại", callback_data="sync_back_to_proj"),
+                    InlineKeyboardButton("Hủy", callback_data="sync_cancel")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(buttons)
+            await callback_query.message.edit_text(
+                "<b>DỰ ÁN THU HOẠCH</b>\n\nVui lòng chọn loại thu hoạch:",
                 reply_markup=reply_markup,
                 parse_mode=ParseMode.HTML
             )
@@ -163,10 +180,11 @@ DEPT_LABELS = {
     "inventory": "Quản lý kho",
     "partner": "Quản lý đối tác",
     "sh": "Quản lý Cổ Đông",
-    "harvest": "Thu hoạch cao su",
+    "hcs": "Thu hoạch Cao Su",
+    "hsr": "Thu hoạch Sầu Riêng",
 }
 
-@bot.on_callback_query(filters.regex(r"^sync_dept_(.+)_(tong|supplier|sales|hr|finance|product|inventory|partner|sh|harvest)$"))
+@bot.on_callback_query(filters.regex(r"^sync_dept_(.+)_(tong|supplier|sales|hr|finance|product|inventory|partner|sh|hcs|hsr)$"))
 async def sync_dept_callback(client, callback_query: CallbackQuery):
     project_id = callback_query.matches[0].group(1)
     dept = callback_query.matches[0].group(2)
@@ -206,7 +224,11 @@ async def sync_dept_callback(client, callback_query: CallbackQuery):
 
 # --- Step 2c-TN: Member chọn nhóm Main làm parent ---
 # sm = sync member — kiểm tra main tương ứng trước khi cho sync member
-SUBCATEGORY_MAP_SYNC = {"sh": "shareholder"}
+SUBCATEGORY_MAP_SYNC = {
+    "sh": "shareholder",
+    "hcs": "harvest", "hsr": "harvest",
+    "harvest_cs": "harvest", "harvest_sr": "harvest",  # backward compat
+}
 
 @bot.on_callback_query(filters.regex(r"^sm:(.+):(.+)$"))
 async def sync_member_check_parent_callback(client, callback_query: CallbackQuery):
@@ -232,11 +254,14 @@ async def sync_member_check_parent_callback(client, callback_query: CallbackQuer
         ).distinct().all()
 
         if not main_groups:
+            # Xác định tên dự án để hiển thị hướng dẫn
+            project = db.query(Projects).filter(Projects.id == project_id).first()
+            project_display = project.project_name if project else "dự án"
             await callback_query.message.edit_text(
                 f"⚠️ <b>Chưa syncchat nhóm Main cho {label}!</b>\n\n"
                 f"Vui lòng syncchat nhóm Main (<code>{main_custom_title}</code>) trước, "
                 f"sau đó mới syncchat nhóm Member.\n\n"
-                f"<i>Bước: /syncchat → Tiến Nga → {label} → Nhóm Main</i>",
+                f"<i>Bước: /syncchat → {project_display} → {label} → Nhóm Main</i>",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -386,7 +411,11 @@ async def _do_sync_role(client, callback_query, project_id, group_role, subcateg
         if subcategory == "super_main":
             custom_title = CustomTitle.SUPER_MAIN.value
         else:
-            SUBCATEGORY_MAP = {"sh": "shareholder"}
+            SUBCATEGORY_MAP = {
+                "sh": "shareholder",
+                "hcs": "harvest", "hsr": "harvest",
+                "harvest_cs": "harvest", "harvest_sr": "harvest",  # backward compat
+            }
             resolved = SUBCATEGORY_MAP.get(subcategory, subcategory)
             custom_title = f"{group_role}_{resolved}"
             try:

@@ -2157,7 +2157,8 @@ async def send_harvest_summary_report(db, project_id, current_date, client, spec
         # 1. Total trees harvested
         harvests = db.query(DailyHarvest).filter(
             DailyHarvest.day == current_date,
-            DailyHarvest.land_code.in_(land_codes)
+            DailyHarvest.land_code.in_(land_codes),
+            DailyHarvest.crop_type == "cao_su"
         ).all()
         
         total_trees = sum(h.tree_count or 0 for h in harvests)
@@ -2256,7 +2257,7 @@ async def daily_harvest_summary_worker():
                 from app.models.business import Projects
                 db = SessionLocal()
                 try:
-                    project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+                    project = db.query(Projects).filter(Projects.project_name == "Thu Hoạch").first()
                     if project:
                         await send_harvest_summary_report(db, project.id, current_date, bot)
                 except Exception as e:

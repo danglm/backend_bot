@@ -839,26 +839,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_kiem_tra_hao_hut", "Kiểm tra hao hụt"),
                 ])
 
-            if custom_title in ("super_main", "main_harvest"):
-                if custom_title != "super_main": label = "Tiến Nga (Thu Hoạch)"
-                commands_to_set.extend([
-                    BotCommand("tien_nga_tao_dat_trong_trot", "Tạo đất trồng trọt"),
-                    BotCommand("tien_nga_cap_nhat_dat_trong_trot", "Cập nhật đất trồng trọt"),
-                    BotCommand("tien_nga_xoa_dat_trong_trot", "Xóa đất trồng trọt"),
-                    BotCommand("tien_nga_ds_dat_trong_trot", "DS đất trồng trọt"),
-                    BotCommand("tien_nga_kt_dat_trong_trot", "KT đất trồng trọt"),
-                    BotCommand("tien_nga_tao_ho_dan", "Tạo hộ dân"),
-                    BotCommand("tien_nga_cap_nhat_ho_dan", "Cập nhật hộ dân"),
-                    BotCommand("tien_nga_xoa_ho_dan", "Xóa hộ dân"),
-                    BotCommand("tien_nga_ds_ho_dan", "DS hộ dân"),
-                    BotCommand("tien_nga_kiem_tra_thu_hoach", "Kiểm tra thu hoạch"),
-                    BotCommand("tien_nga_so_sanh_thu_hoach", "So sánh thu hoạch"),
-                    BotCommand("tien_nga_kt_thu_hoach_hang_ngay", "KT thu hoạch hàng ngày"),
-                    BotCommand("tien_nga_cay_cao_su", "Quản lý cây cao su"),
-                    BotCommand("tien_nga_kt_cay_cao_su", "Kiểm tra cây cao su"),
-                    BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
-                    BotCommand("tien_nga_thanh_toan_cong_no", "Thanh toán công nợ"),
-                ])
+
             ## Member
             if custom_title == "member_hr":
                 label = "Tiến Nga (Nhân Viên)"
@@ -896,12 +877,45 @@ async def register_bot_command_handler(client, message: Message) -> None:
             if custom_title == "member_product":
                 label = "Tiến Nga (Sản Phẩm)"
 
-            if custom_title == "member_harvest":
-                label = "Tiến Nga (Thu Hoạch)"
-                commands_to_set.extend([
-                    BotCommand("tien_nga_thu_hoach_hang_ngay", "Thu hoạch hàng ngày"),
+
+
+        # ===================== THU HOẠCH =====================
+        elif "thu hoạch" in project_name:
+            if custom_title in ("main_harvest",):
+                label = "Thu Hoạch"
+                commands_to_set = [
+                    ## Đất & Hộ dân
+                    BotCommand("tien_nga_tao_dat_trong_trot", "Tạo đất trồng trọt"),
+                    BotCommand("tien_nga_cap_nhat_dat_trong_trot", "Cập nhật đất trồng trọt"),
+                    BotCommand("tien_nga_xoa_dat_trong_trot", "Xóa đất trồng trọt"),
+                    BotCommand("tien_nga_ds_dat_trong_trot", "DS đất trồng trọt"),
+                    BotCommand("tien_nga_kt_dat_trong_trot", "KT đất trồng trọt"),
+                    BotCommand("tien_nga_tao_ho_dan", "Tạo hộ dân"),
+                    BotCommand("tien_nga_cap_nhat_ho_dan", "Cập nhật hộ dân"),
+                    BotCommand("tien_nga_xoa_ho_dan", "Xóa hộ dân"),
+                    BotCommand("tien_nga_ds_ho_dan", "DS hộ dân"),
+                    ## Cao su
+                    BotCommand("tien_nga_kiem_tra_thu_hoach", "Kiểm tra thu hoạch"),
+                    BotCommand("tien_nga_so_sanh_thu_hoach", "So sánh thu hoạch"),
+                    BotCommand("tien_nga_kt_thu_hoach_hang_ngay", "KT thu hoạch hàng ngày"),
+                    BotCommand("tien_nga_cay_cao_su", "Quản lý cây cao su"),
+                    BotCommand("tien_nga_kt_cay_cao_su", "Kiểm tra cây cao su"),
+                    ## Sầu riêng
+                    BotCommand("tien_nga_cay_sau_rieng", "Quản lý cây sầu riêng"),
+                    BotCommand("tien_nga_kt_cay_sau_rieng", "Kiểm tra cây sầu riêng"),
+                    BotCommand("tien_nga_thu_hoach_sau_rieng", "Thu hoạch sầu riêng"),
+                    BotCommand("tien_nga_kt_thu_hoach_sr", "KT thu hoạch sầu riêng"),
+                    ## Tài chính thu hoạch
+                    BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
+                    BotCommand("tien_nga_thanh_toan_cong_no", "Thanh toán công nợ"),
+                ]
+            elif custom_title in ("member_harvest",):
+                label = "Thu Hoạch (Member)"
+                commands_to_set = [
+                    BotCommand("tien_nga_thu_hoach_hang_ngay", "Thu hoạch cao su hàng ngày"),
+                    BotCommand("tien_nga_thu_hoach_sr_hang_ngay", "Thu hoạch SR hàng ngày"),
                     BotCommand("tien_nga_kiem_tra_ho_dan", "Kiểm tra hộ dân"),
-                ])
+                ]
 
         # ===================== HỤI =====================
         elif "hụi" in project_name.lower() or "hui" in project_name.lower():

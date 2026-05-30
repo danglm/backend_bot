@@ -179,7 +179,7 @@ class AgriculturalLand(Base):
     land_name = Column(String, nullable=True)                # Tên đất
     address = Column(String)                                 # Địa chỉ
     total_area = Column(Float, default=0.0)                  # Diện tích (ha)
-    rubber_area = Column(Float, default=0.0)                 # Diện tích đang khai thác cao su (ha)
+    harvest_area = Column(Float, default=0.0)                 # Diện tích đang thu hoạch (ha)
     empty_area = Column(Float, default=0.0)                  # Diện tích trống (ha)
     planting_area = Column(Float, default=0.0)               # Diện tích đang trồng (ha)
     harvesting_trees = Column(Integer, default=0)             # Số lượng cây đang thu hoạch
@@ -212,14 +212,15 @@ class DailyHarvest(Base):
     day = Column(Date)                                       # Ngày thu hoạch
     household_code = Column(String, index=True)              # Mã hộ dân
     land_code = Column(String, index=True)                   # Mã đất thu hoạch
-    tree_count = Column(Integer, default=0)                  # Số lượng cây
-    rubber_weight = Column(Float, default=0.0)               # Khối lượng mủ (Kg)
+    tree_count = Column(Integer, default=0)                  # Số lượng cây (cao su) / Số trái (sầu riêng)
+    harvest_weight = Column(Float, default=0.0)              # Khối lượng thu hoạch (Kg) - mủ cao su / trái sầu riêng
     unit_price = Column(Float, default=0.0)                  # Đơn giá
     total_amount = Column(Float, default=0.0)                # Thành tiền
+    crop_type = Column(String, default="cao_su")             # Loại cây: cao_su / sau_rieng
     created_at = Column(DateTime, default=lambda: __import__('datetime').datetime.now())
 
-class RubberTreeLog(Base):
-    __tablename__ = "rubber_tree_logs"
+class CropTreeLog(Base):
+    __tablename__ = "crop_tree_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     day = Column(Date)                                       # Ngày thực hiện
@@ -228,4 +229,5 @@ class RubberTreeLog(Base):
     quantity = Column(Integer, default=0)                    # Số lượng cây
     executor = Column(String)                                # Người thực hiện
     notes = Column(String, nullable=True)                    # Ghi chú
+    crop_type = Column(String, default="cao_su")             # Loại cây: cao_su / sau_rieng
     created_at = Column(DateTime, default=lambda: __import__('datetime').datetime.now())

@@ -13008,7 +13008,7 @@ async def rpt_sum_cb(client, callback_query: CallbackQuery):
 
 @bot.on_message(filters.command(["tien_nga_create_agricultural_land", "tien_nga_tao_dat_trong_trot"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_agricultural_land|tien_nga_tao_dat_trong_trot)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_create_agricultural_land_handler(client, message: Message) -> None:
@@ -13024,7 +13024,7 @@ Tên Đất:
 Địa Chỉ: 
 Trực Thuộc: 
 Diện Tích (ha): 0
-DT Đang Thu Hoạch Cao Su (ha): 0
+DT Đang Thu Hoạch (ha): 0
 DT Trống (ha): 0
 DT Đang Trồng (ha): 0
 SL Cây Thu Hoạch: 0
@@ -13053,7 +13053,7 @@ Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà
             affiliation = "Tiến Nga"
 
     total_area = parse_float_vn(data.get("Diện Tích (ha)", "0"))
-    rubber_area = parse_float_vn(data.get("DT Đang Thu Hoạch Cao Su (ha)", "0"))
+    harvest_area = parse_float_vn(data.get("DT Đang Thu Hoạch (ha)", data.get("DT Thu Hoạch (ha)", data.get("DT Đang Thu Hoạch Cao Su (ha)", "0"))))
     empty_area = parse_float_vn(data.get("DT Trống (ha)", "0"))
     planting_area = parse_float_vn(data.get("DT Đang Trồng (ha)", "0"))
     harvesting_trees = int(parse_float_vn(data.get("SL Cây Thu Hoạch", "0")))
@@ -13076,7 +13076,7 @@ Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà
         new_land = AgriculturalLand(
             id=uuid_lib.uuid4(), land_code=land_code, land_name=land_name or None,
             address=address or None, affiliation=affiliation or None,
-            total_area=total_area, rubber_area=rubber_area,
+            total_area=total_area, harvest_area=harvest_area,
             empty_area=empty_area, planting_area=planting_area,
             harvesting_trees=harvesting_trees, planting_trees=planting_trees, status="ACTIVE"
         )
@@ -13090,7 +13090,7 @@ Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà
             f"<b>Địa Chỉ:</b> {address or '—'}\n"
             f"<b>Trực Thuộc:</b> {affiliation or '—'}\n"
             f"<b>Diện Tích:</b> {total_area} ha\n"
-            f"<b>DT Cao Su:</b> {rubber_area} ha\n"
+            f"<b>DT Thu Hoạch:</b> {harvest_area} ha\n"
             f"<b>DT Trống:</b> {empty_area} ha\n"
             f"<b>DT Đang Trồng:</b> {planting_area} ha\n"
             f"<b>SL Cây Thu Hoạch:</b> {harvesting_trees}\n"
@@ -13106,7 +13106,7 @@ Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà
 
 @bot.on_message(filters.command(["tien_nga_update_agricultural_land", "tien_nga_cap_nhat_dat_trong_trot"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_agricultural_land|tien_nga_cap_nhat_dat_trong_trot)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_update_agricultural_land_handler(client, message: Message) -> None:
@@ -13135,7 +13135,7 @@ Tên Đất: {land.land_name or ''}
 Địa Chỉ: {land.address or ''}
 Trực Thuộc: {land.affiliation or ''}
 Diện Tích (ha): {land.total_area}
-DT Đang Thu Hoạch Cao Su (ha): {land.rubber_area}
+DT Đang Thu Hoạch (ha): {land.harvest_area}
 DT Trống (ha): {land.empty_area}
 DT Đang Trồng (ha): {land.planting_area}
 SL Cây Thu Hoạch: {land.harvesting_trees or 0}
@@ -13176,7 +13176,9 @@ SL Cây Đang Trồng: {land.planting_trees or 0}</pre>"""
             land.affiliation = new_affil or None
 
         if "Diện Tích (ha)" in data: land.total_area = parse_float_vn(data["Diện Tích (ha)"])
-        if "DT Đang Thu Hoạch Cao Su (ha)" in data: land.rubber_area = parse_float_vn(data["DT Đang Thu Hoạch Cao Su (ha)"])
+        if "DT Đang Thu Hoạch (ha)" in data: land.harvest_area = parse_float_vn(data["DT Đang Thu Hoạch (ha)"])
+        elif "DT Thu Hoạch (ha)" in data: land.harvest_area = parse_float_vn(data["DT Thu Hoạch (ha)"])
+        elif "DT Đang Thu Hoạch Cao Su (ha)" in data: land.harvest_area = parse_float_vn(data["DT Đang Thu Hoạch Cao Su (ha)"])
         if "DT Trống (ha)" in data: land.empty_area = parse_float_vn(data["DT Trống (ha)"])
         if "DT Đang Trồng (ha)" in data: land.planting_area = parse_float_vn(data["DT Đang Trồng (ha)"])
         if "SL Cây Thu Hoạch" in data: land.harvesting_trees = int(parse_float_vn(data["SL Cây Thu hoạch"])) if "SL Cây Thu hoạch" in data else int(parse_float_vn(data.get("SL Cây Thu Hoạch", "0")))
@@ -13190,7 +13192,7 @@ SL Cây Đang Trồng: {land.planting_trees or 0}</pre>"""
             f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
             f"<b>Trực Thuộc:</b> {land.affiliation or '—'}\n"
             f"<b>Diện Tích:</b> {land.total_area} ha\n"
-            f"<b>DT Cao Su:</b> {land.rubber_area} ha\n"
+            f"<b>DT Thu Hoạch:</b> {land.harvest_area} ha\n"
             f"<b>DT Trống:</b> {land.empty_area} ha\n"
             f"<b>DT Đang Trồng:</b> {land.planting_area} ha\n"
             f"<b>SL Cây Thu Hoạch:</b> {land.harvesting_trees or 0}\n"
@@ -13206,7 +13208,7 @@ SL Cây Đang Trồng: {land.planting_trees or 0}</pre>"""
 
 @bot.on_message(filters.command(["tien_nga_delete_agricultural_land", "tien_nga_xoa_dat_trong_trot"]) | filters.regex(r"^@\w+\s+/(tien_nga_delete_agricultural_land|tien_nga_xoa_dat_trong_trot)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_delete_agricultural_land_handler(client, message: Message) -> None:
@@ -13268,7 +13270,7 @@ async def del_land_callback(client, callback_query) -> None:
 
 @bot.on_message(filters.command(["tien_nga_list_agricultural_land", "tien_nga_danh_sach_dat_trong_trot", "tien_nga_ds_dat_trong_trot"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_agricultural_land|tien_nga_danh_sach_dat_trong_trot|tien_nga_ds_dat_trong_trot)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_list_agricultural_land_handler(client, message: Message) -> None:
@@ -13290,7 +13292,7 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
                     f"   Tên Đất: {l.land_name or '—'}\n"
                     f"   Địa Chỉ: {l.address or '—'}\n"
                     f"   Trực Thuộc: {l.affiliation or '—'}\n"
-                    f"   DT Tổng: {l.total_area} ha | Cao Su: {l.rubber_area} ha\n"
+                    f"   DT Tổng: {l.total_area} ha | Thu Hoạch: {l.harvest_area} ha\n"
                     f"   Trống: {l.empty_area} ha | Đang Trồng: {l.planting_area} ha\n"
                     f"   Cây Thu Hoạch: {l.harvesting_trees or 0} | Cây Đang Trồng: {l.planting_trees or 0}\n\n"
                 )
@@ -13312,7 +13314,7 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
                 cell.border = thin_border
                 cell.alignment = Alignment(horizontal="center")
             for row_idx, l in enumerate(lands, 2):
-                vals = [row_idx - 1, l.land_code, l.land_name or "", l.address or "", l.affiliation or "", l.total_area, l.rubber_area, l.empty_area, l.planting_area, l.harvesting_trees or 0, l.planting_trees or 0]
+                vals = [row_idx - 1, l.land_code, l.land_name or "", l.address or "", l.affiliation or "", l.total_area, l.harvest_area, l.empty_area, l.planting_area, l.harvesting_trees or 0, l.planting_trees or 0]
                 for col_idx, v in enumerate(vals, 1):
                     cell = ws.cell(row=row_idx, column=col_idx, value=v)
                     cell.border = thin_border
@@ -13337,7 +13339,7 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
 
 @bot.on_message(filters.command(["tien_nga_check_agricultural_land", "tien_nga_kt_dat_trong_trot"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_agricultural_land|tien_nga_kt_dat_trong_trot)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_check_agricultural_land_handler(client, message: Message) -> None:
@@ -13352,7 +13354,7 @@ async def tien_nga_check_agricultural_land_handler(client, message: Message) -> 
         return
 
     land_code = args[1].upper()
-    from app.models.business import AgriculturalLand, RubberTreeLog
+    from app.models.business import AgriculturalLand, CropTreeLog
 
     db = SessionLocal()
     try:
@@ -13365,7 +13367,7 @@ async def tien_nga_check_agricultural_land_handler(client, message: Message) -> 
             return
 
         # Lấy thống kê cây cao su
-        logs = db.query(RubberTreeLog).filter(RubberTreeLog.land_code == land_code).all()
+        logs = db.query(CropTreeLog).filter(CropTreeLog.land_code == land_code, CropTreeLog.crop_type == "cao_su").all()
         total_planted = sum(log.quantity or 0 for log in logs if log.action_type == "PLANT")
         total_cut = sum(log.quantity or 0 for log in logs if log.action_type == "CUT")
         plant_count = len([log for log in logs if log.action_type == "PLANT"])
@@ -13383,7 +13385,7 @@ async def tien_nga_check_agricultural_land_handler(client, message: Message) -> 
             f"━━━━━━━━━━━━━━━━━━\n\n"
             f"<b>DIỆN TÍCH</b>\n"
             f"  Tổng: <b>{land.total_area}</b> ha\n"
-            f"  Đang thu hoạch cao su: <b>{land.rubber_area}</b> ha\n"
+            f"  Đang thu hoạch: <b>{land.harvest_area}</b> ha\n"
             f"  Trống: <b>{land.empty_area}</b> ha\n"
             f"  Đang trồng: <b>{land.planting_area}</b> ha\n\n"
             f"<b>SỐ LƯỢNG CÂY</b>\n"
@@ -13416,7 +13418,7 @@ async def tien_nga_check_agricultural_land_handler(client, message: Message) -> 
 
 @bot.on_message(filters.command(["tien_nga_list_household", "tien_nga_ds_ho_dan"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_household|tien_nga_ds_ho_dan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_list_household_handler(client, message: Message) -> None:
@@ -13492,7 +13494,7 @@ async def tien_nga_list_household_handler(client, message: Message) -> None:
 
 @bot.on_message(filters.command(["tien_nga_check_harvest", "tien_nga_kiem_tra_thu_hoach"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_harvest|tien_nga_kiem_tra_thu_hoach)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_check_harvest_handler(client, message: Message) -> None:
@@ -13860,7 +13862,7 @@ async def _do_check_harvest(client, message, start_date, end_date, land_code=Non
 
 @bot.on_message(filters.command(["tien_nga_compare_harvest", "tien_nga_so_sanh_thu_hoach"]) | filters.regex(r"^@\w+\s+/(tien_nga_compare_harvest|tien_nga_so_sanh_thu_hoach)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
@@ -13914,7 +13916,7 @@ async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
         for hh in households:
             # Lấy đất
             land = land_map.get(hh.land_code) if hh.land_code else None
-            rubber_area = land.rubber_area if land else 0
+            harvest_area = land.harvest_area if land else 0
 
             # Lấy purchases trong khoảng thời gian
             purchases = db.query(DailyPurchases).filter(
@@ -13938,14 +13940,14 @@ async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
             rows.append({
                 "hh": hh,
                 "land": land,
-                "rubber_area": rubber_area,
+                "harvest_area": harvest_area,
                 "purchases": purchases,
                 "total_actual_weight": total_actual,
                 "total_dry_rubber": total_dry,
                 "total_amount": total_amount,
                 "total_paid": total_paid,
                 "total_saved": total_saved,
-                "avg_per_ha": total_actual / rubber_area if rubber_area > 0 else 0,
+                "avg_per_ha": total_actual / harvest_area if harvest_area > 0 else 0,
             })
 
         if not rows:
@@ -13994,7 +13996,7 @@ async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
                 hh.household_code,
                 hh.fullname or "",
                 hh.land_code or "—",
-                r["rubber_area"],
+                r["harvest_area"],
                 round(r["total_actual_weight"], 2),
                 round(r["total_dry_rubber"], 2),
                 round(r["total_amount"], 0),
@@ -14012,15 +14014,15 @@ async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
         ws_summary.cell(row=sum_row, column=1, value="TỔNG CỘNG").font = total_font
         ws_summary.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=4)
         
-        g_rubber = sum(r["rubber_area"] for r in rows)
+        g_harvest = sum(r["harvest_area"] for r in rows)
         g_act = sum(r["total_actual_weight"] for r in rows)
         g_dry = sum(r["total_dry_rubber"] for r in rows)
         g_amt = sum(r["total_amount"] for r in rows)
         g_paid = sum(r["total_paid"] for r in rows)
         g_sav = sum(r["total_saved"] for r in rows)
-        g_avg = g_act / g_rubber if g_rubber > 0 else 0
+        g_avg = g_act / g_harvest if g_harvest > 0 else 0
 
-        g_vals = [g_rubber, g_act, g_dry, g_amt, g_paid, g_sav, g_avg]
+        g_vals = [g_harvest, g_act, g_dry, g_amt, g_paid, g_sav, g_avg]
         
         for i in range(1, 12):
             c = ws_summary.cell(row=sum_row, column=i)
@@ -14051,7 +14053,7 @@ async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
             title_cell.alignment = Alignment(horizontal="center")
             
             ws_hh.merge_cells("A2:G2")
-            info_cell = ws_hh.cell(row=2, column=1, value=f"Mã Đất: {hh.land_code or '—'} | DT Cao Su: {r['rubber_area']} ha | TB KL/ha: {round(r['avg_per_ha'], 2)} kg/ha")
+            info_cell = ws_hh.cell(row=2, column=1, value=f"Mã Đất: {hh.land_code or '—'} | DT Thu Hoạch: {r['harvest_area']} ha | TB KL/ha: {round(r['avg_per_ha'], 2)} kg/ha")
             info_cell.alignment = Alignment(horizontal="center")
 
             for col_idx, hd in enumerate(hh_headers, 1):
@@ -14114,7 +14116,7 @@ async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
             caption=(
                 f"<b>SO SÁNH THU HOẠCH</b>\n"
                 f"Từ <b>{start_date.strftime('%d/%m/%Y')}</b> đến <b>{end_date.strftime('%d/%m/%Y')}</b>\n"
-                f"Tổng hộ dân: <b>{len(rows)}</b> | Tổng DT Cao Su: <b>{round(g_rubber, 2)} ha</b>"
+                f"Tổng hộ dân: <b>{len(rows)}</b> | Tổng DT Thu Hoạch: <b>{round(g_harvest, 2)} ha</b>"
             ),
             parse_mode=ParseMode.HTML
         )
@@ -14127,7 +14129,7 @@ async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
 
 @bot.on_message(filters.command(["tien_nga_daily_harvest", "tien_nga_thu_hoach_hang_ngay"]) | filters.regex(r"^@\w+\s+/(tien_nga_daily_harvest|tien_nga_thu_hoach_hang_ngay)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("member")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST, CustomTitle.MEMBER_HARVEST)
 async def tien_nga_daily_harvest_handler(client, message: Message) -> None:
@@ -14189,7 +14191,7 @@ Khối Lượng Mủ (Kg): 0</pre>
     land_code = data.get("Mã Đất", "").strip().upper()
     day_str = data.get("Ngày", "").strip()
     tree_count_str = data.get("Số Lượng Cây", "0").strip()
-    rubber_weight_str = data.get("Khối Lượng Mủ (Kg)", data.get("Khối Lượng Mủ", "0")).strip()
+    harvest_weight_str = data.get("Khối Lượng Mủ (Kg)", data.get("Khối Lượng Mủ", "0")).strip()
 
     if not hh_code:
         await message.reply_text("⚠️ <b>Mã Hộ Dân</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -14206,8 +14208,8 @@ Khối Lượng Mủ (Kg): 0</pre>
         await message.reply_text("⚠️ <b>Số Lượng Cây</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
         return
 
-    rubber_weight = float(parse_float_vn(rubber_weight_str))
-    if rubber_weight < 0:
+    harvest_weight = float(parse_float_vn(harvest_weight_str))
+    if harvest_weight < 0:
         await message.reply_text("⚠️ <b>Khối Lượng Mủ</b> không được âm.", parse_mode=ParseMode.HTML)
         return
 
@@ -14235,7 +14237,7 @@ Khối Lượng Mủ (Kg): 0</pre>
         from app.models.business import Projects
         from app.models.telegram import TelegramProjectMember
 
-        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        project = db.query(Projects).filter(Projects.project_name.in_(["Tiến Nga", "Thu Hoạch"])).first()
         if not project:
             await message.reply_text("⚠️ Không tìm thấy dự án Tiến Nga.", parse_mode=ParseMode.HTML)
             return
@@ -14273,7 +14275,7 @@ Khối Lượng Mủ (Kg): 0</pre>
         member_chat_id = message.chat.id
 
         # Gửi yêu cầu xác nhận lên nhóm main
-        cb_data = f"hc:{hh_code}:{use_land_code}:{day.strftime('%d%m%Y')}:{tree_count}:{int(unit_price)}:{member_chat_id}:{rubber_weight}"
+        cb_data = f"hc:{hh_code}:{use_land_code}:{day.strftime('%d%m%Y')}:{tree_count}:{int(unit_price)}:{member_chat_id}:{harvest_weight}"
         cb_deny = f"hd:{hh_code}:{member_chat_id}"
 
         keyboard = InlineKeyboardMarkup([
@@ -14294,7 +14296,7 @@ Khối Lượng Mủ (Kg): 0</pre>
                 f"<b>Mã Đất:</b> {land_display}\n"
                 f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
                 f"<b>Số Lượng Cây:</b> {tree_count:,}\n"
-                f"<b>Khối Lượng Mủ:</b> <code>{rubber_weight:,.2f} Kg</code>\n"
+                f"<b>Khối Lượng Mủ:</b> <code>{harvest_weight:,.2f} Kg</code>\n"
                 f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
                 f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n\n"
                 f"<i>Vui lòng xác nhận hoặc từ chối yêu cầu này.</i>"
@@ -14307,7 +14309,7 @@ Khối Lượng Mủ (Kg): 0</pre>
             f"<b>Đã gửi yêu cầu thu hoạch lên nhóm chính!</b>\n\n"
             f"<b>Hộ Dân:</b> {hh.fullname or hh_code}\n"
             f"<b>Số Lượng Cây:</b> {tree_count:,}\n"
-            f"<b>Khối Lượng Mủ:</b> <code>{rubber_weight:,.2f} Kg</code>\n"
+            f"<b>Khối Lượng Mủ:</b> <code>{harvest_weight:,.2f} Kg</code>\n"
             f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n\n"
             f"<i>Vui lòng chờ Admin/Owner xác nhận.</i>",
             parse_mode=ParseMode.HTML
@@ -14327,7 +14329,7 @@ async def harvest_confirm_callback(client, callback_query):
     import uuid as uuid_lib
 
     parts = callback_query.data.split(":")
-    # hc:hh_code:land_code:day:tree_count:unit_price:member_chat_id:rubber_weight
+    # hc:hh_code:land_code:day:tree_count:unit_price:member_chat_id:harvest_weight
     if len(parts) < 7:
         await callback_query.answer("⚠️ Dữ liệu không hợp lệ.", show_alert=True)
         return
@@ -14338,7 +14340,7 @@ async def harvest_confirm_callback(client, callback_query):
     tree_count = int(parts[4])
     unit_price = int(parts[5])
     member_chat_id = parts[6]
-    rubber_weight = float(parts[7]) if len(parts) > 7 else 0.0
+    harvest_weight = float(parts[7]) if len(parts) > 7 else 0.0
 
     total_amount = tree_count * unit_price
 
@@ -14366,7 +14368,8 @@ async def harvest_confirm_callback(client, callback_query):
             household_code=hh_code,
             land_code=land_code_val or None,
             tree_count=tree_count,
-            rubber_weight=rubber_weight,
+            harvest_weight=harvest_weight,
+            crop_type="cao_su",
             unit_price=unit_price,
             total_amount=total_amount
         )
@@ -14393,7 +14396,7 @@ async def harvest_confirm_callback(client, callback_query):
             f"<b>Mã Đất:</b> {land_display}\n"
             f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
             f"<b>Số Lượng Cây:</b> {tree_count:,}\n"
-            f"<b>Khối Lượng Mủ:</b> <code>{rubber_weight:,.2f} Kg</code>\n"
+            f"<b>Khối Lượng Mủ:</b> <code>{harvest_weight:,.2f} Kg</code>\n"
             f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
             f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
             f"<b>Công Nợ Mới:</b> <code>{fmt_money(hh.total_debt)}</code>\n\n"
@@ -14410,7 +14413,7 @@ async def harvest_confirm_callback(client, callback_query):
                     f"<b>Hộ Dân:</b> {hh.fullname or hh_code} (<code>{hh_code}</code>)\n"
                     f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
                     f"<b>Số Lượng Cây:</b> {tree_count:,}\n"
-                    f"<b>Khối Lượng Mủ:</b> <code>{rubber_weight:,.2f} Kg</code>\n"
+                    f"<b>Khối Lượng Mủ:</b> <code>{harvest_weight:,.2f} Kg</code>\n"
                     f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
                     f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
                     f"<b>Công Nợ Hiện Tại:</b> <code>{fmt_money(hh.total_debt)}</code>\n\n"
@@ -14469,7 +14472,7 @@ async def harvest_deny_callback(client, callback_query):
 
 @bot.on_message(filters.command(["tien_nga_check_household", "tien_nga_kiem_tra_ho_dan"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_household|tien_nga_kiem_tra_ho_dan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("member")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST, CustomTitle.MEMBER_HARVEST)
 async def tien_nga_check_household_handler(client, message: Message) -> None:
@@ -14515,7 +14518,7 @@ async def tien_nga_check_household_handler(client, message: Message) -> None:
                 f"<b>Tên Đất:</b> {land.land_name or '—'}\n"
                 f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
                 f"<b>DT Tổng:</b> {land.total_area} ha\n"
-                f"<b>DT Cao Su:</b> {land.rubber_area} ha\n"
+                f"<b>DT Thu Hoạch:</b> {land.harvest_area} ha\n"
                 f"<b>Cây Thu Hoạch:</b> {land.harvesting_trees or 0}\n"
                 f"<b>Cây Đang Trồng:</b> {land.planting_trees or 0}"
             )
@@ -14545,7 +14548,7 @@ async def tien_nga_check_household_handler(client, message: Message) -> None:
 
 @bot.on_message(filters.command(["tien_nga_check_daily_harvest", "tien_nga_kt_thu_hoach_hang_ngay"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_daily_harvest|tien_nga_kt_thu_hoach_hang_ngay)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_check_daily_harvest_handler(client, message: Message) -> None:
@@ -14832,7 +14835,7 @@ async def _do_check_daily_harvest(client, message, start_date, end_date, land_co
                     hv.day.strftime("%d/%m/%Y") if hv.day else "",
                     hv.land_code or "—",
                     hv.tree_count or 0,
-                    round(hv.rubber_weight or 0, 2),
+                    round(hv.harvest_weight or 0, 2),
                     round(hv.unit_price or 0, 0),
                     round(hv.total_amount or 0, 0)
                 ]
@@ -14851,7 +14854,7 @@ async def _do_check_daily_harvest(client, message, start_date, end_date, land_co
             ws.merge_cells(start_row=c_row, start_column=1, end_row=c_row, end_column=3)
             
             sum_trees = sum(hv.tree_count or 0 for hv in hv_list)
-            sum_rubber = sum(hv.rubber_weight or 0 for hv in hv_list)
+            sum_rubber = sum(hv.harvest_weight or 0 for hv in hv_list)
             
             for col_idx in range(1, 8):
                 cell = ws.cell(row=c_row, column=col_idx)
@@ -14894,7 +14897,7 @@ async def _do_check_daily_harvest(client, message, start_date, end_date, land_co
                 if not hh:
                     continue
                 s_trees = sum(hv.tree_count or 0 for hv in hv_list)
-                s_rubber = sum(hv.rubber_weight or 0 for hv in hv_list)
+                s_rubber = sum(hv.harvest_weight or 0 for hv in hv_list)
                 s_amount = sum(hv.total_amount or 0 for hv in hv_list)
                 g_trees += s_trees
                 g_rubber += s_rubber
@@ -14956,7 +14959,7 @@ async def _do_check_daily_harvest(client, message, start_date, end_date, land_co
 
 @bot.on_message(filters.command(["tien_nga_create_household", "tien_nga_tao_ho_dan"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_household|tien_nga_tao_ho_dan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_create_household_handler(client, message: Message) -> None:
@@ -15064,7 +15067,7 @@ Ngân Hàng: </pre>
 
 @bot.on_message(filters.command(["tien_nga_update_household", "tien_nga_cap_nhat_ho_dan"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_household|tien_nga_cap_nhat_ho_dan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_update_household_handler(client, message: Message) -> None:
@@ -15176,7 +15179,7 @@ Ngân Hàng: {hh.bank_name or ''}</pre>"""
 
 @bot.on_message(filters.command(["tien_nga_delete_household", "tien_nga_xoa_ho_dan"]) | filters.regex(r"^@\w+\s+/(tien_nga_delete_household|tien_nga_xoa_ho_dan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_delete_household_handler(client, message: Message) -> None:
@@ -15242,7 +15245,7 @@ async def del_hh_callback(client, callback_query) -> None:
 # --- Lệnh: /tien_nga_rubber_tree / /tien_nga_cay_cao_su ---
 @bot.on_message(filters.command(["tien_nga_rubber_tree", "tien_nga_cay_cao_su"]) | filters.regex(r"^@\w+\s+/(tien_nga_rubber_tree|tien_nga_cay_cao_su)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_rubber_tree_handler(client, message: Message) -> None:
@@ -15395,7 +15398,7 @@ async def tien_nga_rubber_tree_form_handler(client, message: Message) -> None:
         await message.reply_text("⚠️ Định dạng <b>Ngày</b> không hợp lệ. Dùng <code>dd/mm/yyyy</code>.", parse_mode=ParseMode.HTML)
         return
 
-    from app.models.business import AgriculturalLand, RubberTreeLog
+    from app.models.business import AgriculturalLand, CropTreeLog
     import uuid as uuid_lib
 
     db = SessionLocal()
@@ -15420,7 +15423,7 @@ async def tien_nga_rubber_tree_form_handler(client, message: Message) -> None:
                 return
 
         # Tạo bản ghi log
-        new_log = RubberTreeLog(
+        new_log = CropTreeLog(
             id=uuid_lib.uuid4(),
             day=day,
             land_code=land_code,
@@ -15428,6 +15431,7 @@ async def tien_nga_rubber_tree_form_handler(client, message: Message) -> None:
             quantity=quantity,
             executor=executor or None,
             notes=notes,
+            crop_type="cao_su",
         )
         db.add(new_log)
 
@@ -15473,7 +15477,7 @@ async def tien_nga_rubber_tree_form_handler(client, message: Message) -> None:
 # --- Lệnh: /tien_nga_check_rubber_tree / /tien_nga_kt_cay_cao_su ---
 @bot.on_message(filters.command(["tien_nga_check_rubber_tree", "tien_nga_kt_cay_cao_su"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_rubber_tree|tien_nga_kt_cay_cao_su)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
 async def tien_nga_check_rubber_tree_handler(client, message: Message) -> None:
@@ -15512,7 +15516,7 @@ async def tien_nga_check_rubber_tree_handler(client, message: Message) -> None:
 async def rt_check_callback(client, callback_query: CallbackQuery):
     land_code = callback_query.matches[0].group(1)
 
-    from app.models.business import AgriculturalLand, RubberTreeLog
+    from app.models.business import AgriculturalLand, CropTreeLog
     db = SessionLocal()
     try:
         land = db.query(AgriculturalLand).filter(
@@ -15524,9 +15528,10 @@ async def rt_check_callback(client, callback_query: CallbackQuery):
             return
 
         # Lấy tất cả log của đất này
-        logs = db.query(RubberTreeLog).filter(
-            RubberTreeLog.land_code == land_code
-        ).order_by(RubberTreeLog.day.desc()).all()
+        logs = db.query(CropTreeLog).filter(
+            CropTreeLog.land_code == land_code,
+            CropTreeLog.crop_type == "cao_su"
+        ).order_by(CropTreeLog.day.desc()).all()
 
         # Tính tổng
         total_planted = sum(log.quantity or 0 for log in logs if log.action_type == "PLANT")
@@ -15600,6 +15605,1088 @@ async def rt_check_callback(client, callback_query: CallbackQuery):
         db.close()
 
 # =========================================================================================
+# QUẢN LÝ CÂY SẦU RIÊNG (THU HOẠCH)
+# =========================================================================================
+
+# --- Lệnh: /tien_nga_cay_sau_rieng ---
+@bot.on_message(filters.command(["tien_nga_cay_sau_rieng"]) | filters.regex(r"^@\w+\s+/tien_nga_cay_sau_rieng\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_durian_tree_handler(client, message: Message) -> None:
+    lines = (message.text or "").strip().split("\n")
+    if len(lines) >= 2:
+        await tien_nga_durian_tree_form_handler(client, message)
+        return
+
+    args = await check_command_target(client, message.text, ["tien_nga_cay_sau_rieng"])
+    if args is None: return
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Trồng mới", callback_data="sr_action_PLANT")],
+        [InlineKeyboardButton("Chặt cây", callback_data="sr_action_CUT")],
+        [InlineKeyboardButton("Hủy", callback_data="sr_cancel")]
+    ])
+    await message.reply_text(
+        "<b>QUẢN LÝ CÂY SẦU RIÊNG</b>\n\n"
+        "Vui lòng chọn hành động:",
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML
+    )
+
+@bot.on_callback_query(filters.regex(r"^sr_action_(PLANT|CUT)$"))
+async def sr_action_callback(client, callback_query: CallbackQuery):
+    action_type = callback_query.matches[0].group(1)
+    action_label = "TRỒNG MỚI" if action_type == "PLANT" else "CHẶT CÂY"
+
+    from app.models.business import AgriculturalLand
+    db = SessionLocal()
+    try:
+        lands = db.query(AgriculturalLand).filter(
+            AgriculturalLand.status == "ACTIVE"
+        ).order_by(AgriculturalLand.land_code).all()
+        if not lands:
+            await callback_query.message.edit_text("⚠️ Chưa có đất trồng trọt nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for land in lands:
+            label = f"{land.land_code} - {land.land_name or land.address or ''}"
+            buttons.append([InlineKeyboardButton(label, callback_data=f"sr_land_{action_type}_{land.land_code}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="sr_cancel")])
+
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await callback_query.message.edit_text(
+            f"<b>{action_label} CÂY SẦU RIÊNG</b>\n\n"
+            "Chọn đất trồng trọt:",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in sr_action_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^sr_land_(PLANT|CUT)_(.+)$"))
+async def sr_land_callback(client, callback_query: CallbackQuery):
+    action_type = callback_query.matches[0].group(1)
+    land_code = callback_query.matches[0].group(2)
+    action_label = "TRỒNG MỚI" if action_type == "PLANT" else "CHẶT CÂY"
+
+    from app.models.business import AgriculturalLand
+    db = SessionLocal()
+    try:
+        land = db.query(AgriculturalLand).filter(
+            AgriculturalLand.land_code == land_code,
+            AgriculturalLand.status == "ACTIVE"
+        ).first()
+        if not land:
+            await callback_query.answer("⚠️ Không tìm thấy đất.", show_alert=True)
+            return
+
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        username = callback_query.from_user.username or callback_query.from_user.first_name or "N/A"
+
+        form = (
+            f"<b>FORM {action_label} CÂY SẦU RIÊNG</b>\n\n"
+            f"Đất: <b>{land.land_name or land.land_code}</b> (<code>{land.land_code}</code>)\n"
+            f"Cây đang thu hoạch: <b>{land.harvesting_trees or 0}</b>\n"
+            f"Cây đang trồng: <b>{land.planting_trees or 0}</b>\n\n"
+            f"Sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
+            f"<pre>/tien_nga_cay_sau_rieng\n"
+            f"Loại: {action_label}\n"
+            f"Mã Đất: {land.land_code}\n"
+            f"Ngày: {today_str}\n"
+            f"Số Lượng: 0\n"
+            f"Người Thực Hiện: @{username}\n"
+            f"Ghi Chú: </pre>"
+        )
+        await callback_query.message.edit_text(form, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        LogError(f"Error in sr_land_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^sr_cancel$"))
+async def sr_cancel_callback(client, callback_query: CallbackQuery):
+    await callback_query.message.delete()
+
+@bot.on_message(filters.regex(r"^/tien_nga_cay_sau_rieng\n") & filters.group)
+async def tien_nga_durian_tree_form_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+    if len(lines) < 2:
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    action_raw = data.get("Loại", data.get("Loai", "")).strip().upper()
+    if "TRỒNG" in action_raw or "TRONG" in action_raw or "PLANT" in action_raw:
+        action_type = "PLANT"
+    elif "CHẶT" in action_raw or "CHAT" in action_raw or "CUT" in action_raw:
+        action_type = "CUT"
+    else:
+        await message.reply_text("⚠️ Loại phải là <b>TRỒNG MỚI</b> hoặc <b>CHẶT CÂY</b>.", parse_mode=ParseMode.HTML)
+        return
+
+    land_code = data.get("Mã Đất", data.get("Ma Dat", "")).strip().upper()
+    day_str = data.get("Ngày", data.get("Ngay", "")).strip()
+    quantity_str = data.get("Số Lượng", data.get("So Luong", "0")).strip()
+    executor = data.get("Người Thực Hiện", data.get("Nguoi Thuc Hien", "")).strip()
+    notes = data.get("Ghi Chú", data.get("Ghi Chu", "")).strip() or None
+
+    if not land_code:
+        await message.reply_text("⚠️ <b>Mã Đất</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        quantity = int(parse_float_vn(quantity_str))
+    except:
+        await message.reply_text("⚠️ <b>Số Lượng</b> phải là số nguyên.", parse_mode=ParseMode.HTML)
+        return
+
+    if quantity <= 0:
+        await message.reply_text("⚠️ <b>Số Lượng</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        day = datetime.strptime(day_str, "%d/%m/%Y").date()
+    except:
+        await message.reply_text("⚠️ Định dạng <b>Ngày</b> không hợp lệ. Dùng <code>dd/mm/yyyy</code>.", parse_mode=ParseMode.HTML)
+        return
+
+    from app.models.business import AgriculturalLand, CropTreeLog
+    import uuid as uuid_lib
+
+    db = SessionLocal()
+    try:
+        land = db.query(AgriculturalLand).filter(
+            AgriculturalLand.land_code == land_code,
+            AgriculturalLand.status == "ACTIVE"
+        ).first()
+        if not land:
+            await message.reply_text(f"⚠️ Không tìm thấy đất với mã <b>{land_code}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        if action_type == "CUT":
+            current_total = (land.harvesting_trees or 0) + (land.planting_trees or 0)
+            if quantity > current_total:
+                await message.reply_text(
+                    f"⚠️ Số lượng chặt ({quantity}) vượt quá tổng số cây hiện có ({current_total}).\n"
+                    f"Cây thu hoạch: {land.harvesting_trees or 0} | Cây đang trồng: {land.planting_trees or 0}",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        new_log = CropTreeLog(
+            id=uuid_lib.uuid4(),
+            day=day,
+            land_code=land_code,
+            action_type=action_type,
+            quantity=quantity,
+            executor=executor or None,
+            notes=notes,
+            crop_type="sau_rieng",
+        )
+        db.add(new_log)
+
+        if action_type == "PLANT":
+            land.planting_trees = (land.planting_trees or 0) + quantity
+        else:
+            remaining = quantity
+            harvest_deduct = min(remaining, land.harvesting_trees or 0)
+            land.harvesting_trees = (land.harvesting_trees or 0) - harvest_deduct
+            remaining -= harvest_deduct
+            if remaining > 0:
+                land.planting_trees = (land.planting_trees or 0) - remaining
+
+        db.commit()
+
+        action_label = "TRỒNG MỚI" if action_type == "PLANT" else "CHẶT CÂY"
+        action_icon = "🌱" if action_type == "PLANT" else "🪓"
+
+        await message.reply_text(
+            f"{action_icon} <b>{action_label} CÂY SẦU RIÊNG THÀNH CÔNG!</b>\n\n"
+            f"<b>Đất:</b> {land.land_name or land.land_code} (<code>{land_code}</code>)\n"
+            f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
+            f"<b>Số Lượng:</b> {quantity} cây\n"
+            f"<b>Người TH:</b> {executor or '—'}\n"
+            f"<b>Ghi Chú:</b> {notes or '—'}\n\n"
+            f"<b>Cập nhật số cây:</b>\n"
+            f"  Cây thu hoạch: <b>{land.harvesting_trees or 0}</b>\n"
+            f"  Cây đang trồng: <b>{land.planting_trees or 0}</b>",
+            parse_mode=ParseMode.HTML
+        )
+        LogInfo(f"[TienNga] DurianTree {action_type}: {quantity} trees on {land_code} by {executor}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in durian tree form handler: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# --- Lệnh: /tien_nga_kt_cay_sau_rieng ---
+@bot.on_message(filters.command(["tien_nga_kt_cay_sau_rieng"]) | filters.regex(r"^@\w+\s+/tien_nga_kt_cay_sau_rieng\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_check_durian_tree_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_kt_cay_sau_rieng"])
+    if args is None: return
+
+    from app.models.business import AgriculturalLand
+    db = SessionLocal()
+    try:
+        lands = db.query(AgriculturalLand).filter(
+            AgriculturalLand.status == "ACTIVE"
+        ).order_by(AgriculturalLand.land_code).all()
+        if not lands:
+            await message.reply_text("⚠️ Chưa có đất trồng trọt nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        buttons = []
+        for land in lands:
+            label = f"{land.land_code} - {land.land_name or land.address or ''}"
+            buttons.append([InlineKeyboardButton(label, callback_data=f"sr_check_{land.land_code}")])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="sr_cancel")])
+
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await message.reply_text(
+            "<b>KIỂM TRA CÂY SẦU RIÊNG</b>\n\n"
+            "Chọn đất cần kiểm tra:",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in check durian tree handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^sr_check_(.+)$"))
+async def sr_check_callback(client, callback_query: CallbackQuery):
+    land_code = callback_query.matches[0].group(1)
+
+    from app.models.business import AgriculturalLand, CropTreeLog
+    db = SessionLocal()
+    try:
+        land = db.query(AgriculturalLand).filter(
+            AgriculturalLand.land_code == land_code,
+            AgriculturalLand.status == "ACTIVE"
+        ).first()
+        if not land:
+            await callback_query.answer("⚠️ Không tìm thấy.", show_alert=True)
+            return
+
+        logs = db.query(CropTreeLog).filter(
+            CropTreeLog.land_code == land_code,
+            CropTreeLog.crop_type == "sau_rieng"
+        ).order_by(CropTreeLog.day.desc()).all()
+
+        total_planted = sum(log.quantity or 0 for log in logs if log.action_type == "PLANT")
+        total_cut = sum(log.quantity or 0 for log in logs if log.action_type == "CUT")
+        plant_logs = [log for log in logs if log.action_type == "PLANT"]
+        cut_logs = [log for log in logs if log.action_type == "CUT"]
+
+        text = (
+            f"<b>KIỂM TRA CÂY SẦU RIÊNG</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>Đất:</b> {land.land_name or land.land_code} (<code>{land.land_code}</code>)\n"
+            f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>SỐ LƯỢNG CÂY:</b>\n"
+            f"<b>Cây thu hoạch:</b> {land.harvesting_trees or 0}\n"
+            f"<b>Cây đang trồng:</b> {land.planting_trees or 0}\n"
+            f"<b>Tổng cây hiện có:</b> {(land.harvesting_trees or 0) + (land.planting_trees or 0)}\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+        )
+
+        text += (
+            f"<b>THỐNG KÊ:</b>\n"
+            f"  Tổng trồng mới: <b>{total_planted}</b> cây ({len(plant_logs)} lần)\n"
+            f"  Tổng chặt bỏ: <b>{total_cut}</b> cây ({len(cut_logs)} lần)\n\n"
+        )
+
+        text += f"🌱 <b>LỊCH SỬ TRỒNG MỚI ({len(plant_logs)})</b>\n"
+        if not plant_logs:
+            text += "  <i>Chưa có bản ghi nào.</i>\n\n"
+        else:
+            for idx, log in enumerate(plant_logs[:20], 1):
+                day_str = log.day.strftime("%d/%m/%Y") if log.day else "—"
+                text += f"  {idx}. {day_str} | {log.quantity} cây | {log.executor or '—'}"
+                if log.notes:
+                    text += f" | {log.notes}"
+                text += "\n"
+            if len(plant_logs) > 20:
+                text += f"  <i>... và {len(plant_logs) - 20} bản ghi khác.</i>\n"
+            text += "\n"
+
+        text += f"🪓 <b>LỊCH SỬ CHẶT CÂY ({len(cut_logs)})</b>\n"
+        if not cut_logs:
+            text += "  <i>Chưa có bản ghi nào.</i>\n"
+        else:
+            for idx, log in enumerate(cut_logs[:20], 1):
+                day_str = log.day.strftime("%d/%m/%Y") if log.day else "—"
+                text += f"  {idx}. {day_str} | {log.quantity} cây | {log.executor or '—'}"
+                if log.notes:
+                    text += f" | {log.notes}"
+                text += "\n"
+            if len(cut_logs) > 20:
+                text += f"  <i>... và {len(cut_logs) - 20} bản ghi khác.</i>\n"
+
+        if len(text) > 4000:
+            text = text[:3950] + "\n\n<i>... (nội dung bị cắt do giới hạn hiển thị)</i>"
+
+        await callback_query.message.edit_text(text, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error in sr_check_callback: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+# --- Lệnh: /tien_nga_thu_hoach_sau_rieng (main) ---
+@bot.on_message(filters.command(["tien_nga_thu_hoach_sau_rieng"]) | filters.regex(r"^@\w+\s+/tien_nga_thu_hoach_sau_rieng\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_durian_harvest_main_handler(client, message: Message) -> None:
+    """Thu hoạch sầu riêng — dành cho nhóm main (nhập trực tiếp, không cần xác nhận)."""
+    from datetime import datetime as dt_cls
+    from app.models.business import Households, AgriculturalLand, DailyHarvest
+    import uuid as uuid_lib
+
+    lines = message.text.strip().split("\n")
+
+    if len(lines) < 2:
+        if len(lines[0].split()) < 2:
+            await message.reply_text(
+                "<b>THU HOẠCH SẦU RIÊNG</b>\n\n"
+                "Cú pháp: <code>/tien_nga_thu_hoach_sau_rieng [Mã Hộ Dân]</code>\n\n"
+                "VD: <code>/tien_nga_thu_hoach_sau_rieng HD001</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        hh_code = lines[0].split()[1].upper()
+        db = SessionLocal()
+        try:
+            hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
+            if not hh:
+                await message.reply_text(f"⚠️ Không tìm thấy hộ dân với mã <b>{hh_code}</b>.", parse_mode=ParseMode.HTML)
+                return
+
+            today = dt_cls.now().strftime("%d/%m/%Y")
+            form = f"""<b>FORM THU HOẠCH SẦU RIÊNG</b>
+
+Hộ dân: <b>{hh.fullname or hh_code}</b> (<code>{hh_code}</code>)
+Mã đất: <code>{hh.land_code or '—'}</code>
+
+Sao chép form dưới, điền thông tin và gửi lại:
+
+<pre>/tien_nga_thu_hoach_sau_rieng
+Mã Hộ Dân: {hh_code}
+Mã Đất: {hh.land_code or ''}
+Ngày: {today}
+Khối Lượng (Kg): 0
+Đơn Giá (VNĐ/Kg): 0</pre>
+
+<i>Ghi chú: Nhập đơn giá trực tiếp cho mỗi lần thu hoạch.</i>"""
+            await message.reply_text(form, parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    # Xử lý form submit
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    hh_code = data.get("Mã Hộ Dân", "").strip().upper()
+    land_code = data.get("Mã Đất", "").strip().upper()
+    day_str = data.get("Ngày", "").strip()
+    weight_str = data.get("Khối Lượng (Kg)", data.get("Khối Lượng", "0")).strip()
+    price_str = data.get("Đơn Giá (VNĐ/Kg)", data.get("Đơn Giá", "0")).strip()
+
+    if not hh_code:
+        await message.reply_text("⚠️ <b>Mã Hộ Dân</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        day = dt_cls.strptime(day_str, "%d/%m/%Y").date()
+    except Exception:
+        await message.reply_text("⚠️ Định dạng ngày không hợp lệ. VD: <code>27/04/2026</code>", parse_mode=ParseMode.HTML)
+        return
+
+    harvest_weight = float(parse_float_vn(weight_str))
+    if harvest_weight <= 0:
+        await message.reply_text("⚠️ <b>Khối Lượng</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
+    unit_price = float(parse_float_vn(price_str))
+    if unit_price < 0:
+        await message.reply_text("⚠️ <b>Đơn Giá</b> không được âm.", parse_mode=ParseMode.HTML)
+        return
+
+    total_amount = harvest_weight * unit_price
+
+    db = SessionLocal()
+    try:
+        hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
+        if not hh:
+            await message.reply_text(f"⚠️ Không tìm thấy hộ dân với mã <b>{hh_code}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        use_land_code = land_code or hh.land_code or ""
+        land = None
+        if use_land_code:
+            land = db.query(AgriculturalLand).filter(AgriculturalLand.land_code == use_land_code, AgriculturalLand.status == "ACTIVE").first()
+
+        new_harvest = DailyHarvest(
+            id=uuid_lib.uuid4(),
+            day=day,
+            household_code=hh_code,
+            land_code=use_land_code or None,
+            tree_count=0,
+            harvest_weight=harvest_weight,
+            unit_price=unit_price,
+            total_amount=total_amount,
+            crop_type="sau_rieng"
+        )
+        db.add(new_harvest)
+
+        hh.total_debt = (hh.total_debt or 0) + total_amount
+        db.commit()
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        land_display = f"<code>{use_land_code or '—'}</code>"
+        if land and land.land_name:
+            land_display += f" ({land.land_name})"
+
+        await message.reply_text(
+            f"✅ <b>THU HOẠCH SẦU RIÊNG THÀNH CÔNG!</b>\n\n"
+            f"<b>Hộ Dân:</b> {hh.fullname or hh_code} (<code>{hh_code}</code>)\n"
+            f"<b>Mã Đất:</b> {land_display}\n"
+            f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
+            f"<b>Khối Lượng:</b> <code>{harvest_weight:,.2f} Kg</code>\n"
+            f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
+            f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
+            f"<b>Công Nợ Mới:</b> <code>{fmt_money(hh.total_debt)}</code>",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error creating durian harvest: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# --- Lệnh: /tien_nga_thu_hoach_sr_hang_ngay (member) ---
+@bot.on_message(filters.command(["tien_nga_thu_hoach_sr_hang_ngay"]) | filters.regex(r"^@\w+\s+/tien_nga_thu_hoach_sr_hang_ngay\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST, CustomTitle.MEMBER_HARVEST)
+async def tien_nga_durian_harvest_member_handler(client, message: Message) -> None:
+    """Thu hoạch sầu riêng hàng ngày — member gửi, main xác nhận."""
+    from datetime import datetime as dt_cls
+    from app.models.business import Households, AgriculturalLand
+
+    lines = message.text.strip().split("\n")
+    args = lines[0].strip().split()
+
+    if len(lines) < 2:
+        if len(args) < 2:
+            await message.reply_text(
+                "<b>THU HOẠCH SẦU RIÊNG HÀNG NGÀY</b>\n\n"
+                "Cú pháp: <code>/tien_nga_thu_hoach_sr_hang_ngay [Mã Hộ Dân]</code>\n\n"
+                "VD: <code>/tien_nga_thu_hoach_sr_hang_ngay HD001</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        hh_code = args[1].upper()
+        db = SessionLocal()
+        try:
+            hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
+            if not hh:
+                await message.reply_text(f"⚠️ Không tìm thấy hộ dân với mã <b>{hh_code}</b>.", parse_mode=ParseMode.HTML)
+                return
+
+            today = dt_cls.now().strftime("%d/%m/%Y")
+            form = f"""<b>FORM THU HOẠCH SẦU RIÊNG</b>
+
+Hộ dân: <b>{hh.fullname or hh_code}</b> (<code>{hh_code}</code>)
+Mã đất: <code>{hh.land_code or '—'}</code>
+
+Sao chép form dưới, điền thông tin và gửi lại:
+
+<pre>/tien_nga_thu_hoach_sr_hang_ngay
+Mã Hộ Dân: {hh_code}
+Mã Đất: {hh.land_code or ''}
+Ngày: {today}
+Khối Lượng (Kg): 0
+Đơn Giá (VNĐ/Kg): 0</pre>
+
+<i>Ghi chú: Nhập đơn giá trực tiếp cho mỗi lần thu hoạch.</i>"""
+            await message.reply_text(form, parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    # Parse form data
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    hh_code = data.get("Mã Hộ Dân", "").strip().upper()
+    land_code = data.get("Mã Đất", "").strip().upper()
+    day_str = data.get("Ngày", "").strip()
+    weight_str = data.get("Khối Lượng (Kg)", data.get("Khối Lượng", "0")).strip()
+    price_str = data.get("Đơn Giá (VNĐ/Kg)", data.get("Đơn Giá", "0")).strip()
+
+    if not hh_code:
+        await message.reply_text("⚠️ <b>Mã Hộ Dân</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        day = dt_cls.strptime(day_str, "%d/%m/%Y").date()
+    except Exception:
+        await message.reply_text("⚠️ Định dạng ngày không hợp lệ. VD: <code>27/04/2026</code>", parse_mode=ParseMode.HTML)
+        return
+
+    harvest_weight = float(parse_float_vn(weight_str))
+    if harvest_weight <= 0:
+        await message.reply_text("⚠️ <b>Khối Lượng</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
+    unit_price = float(parse_float_vn(price_str))
+    if unit_price < 0:
+        await message.reply_text("⚠️ <b>Đơn Giá</b> không được âm.", parse_mode=ParseMode.HTML)
+        return
+
+    total_amount = harvest_weight * unit_price
+
+    db = SessionLocal()
+    try:
+        hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
+        if not hh:
+            await message.reply_text(f"⚠️ Không tìm thấy hộ dân với mã <b>{hh_code}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        use_land_code = land_code or hh.land_code or ""
+        land = None
+        if use_land_code:
+            land = db.query(AgriculturalLand).filter(AgriculturalLand.land_code == use_land_code, AgriculturalLand.status == "ACTIVE").first()
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        # Tìm nhóm main để gửi yêu cầu xác nhận
+        from app.models.business import Projects
+        from app.models.telegram import TelegramProjectMember
+
+        project = db.query(Projects).filter(Projects.project_name.in_(["Tiến Nga", "Thu Hoạch"])).first()
+        if not project:
+            await message.reply_text("⚠️ Không tìm thấy dự án Tiến Nga.", parse_mode=ParseMode.HTML)
+            return
+
+        current_member_chat = str(message.chat.id)
+        member_record = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.project_id == project.id,
+            TelegramProjectMember.chat_id == current_member_chat,
+            TelegramProjectMember.role == "member"
+        ).first()
+
+        main_chat = None
+        if member_record and member_record.parent_id:
+            main_chat = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == project.id,
+                TelegramProjectMember.chat_id == member_record.parent_id,
+                TelegramProjectMember.role == "main"
+            ).first()
+
+        if not main_chat:
+            main_chat = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == project.id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title == "main_harvest"
+            ).first()
+
+        if not main_chat or not main_chat.chat_id:
+            await message.reply_text("⚠️ Không tìm thấy nhóm chính để gửi yêu cầu.", parse_mode=ParseMode.HTML)
+            return
+
+        user_display = message.from_user.first_name or message.from_user.username or str(message.from_user.id)
+        member_chat_id = message.chat.id
+
+        # callback data: sc:hh_code:land_code:day:weight:price:member_chat_id
+        cb_data = f"sc:{hh_code}:{use_land_code}:{day.strftime('%d%m%Y')}:{harvest_weight}:{int(unit_price)}:{member_chat_id}"
+        cb_deny = f"sd:{hh_code}:{member_chat_id}"
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Xác Nhận", callback_data=cb_data)],
+            [InlineKeyboardButton("Từ Chối", callback_data=cb_deny)]
+        ])
+
+        land_display = f"<code>{use_land_code or '—'}</code>"
+        if land and land.land_name:
+            land_display += f" ({land.land_name})"
+
+        await client.send_message(
+            chat_id=int(main_chat.chat_id),
+            text=(
+                f"🔔 <b>YÊU CẦU XÁC NHẬN THU HOẠCH SẦU RIÊNG</b>\n\n"
+                f"<b>Người gửi:</b> {user_display}\n"
+                f"<b>Hộ Dân:</b> {hh.fullname or hh_code} (<code>{hh_code}</code>)\n"
+                f"<b>Mã Đất:</b> {land_display}\n"
+                f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
+                f"<b>Khối Lượng:</b> <code>{harvest_weight:,.2f} Kg</code>\n"
+                f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
+                f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n\n"
+                f"<i>Vui lòng xác nhận hoặc từ chối yêu cầu này.</i>"
+            ),
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+
+        await message.reply_text(
+            f"<b>Đã gửi yêu cầu thu hoạch sầu riêng lên nhóm chính!</b>\n\n"
+            f"<b>Hộ Dân:</b> {hh.fullname or hh_code}\n"
+            f"<b>Khối Lượng:</b> <code>{harvest_weight:,.2f} Kg</code>\n"
+            f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
+            f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n\n"
+            f"<i>Vui lòng chờ Admin/Owner xác nhận.</i>",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error creating durian harvest request: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# Callback: Xác nhận thu hoạch sầu riêng
+@bot.on_callback_query(filters.regex(r"^sc:"))
+async def durian_harvest_confirm_callback(client, callback_query):
+    from datetime import datetime as dt_cls
+    from app.models.business import Households, AgriculturalLand, DailyHarvest
+    import uuid as uuid_lib
+
+    parts = callback_query.data.split(":")
+    # sc:hh_code:land_code:day:weight:price:member_chat_id
+    if len(parts) < 7:
+        await callback_query.answer("⚠️ Dữ liệu không hợp lệ.", show_alert=True)
+        return
+
+    hh_code = parts[1]
+    land_code_val = parts[2]
+    day_str = parts[3]
+    harvest_weight = float(parts[4])
+    unit_price = int(parts[5])
+    member_chat_id = parts[6]
+
+    total_amount = harvest_weight * unit_price
+
+    try:
+        day = dt_cls.strptime(day_str, "%d%m%Y").date()
+    except Exception:
+        await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
+        return
+
+    db = SessionLocal()
+    try:
+        hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
+        if not hh:
+            await callback_query.answer(f"⚠️ Không tìm thấy hộ dân {hh_code}.", show_alert=True)
+            return
+
+        land = None
+        if land_code_val:
+            land = db.query(AgriculturalLand).filter(AgriculturalLand.land_code == land_code_val, AgriculturalLand.status == "ACTIVE").first()
+
+        new_harvest = DailyHarvest(
+            id=uuid_lib.uuid4(),
+            day=day,
+            household_code=hh_code,
+            land_code=land_code_val or None,
+            tree_count=0,
+            harvest_weight=harvest_weight,
+            unit_price=unit_price,
+            total_amount=total_amount,
+            crop_type="sau_rieng"
+        )
+        db.add(new_harvest)
+
+        hh.total_debt = (hh.total_debt or 0) + total_amount
+        db.commit()
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        approver = callback_query.from_user.first_name or callback_query.from_user.username or str(callback_query.from_user.id)
+
+        land_display = f"<code>{land_code_val or '—'}</code>"
+        if land and land.land_name:
+            land_display += f" ({land.land_name})"
+
+        await callback_query.message.edit_text(
+            f"✅ <b>ĐÃ XÁC NHẬN THU HOẠCH SẦU RIÊNG</b>\n\n"
+            f"<b>Hộ Dân:</b> {hh.fullname or hh_code} (<code>{hh_code}</code>)\n"
+            f"<b>Mã Đất:</b> {land_display}\n"
+            f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
+            f"<b>Khối Lượng:</b> <code>{harvest_weight:,.2f} Kg</code>\n"
+            f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
+            f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
+            f"<b>Công Nợ Mới:</b> <code>{fmt_money(hh.total_debt)}</code>\n\n"
+            f"<b>Xác nhận bởi:</b> {approver}",
+            parse_mode=ParseMode.HTML
+        )
+
+        try:
+            await client.send_message(
+                chat_id=int(member_chat_id),
+                text=(
+                    f"✅ <b>Thu Hoạch Sầu Riêng Đã Được Xác Nhận!</b>\n\n"
+                    f"<b>Hộ Dân:</b> {hh.fullname or hh_code} (<code>{hh_code}</code>)\n"
+                    f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
+                    f"<b>Khối Lượng:</b> <code>{harvest_weight:,.2f} Kg</code>\n"
+                    f"<b>Đơn Giá:</b> <code>{fmt_money(unit_price)}</code>\n"
+                    f"<b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
+                    f"<b>Công Nợ Hiện Tại:</b> <code>{fmt_money(hh.total_debt)}</code>\n\n"
+                    f"<b>Xác nhận bởi:</b> {approver}"
+                ),
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
+
+        await callback_query.answer("✅ Đã xác nhận thu hoạch sầu riêng.", show_alert=False)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error confirming durian harvest: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+# Callback: Từ chối thu hoạch sầu riêng
+@bot.on_callback_query(filters.regex(r"^sd:"))
+async def durian_harvest_deny_callback(client, callback_query):
+    parts = callback_query.data.split(":")
+    if len(parts) < 3:
+        await callback_query.answer("⚠️ Dữ liệu không hợp lệ.", show_alert=True)
+        return
+
+    hh_code = parts[1]
+    member_chat_id = parts[2]
+
+    denier = callback_query.from_user.first_name or callback_query.from_user.username or str(callback_query.from_user.id)
+
+    await callback_query.message.edit_text(
+        f"❌ <b>ĐÃ TỪ CHỐI THU HOẠCH SẦU RIÊNG</b>\n\n"
+        f"<b>Hộ Dân:</b> <code>{hh_code}</code>\n"
+        f"<b>Từ chối bởi:</b> {denier}",
+        parse_mode=ParseMode.HTML
+    )
+
+    try:
+        await client.send_message(
+            chat_id=int(member_chat_id),
+            text=(
+                f"❌ <b>Yêu Cầu Thu Hoạch Sầu Riêng Bị Từ Chối</b>\n\n"
+                f"<b>Hộ Dân:</b> <code>{hh_code}</code>\n"
+                f"<b>Từ chối bởi:</b> {denier}\n\n"
+                f"<i>Vui lòng kiểm tra lại và gửi yêu cầu mới nếu cần.</i>"
+            ),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        pass
+
+    await callback_query.answer("❌ Đã từ chối.", show_alert=False)
+
+
+# --- Lệnh: /tien_nga_kt_thu_hoach_sr ---
+@bot.on_message(filters.command(["tien_nga_kt_thu_hoach_sr"]) | filters.regex(r"^@\w+\s+/tien_nga_kt_thu_hoach_sr\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_check_durian_harvest_handler(client, message: Message) -> None:
+    """Kiểm tra thu hoạch sầu riêng — xuất báo cáo Excel."""
+    from datetime import datetime as dt_cls
+    from app.models.business import Households, DailyHarvest
+    from app.db.session import SessionLocal
+
+    text = message.text.strip()
+    parts = text.split(None, 1)
+
+    if len(parts) >= 2:
+        args_text = parts[1].strip()
+        import re
+        date_pattern = r"(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})"
+        date_match = re.search(date_pattern, args_text)
+
+        if not date_match:
+            await message.reply_text("⚠️ Định dạng không hợp lệ.\nVD: <code>/tien_nga_kt_thu_hoach_sr 01/04/2026 - 27/04/2026</code>", parse_mode=ParseMode.HTML)
+            return
+
+        try:
+            start_date = dt_cls.strptime(date_match.group(1), "%d/%m/%Y").date()
+            end_date = dt_cls.strptime(date_match.group(2), "%d/%m/%Y").date()
+        except Exception:
+            await message.reply_text("⚠️ Định dạng ngày không hợp lệ.", parse_mode=ParseMode.HTML)
+            return
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        land_code = args_text[:date_match.start()].strip().upper() or None
+        await _do_check_durian_harvest(client, message, start_date, end_date, land_code=land_code)
+        return
+
+    # No arguments -> prompt
+    import datetime
+    today_str = datetime.datetime.now().strftime('%d/%m/%Y')
+    first_day_str = datetime.datetime.now().replace(day=1).strftime('%d/%m/%Y')
+    await message.reply_text(
+        "<b>KIỂM TRA THU HOẠCH SẦU RIÊNG</b>\n\n"
+        f"Cú pháp: <code>/tien_nga_kt_thu_hoach_sr {first_day_str} - {today_str}</code>\n"
+        f"Hoặc: <code>/tien_nga_kt_thu_hoach_sr [Mã Đất] {first_day_str} - {today_str}</code>",
+        parse_mode=ParseMode.HTML
+    )
+
+
+async def _do_check_durian_harvest(client, message, start_date, end_date, land_code=None):
+    from app.models.business import Households, DailyHarvest
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        query = db.query(Households).filter(Households.status == "ACTIVE")
+        if land_code:
+            if land_code.startswith("GRP_"):
+                prefix = land_code[4:]
+                query = query.filter(Households.land_code.like(f"{prefix}%"))
+            else:
+                from sqlalchemy import or_
+                query = query.filter(or_(Households.land_code == land_code, Households.household_code == land_code))
+        households = query.order_by(Households.household_code).all()
+        if not households:
+            await message.reply_text("📋 Chưa có hộ dân nào.", parse_mode=ParseMode.HTML)
+            return
+
+        hh_codes = [h.household_code for h in households]
+        harvests = db.query(DailyHarvest).filter(
+            DailyHarvest.household_code.in_(hh_codes),
+            DailyHarvest.crop_type == "sau_rieng",
+            DailyHarvest.day >= start_date,
+            DailyHarvest.day <= end_date
+        ).order_by(DailyHarvest.day).all()
+
+        if not harvests:
+            await message.reply_text(
+                f"📋 Không có dữ liệu thu hoạch sầu riêng từ <b>{start_date.strftime('%d/%m/%Y')}</b> đến <b>{end_date.strftime('%d/%m/%Y')}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        harvest_map = {}
+        for hv in harvests:
+            harvest_map.setdefault(hv.household_code, []).append(hv)
+
+        import openpyxl, tempfile, os
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        hdr_font = Font(bold=True, color="FFFFFF", size=11)
+        hdr_fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid")
+        total_font = Font(bold=True, size=11)
+        total_fill = PatternFill(start_color="FFF9C4", end_color="FFF9C4", fill_type="solid")
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+        center = Alignment(horizontal="center", vertical="center")
+
+        headers = ["STT", "Ngày", "Mã Đất", "KL Trái (Kg)", "Đơn Giá", "Thành Tiền"]
+        col_widths = [6, 14, 12, 16, 14, 16]
+
+        hh_map = {h.household_code: h for h in households}
+        grand_total = 0
+        total_hh_count = 0
+
+        for hh_code, hv_list in harvest_map.items():
+            hh = hh_map.get(hh_code)
+            if not hh:
+                continue
+            total_hh_count += 1
+
+            sheet_name = f"{hh_code} - {hh.fullname or ''}"[:31]
+            ws = wb.create_sheet(title=sheet_name)
+
+            ws.merge_cells("A1:F1")
+            title_cell = ws.cell(row=1, column=1,
+                value=f"THU HOẠCH SẦU RIÊNG: {hh_code} - {hh.fullname or ''}")
+            title_cell.font = Font(bold=True, size=14)
+            title_cell.alignment = Alignment(horizontal="center")
+
+            ws.merge_cells("A2:F2")
+            info_cell = ws.cell(row=2, column=1,
+                value=f"Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')} | Mã Đất: {hh.land_code or '—'}")
+            info_cell.alignment = Alignment(horizontal="center")
+
+            for col_idx, hd in enumerate(headers, 1):
+                cell = ws.cell(row=4, column=col_idx, value=hd)
+                cell.font = hdr_font
+                cell.fill = hdr_fill
+                cell.border = thin_border
+                cell.alignment = center
+
+            c_row = 5
+            sheet_total = 0
+            for i, hv in enumerate(hv_list, 1):
+                vals = [
+                    i,
+                    hv.day.strftime("%d/%m/%Y") if hv.day else "",
+                    hv.land_code or "—",
+                    round(hv.harvest_weight or 0, 2),
+                    round(hv.unit_price or 0, 0),
+                    round(hv.total_amount or 0, 0)
+                ]
+                for col_idx, v in enumerate(vals, 1):
+                    cell = ws.cell(row=c_row, column=col_idx, value=v)
+                    cell.border = thin_border
+                    if col_idx == 4:
+                        cell.number_format = '#,##0.00'
+                    elif col_idx >= 5:
+                        cell.number_format = '#,##0'
+                sheet_total += (hv.total_amount or 0)
+                c_row += 1
+
+            ws.cell(row=c_row, column=1, value="TỔNG CỘNG").font = total_font
+            ws.merge_cells(start_row=c_row, start_column=1, end_row=c_row, end_column=3)
+
+            sum_weight = sum(hv.harvest_weight or 0 for hv in hv_list)
+
+            for col_idx in range(1, 7):
+                cell = ws.cell(row=c_row, column=col_idx)
+                cell.fill = total_fill
+                cell.border = thin_border
+                cell.font = total_font
+
+            ws.cell(row=c_row, column=4, value=round(sum_weight, 2)).number_format = '#,##0.00'
+            ws.cell(row=c_row, column=6, value=round(sheet_total, 0)).number_format = '#,##0'
+
+            grand_total += sheet_total
+
+            for i, w in enumerate(col_widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+        # Tổng hợp tab
+        if total_hh_count > 1:
+            ws_sum = wb.create_sheet(title="Tổng Hợp", index=0)
+            ws_sum.merge_cells("A1:E1")
+            title_cell = ws_sum.cell(row=1, column=1,
+                value=f"TỔNG HỢP THU HOẠCH SẦU RIÊNG - Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}")
+            title_cell.font = Font(bold=True, size=14)
+            title_cell.alignment = Alignment(horizontal="center")
+
+            sum_headers = ["STT", "Mã HD", "Họ Tên", "Tổng KL (Kg)", "Tổng Thành Tiền"]
+            for col_idx, hd in enumerate(sum_headers, 1):
+                cell = ws_sum.cell(row=3, column=col_idx, value=hd)
+                cell.font = hdr_font
+                cell.fill = hdr_fill
+                cell.border = thin_border
+                cell.alignment = center
+
+            s_row = 4
+            g_weight = 0
+            g_amount = 0
+            for idx, (hh_code, hv_list) in enumerate(harvest_map.items(), 1):
+                hh = hh_map.get(hh_code)
+                if not hh:
+                    continue
+                s_weight = sum(hv.harvest_weight or 0 for hv in hv_list)
+                s_amount = sum(hv.total_amount or 0 for hv in hv_list)
+                g_weight += s_weight
+                g_amount += s_amount
+
+                vals = [idx, hh_code, hh.fullname or "", round(s_weight, 2), round(s_amount, 0)]
+                for col_idx, v in enumerate(vals, 1):
+                    cell = ws_sum.cell(row=s_row, column=col_idx, value=v)
+                    cell.border = thin_border
+                    if col_idx == 4:
+                        cell.number_format = '#,##0.00'
+                    elif col_idx >= 5:
+                        cell.number_format = '#,##0'
+                s_row += 1
+
+            ws_sum.cell(row=s_row, column=1, value="TỔNG CỘNG").font = total_font
+            ws_sum.merge_cells(start_row=s_row, start_column=1, end_row=s_row, end_column=3)
+            for col_idx in range(1, 6):
+                cell = ws_sum.cell(row=s_row, column=col_idx)
+                cell.fill = total_fill
+                cell.border = thin_border
+                cell.font = total_font
+            ws_sum.cell(row=s_row, column=4, value=round(g_weight, 2)).number_format = '#,##0.00'
+            ws_sum.cell(row=s_row, column=5, value=round(g_amount, 0)).number_format = '#,##0'
+
+            sum_widths = [6, 12, 22, 16, 18]
+            for i, w in enumerate(sum_widths, 1):
+                ws_sum.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        caption = (
+            f"<b>KIỂM TRA THU HOẠCH SẦU RIÊNG</b>\n"
+            f"Từ <b>{start_date.strftime('%d/%m/%Y')}</b> đến <b>{end_date.strftime('%d/%m/%Y')}</b>\n"
+            f"Số hộ dân: <b>{total_hh_count}</b>\n"
+            f"Tổng thành tiền: <b>{fmt_money(grand_total)}</b>"
+        )
+
+        await message.reply_document(
+            document=tmp_path,
+            file_name=f"kt_thu_hoach_sr_{start_date.strftime('%d%m%Y')}_{end_date.strftime('%d%m%Y')}.xlsx",
+            caption=caption,
+            parse_mode=ParseMode.HTML
+        )
+        os.remove(tmp_path)
+    except Exception as e:
+        LogError(f"Error in check durian harvest: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# =========================================================================================
 # DANH SÁCH NHÓM MEMBER
 # =========================================================================================
 
@@ -15630,7 +16717,7 @@ _TITLE_LABELS = {
 
 @bot.on_message(filters.command(["tien_nga_list_member_group", "tien_nga_ds_nhom_member"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_member_group|tien_nga_ds_nhom_member)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 async def tien_nga_list_member_group_handler(client, message: Message) -> None:
     from app.models.telegram import TelegramProjectMember
@@ -15641,7 +16728,7 @@ async def tien_nga_list_member_group_handler(client, message: Message) -> None:
         chat_id = str(message.chat.id)
 
         # Tìm project
-        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        project = db.query(Projects).filter(Projects.project_name.in_(["Tiến Nga", "Thu Hoạch"])).first()
         if not project:
             await message.reply_text("⚠️ Không tìm thấy dự án Tiến Nga.", parse_mode=ParseMode.HTML)
             return
@@ -15748,7 +16835,7 @@ async def lmg_page_callback(client, callback_query: CallbackQuery):
 
     db = SessionLocal()
     try:
-        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        project = db.query(Projects).filter(Projects.project_name.in_(["Tiến Nga", "Thu Hoạch"])).first()
         if not project:
             await callback_query.answer("⚠️ Không tìm thấy dự án.", show_alert=True)
             return
@@ -15981,7 +17068,7 @@ async def execute_tien_nga_truy_xuat_tt_thu_mua(message_or_query, hoursehold_id:
 
 @bot.on_message(filters.command(["tien_nga_truy_xuat_tt_thu_mua"]) | filters.regex(r"^@\w+\s+/tien_nga_truy_xuat_tt_thu_mua\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tien_nga_truy_xuat_tt_thu_mua_handler(client, message: Message) -> None:
@@ -16093,7 +17180,7 @@ async def confirm_fac_rep_callback(client, callback_query: CallbackQuery):
     
     db = SessionLocal()
     try:
-        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        project = db.query(Projects).filter(Projects.project_name.in_(["Tiến Nga", "Thu Hoạch"])).first()
         if project:
             super_mains = db.query(TelegramProjectMember.chat_id).filter(
                 TelegramProjectMember.project_id == project.id,
@@ -16136,7 +17223,7 @@ async def regen_fac_rep_callback(client, callback_query: CallbackQuery):
     
     db = SessionLocal()
     try:
-        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        project = db.query(Projects).filter(Projects.project_name.in_(["Tiến Nga", "Thu Hoạch"])).first()
         if project:
             # Sẽ gửi báo cáo mới (hoặc đè lên tin nhắn cũ, nhưng vì send_factory_purchase_report dùng send_message nên nó gửi tin nhắn mới)
             await send_factory_purchase_report(db, project.id, report_date, client, specific_cp_id=cp_id)
@@ -16313,7 +17400,7 @@ async def confirm_inv_rep_callback(client, callback_query: CallbackQuery):
     
     db = SessionLocal()
     try:
-        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        project = db.query(Projects).filter(Projects.project_name.in_(["Tiến Nga", "Thu Hoạch"])).first()
         if project:
             super_mains = db.query(TelegramProjectMember.chat_id).filter(
                 TelegramProjectMember.project_id == project.id,
@@ -16393,7 +17480,7 @@ async def confirm_harv_rep_callback(client, callback_query: CallbackQuery):
     
     db = SessionLocal()
     try:
-        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        project = db.query(Projects).filter(Projects.project_name.in_(["Tiến Nga", "Thu Hoạch"])).first()
         if project:
             super_mains = db.query(TelegramProjectMember.chat_id).filter(
                 TelegramProjectMember.project_id == project.id,
@@ -16436,7 +17523,7 @@ async def regen_harv_rep_callback(client, callback_query: CallbackQuery):
     
     db = SessionLocal()
     try:
-        project = db.query(Projects).filter(Projects.project_name == "Tiến Nga").first()
+        project = db.query(Projects).filter(Projects.project_name == "Thu Hoạch").first()
         if project:
             await send_harvest_summary_report(db, project.id, report_date, client, specific_affiliation=aff)
             
@@ -16463,7 +17550,7 @@ async def deny_harv_rep_callback(client, callback_query: CallbackQuery):
 # ===================== ỨNG TIỀN MÙA MỚI =====================
 @bot.on_message(filters.command(["tien_nga_cash_advance", "tien_nga_ung_tien"]) | filters.regex(r"^@\w+\s+/(tien_nga_cash_advance|tien_nga_ung_tien)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 async def tien_nga_cash_advance_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_cash_advance", "tien_nga_ung_tien"])
@@ -16609,7 +17696,7 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
 
 @bot.on_message(filters.command(["tien_nga_khau_tru_tien_ung"]) | filters.regex(r"^@\w+\s+/tien_nga_khau_tru_tien_ung\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_khau_tru_tien_ung"])
@@ -16824,7 +17911,7 @@ async def kttu_cancel_callback(client, callback_query):
 
 @bot.on_message(filters.command(["tien_nga_thong_ke_cong_no"]) | filters.regex(r"^@\w+\s+/tien_nga_thong_ke_cong_no\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 async def tien_nga_thong_ke_cong_no_handler(client, message: Message) -> None:
     """Thống kê công nợ hiện tại theo từng điểm thu mua.
@@ -17066,7 +18153,7 @@ async def tien_nga_thong_ke_cong_no_handler(client, message: Message) -> None:
 # --- Thống Kê Hao Hụt ---
 @bot.on_message(filters.command(["tien_nga_loss_statistics", "tien_nga_thong_ke_hao_hut"]) | filters.regex(r"^@\w+\s+/(tien_nga_loss_statistics|tien_nga_thong_ke_hao_hut)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
+@require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 async def tien_nga_loss_statistics_handler(client, message: Message) -> None:
     """Thống kê hao hụt: hiển thị button chọn khoảng thời gian hoặc nhập ngày trực tiếp."""
