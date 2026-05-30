@@ -1002,10 +1002,10 @@ STK Ngân Hàng: {customer.number_bank or ''}</pre>"""
         db.close()
 
 @bot.on_message(filters.command(["tien_nga_check_customer", "tien_nga_kiem_tra_khach_hang"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_customer|tien_nga_kiem_tra_khach_hang)\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Tiến Nga")
-@require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
 async def tien_nga_check_customer_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) != 2:
@@ -2270,10 +2270,10 @@ async def control_losses_overwrite_callback(client, callback_query):
 
 
 @bot.on_message(filters.command(["tien_nga_export_daily_purchase", "tien_nga_xuat_bao_cao_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_daily_purchase|tien_nga_xuat_bao_cao_thu_mua)\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Tiến Nga")
-@require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
 async def tien_nga_export_daily_purchase_handler(client, message: Message) -> None:
     args = message.text.strip().split()
 

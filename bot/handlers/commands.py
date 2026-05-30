@@ -877,7 +877,12 @@ async def register_bot_command_handler(client, message: Message) -> None:
             if custom_title == "member_product":
                 label = "Tiến Nga (Sản Phẩm)"
 
-
+            if custom_title == "member_supplier":
+                label = "Tiến Nga (Nhà Cung Cấp)"
+                commands_to_set.extend([
+                    BotCommand("tien_nga_kiem_tra_khach_hang", "Kiểm tra thông tin khách hàng"),
+                    BotCommand("tien_nga_xuat_bao_cao_thu_mua", "Xuất báo cáo thu mua")
+                ])
 
         # ===================== THU HOẠCH =====================
         elif "thu hoạch" in project_name:

@@ -1684,7 +1684,7 @@ async def daily_factory_purchase_summary_worker():
 
 async def daily_purchase_summary_worker():
     """
-    Background worker: chạy lúc 20:00 hàng ngày.
+    Background worker: chạy lúc 15:00 hàng ngày.
     Tổng hợp daily_purchases trong ngày, cho mỗi hộ dân tạo ảnh biên lai
     và gửi vào nhóm member_ns tương ứng (dựa trên customer.username).
     """
@@ -1696,7 +1696,7 @@ async def daily_purchase_summary_worker():
             now = datetime.datetime.now()
 
             cfg = settings.SCHEDULER_DAILY_PURCHASE
-            if now.hour == cfg.get('hour', 20) and now.minute == cfg.get('minute', 0):
+            if now.hour == cfg.get('hour', 15) and now.minute == cfg.get('minute', 0):
                 current_date = now.date()
                 if last_sent_date == current_date:
                     await asyncio.sleep(60)
@@ -1742,19 +1742,21 @@ async def daily_purchase_summary_worker():
                             if not customer:
                                 continue
 
-                            # Tìm nhóm member_ns của khách hàng dựa trên username
-                            cust_username = customer.username
-                            if not cust_username:
+                            # Tìm nhóm member_ns của khách hàng dựa trên telegram_group
+                            cust_telegram_group = customer.telegram_group
+                            if not cust_telegram_group:
                                 continue
 
-                            # Tìm member trong project Tiến Nga có user_name khớp
+                            cust_telegram_group = cust_telegram_group.strip()
+
+                            # Tìm member trong project Tiến Nga có group_name khớp với telegram_group của khách hàng
                             member = db.query(TelegramProjectMember).filter(
                                 TelegramProjectMember.project_id == project.id,
                                 TelegramProjectMember.custom_title == CustomTitle.MEMBER_SUPPLIER,
-                                TelegramProjectMember.user_name == cust_username or TelegramProjectMember.user_name == "@" + cust_username or "@" + TelegramProjectMember.user_name == cust_username,
+                                TelegramProjectMember.group_name == cust_telegram_group,
                             ).first()
 
-                            LogInfo(f"[DailyPurchase] Project id: {project.id}, customer username: {cust_username}, member: {member}", LogType.SYSTEM_STATUS)
+                            LogInfo(f"[DailyPurchase] Project id: {project.id}, customer telegram_group: {cust_telegram_group}, member: {member}", LogType.SYSTEM_STATUS)
 
                             if not member:
                                 continue
