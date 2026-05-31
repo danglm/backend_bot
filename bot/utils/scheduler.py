@@ -570,7 +570,12 @@ async def checkin_reminder_worker():
                             
                             # Get their scheduled times
                             salary_info = db.query(Salary).filter(Salary.employee_id == employee_id).first()
-                            weekday = now.weekday()  # 0=Mon ... 5=Sat
+                            weekday = now.weekday()  # 0=Mon ... 5=Sat, 6=Sun
+                            
+                            # Kiểm tra ngày làm việc dựa vào work_type
+                            emp_work_type = emp.work_type if emp.work_type else 3
+                            if not _is_working_day(weekday, emp_work_type):
+                                continue  # Bỏ qua ngày nghỉ của nhân viên
                             
                             # Override cho Thứ 7 nếu NV có sat_start_time/sat_end_time
                             if weekday == 5 and emp.sat_start_time and emp.sat_end_time:
