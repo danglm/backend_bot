@@ -4363,7 +4363,7 @@ async def handle_list_attendance_excel(client, message, command_name: str) -> No
         ws.title = f"ChamCong_{month:02d}_{year}"
 
         headers = [
-            "STT", "Ngày", "Check In", "Check Out", "Tăng Ca", "Số Giờ Làm", "Ghi chú/Lỗi"
+            "STT", "Ngày", "Thời gian", "Check In", "Check Out", "Tăng Ca", "Số Giờ Làm", "Ghi chú/Lỗi"
         ]
 
         header_font = Font(bold=True, color="FFFFFF")
@@ -4394,15 +4394,16 @@ async def handle_list_attendance_excel(client, message, command_name: str) -> No
                 
             ws.cell(row=row_idx, column=1, value=i).border = border
             ws.cell(row=row_idx, column=2, value=att.date_str or f"{att.day:02d}/{att.month:02d}/{att.year}").border = border
-            ws.cell(row=row_idx, column=3, value=ci).border = border
-            ws.cell(row=row_idx, column=4, value=co).border = border
-            ws.cell(row=row_idx, column=5, value=ot).border = border
-            ws.cell(row=row_idx, column=6, value=wh).border = border
-            ws.cell(row=row_idx, column=7, value=att.error or "").border = border
+            ws.cell(row=row_idx, column=3, value=f"{att.day:02d}/{att.month:02d}/{att.year}").border = border
+            ws.cell(row=row_idx, column=4, value=ci).border = border
+            ws.cell(row=row_idx, column=5, value=co).border = border
+            ws.cell(row=row_idx, column=6, value=ot).border = border
+            ws.cell(row=row_idx, column=7, value=wh).border = border
+            ws.cell(row=row_idx, column=8, value=att.error or "").border = border
             
             row_idx += 1
 
-        widths = [5, 15, 15, 15, 15, 15, 40]
+        widths = [5, 15, 15, 15, 15, 15, 15, 40]
         for col_num, width in enumerate(widths, 1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = width
 
