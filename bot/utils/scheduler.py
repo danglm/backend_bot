@@ -364,7 +364,7 @@ async def generate_and_send_attendance_report(
             LogInfo(f"No attendance data for {employee.id} in {report_month:02d}/{report_year}.", LogType.SYSTEM_STATUS)
             return False
 
-        # --- Resolve main group from employee's telegram_group ---
+        # --- Resolve the employee's member group ---
         tg_group = employee.telegram_group.strip()
         
         # Find the member group in telegram_project_members
@@ -378,27 +378,22 @@ async def generate_and_send_attendance_report(
                 TelegramProjectMember.chat_id == tg_group
             ).first()
         
-        if not tpm or not tpm.project_id:
-            LogInfo(f"Employee {employee.id}: cannot find project for telegram_group '{tg_group}', skipping.", LogType.SYSTEM_STATUS)
+        if not tpm:
+            LogInfo(f"Employee {employee.id}: cannot find telegram group '{tg_group}', skipping.", LogType.SYSTEM_STATUS)
             return False
 
-        # Find the MAIN group in the same project
-        main_tpm = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.project_id == tpm.project_id,
-            TelegramProjectMember.role == "main"
-        ).first()
-
-        if not main_tpm:
-            LogInfo(f"Employee {employee.id}: no main group found for project {tpm.project_id}, skipping.", LogType.SYSTEM_STATUS)
+        # Use parent_id (Chat ID nhóm Main mà member trỏ tới)
+        if not tpm.parent_id:
+            LogInfo(f"Employee {employee.id}: member group '{tg_group}' has no parent_id (main group), skipping.", LogType.SYSTEM_STATUS)
             return False
 
         try:
-            main_chat_id = int(main_tpm.chat_id)
+            main_chat_id = int(tpm.parent_id)
         except (ValueError, TypeError):
-            LogInfo(f"Employee {employee.id}: main group chat_id '{main_tpm.chat_id}' is invalid, skipping.", LogType.SYSTEM_STATUS)
+            LogInfo(f"Employee {employee.id}: parent_id '{tpm.parent_id}' is invalid, skipping.", LogType.SYSTEM_STATUS)
             return False
 
-        LogInfo(f"Generating attendance report for {employee.id} ({full_name}) -> main group {main_chat_id}.", LogType.SYSTEM_STATUS)
+        LogInfo(f"Generating attendance report for {employee.id} ({full_name}) -> main group {main_chat_id} (via member group '{tg_group}').", LogType.SYSTEM_STATUS)
 
         # Build report
         employee_records = [{
@@ -426,7 +421,7 @@ async def generate_and_send_attendance_report(
         from bot.utils.bot import bot
         client = bot
 
-        # Send to MAIN group
+        # Send to main group (via member's parent_id)
         info_msg = await client.send_message(
             chat_id=main_chat_id,
             text=caption,
