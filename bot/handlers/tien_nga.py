@@ -6787,8 +6787,14 @@ async def tien_nga_partner_report_handler(client, message: Message) -> None:
             import_qty = t.import_amount or 0
             export_qty = t.export_amount or 0
             unit_price = t.unit_price or 0
-            import_amt = import_qty * unit_price
-            export_amt = export_qty * unit_price
+            degree = t.degree or 0
+
+            if (t.product_type or "").strip() == "Mủ nước":
+                import_amt = import_qty * degree / 100 * unit_price
+                export_amt = export_qty * degree / 100 * unit_price
+            else:
+                import_amt = import_qty * unit_price
+                export_amt = export_qty * unit_price
             total_amt = t.total_amount or 0
 
             all_rows.append([
