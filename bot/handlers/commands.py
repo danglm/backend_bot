@@ -810,6 +810,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_yeu_cau_thu_chi", "Yêu cầu thu/chi"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_chi", "Xuất báo cáo thu chi Excel"),
                     BotCommand("tien_nga_xuat_bc_tong_hop", "Báo cáo tổng hợp tài chính"),
+                    BotCommand("tien_nga_can_bang_ke_toan", "Xuất bảng cân đối kế toán"),
                     BotCommand("tien_nga_ung_tien", "Ứng tiền"),
                     BotCommand("tien_nga_khau_tru_tien_ung", "Khấu trừ tiền ứng"),
                     BotCommand("confirm_payment", "Duyệt phiếu chi"),
@@ -956,10 +957,10 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("hui_tinh_lai_gia_lap", "Tính lãi giả lập"),
                 ]
 
-        # ===================== GGOMOONSIN =====================
-        elif "ggomoonsin" in project_name.lower():
+        # ===================== GGOMOOSIN =====================
+        elif "ggoomoosin" in project_name.lower():
             if custom_title == "super_main":
-                label = "GGoMoonSin (Tổng Hợp)"
+                label = "GGoMooSin (Tổng Hợp)"
 
             # Lệnh chung cho tất cả nhóm main
             if custom_title and custom_title.startswith("main_") or custom_title == "super_main":
@@ -967,31 +968,31 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("send_message", "Gửi thông báo"),
                 ])
             if custom_title in ("super_main", "main_hr"):
-                if custom_title != "super_main": label = "GGoMoonSin (Quản Lý)"
+                if custom_title != "super_main": label = "GGoMooSin (Quản Lý)"
                 commands_to_set.extend([
-                    BotCommand("ggomoonsin_tao_nhan_vien", "Thêm nhân viên"),
-                    BotCommand("ggomoonsin_cap_nhat_nhan_vien", "Cập nhật nhân viên"),
-                    BotCommand("ggomoonsin_xoa_nhan_vien", "Xóa nhân viên"),
-                    BotCommand("ggomoonsin_giao_viec", "Giao việc"),
-                    BotCommand("ggomoonsin_xuat_luong", "Xuất bảng lương"),
-                    BotCommand("ggomoonsin_tao_lai_cham_cong", "Tạo lại báo cáo chấm công"),
-                    BotCommand("ggomoonsin_danh_sach_cong_viec", "Xem công việc của nhân viên"),
-                    BotCommand("ggomoonsin_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
-                    BotCommand("ggomoonsin_danh_sach_nhan_vien", "Xuất DS nhân viên Excel"),
-                    BotCommand("ggomoonsin_danh_sach_cham_cong", "Xuất DS chấm công"),
+                    BotCommand("ggomoosin_tao_nhan_vien", "Thêm nhân viên"),
+                    BotCommand("ggomoosin_cap_nhat_nhan_vien", "Cập nhật nhân viên"),
+                    BotCommand("ggomoosin_xoa_nhan_vien", "Xóa nhân viên"),
+                    # BotCommand("ggomoosin_giao_viec", "Giao việc"),
+                    BotCommand("ggomoosin_xuat_luong", "Xuất bảng lương"),
+                    BotCommand("ggomoosin_tao_lai_cham_cong", "Tạo lại báo cáo chấm công"),
+                    # BotCommand("ggomoosin_danh_sach_cong_viec", "Xem công việc của nhân viên"),
+                    BotCommand("ggomoosin_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
+                    BotCommand("ggomoosin_danh_sach_nhan_vien", "Xuất DS nhân viên Excel"),
+                    BotCommand("ggomoosin_danh_sach_cham_cong", "Xuất DS chấm công"),
                 ])
             ## Member
             if custom_title == "member_hr":
-                label = "GGoMoonSin (Nhân Viên)"
+                label = "GGoMooSin (Nhân Viên)"
                 commands_to_set.extend([
-                    BotCommand("ggomoonsin_cham_cong", "Chấm công vào ca"),
-                    BotCommand("ggomoonsin_tan_ca", "Tan ca / Kết thúc ca"),
-                    BotCommand("ggomoonsin_xin_nghi_phep", "Xin nghỉ phép"),
-                    BotCommand("ggomoonsin_dang_ky_tang_ca", "Đăng ký tăng ca"),
-                    BotCommand("ggomoonsin_xem_cham_cong", "Xem chấm công"),
-                    BotCommand("ggomoonsin_xem_nghi_phep", "Xem danh sách nghỉ phép"),
-                    BotCommand("ggomoonsin_xem_cong_viec", "Xem công việc được giao"),
-                    BotCommand("ggomoonsin_cap_nhat_cong", "Yêu cầu cập nhật chấm công"),
+                    BotCommand("ggomoosin_cham_cong", "Chấm công vào ca"),
+                    BotCommand("ggomoosin_tan_ca", "Tan ca / Kết thúc ca"),
+                    # BotCommand("ggomoosin_xin_nghi_phep", "Xin nghỉ phép"),
+                    BotCommand("ggomoosin_dang_ky_tang_ca", "Đăng ký tăng ca"),
+                    BotCommand("ggomoosin_xem_cham_cong", "Xem chấm công"),
+                    # BotCommand("ggomoosin_xem_nghi_phep", "Xem danh sách nghỉ phép"),
+                    # BotCommand("ggomoosin_xem_cong_viec", "Xem công việc được giao"),
+                    BotCommand("ggomoosin_cap_nhat_cong", "Yêu cầu cập nhật chấm công"),
                 ])
 
         if not commands_to_set:

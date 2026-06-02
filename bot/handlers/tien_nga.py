@@ -3908,7 +3908,7 @@ async def send_message_handler(client, message: Message) -> None:
         [InlineKeyboardButton("Tiến Nga", callback_data="sm_proj_tiennga")],
         [InlineKeyboardButton("Credit", callback_data="sm_proj_dummy"),
          InlineKeyboardButton("Rental", callback_data="sm_proj_dummy")],
-        [InlineKeyboardButton("Ggomoonsin", callback_data="sm_proj_dummy"),
+        [InlineKeyboardButton("Ggomoosin", callback_data="sm_proj_dummy"),
          InlineKeyboardButton("Other", callback_data="sm_proj_dummy")],
         [InlineKeyboardButton("Hủy", callback_data="sm_cancel")],
     ])
@@ -3970,7 +3970,7 @@ async def send_message_callback(client, callback_query: CallbackQuery):
             [InlineKeyboardButton("Tiến Nga", callback_data="sm_proj_tiennga")],
             [InlineKeyboardButton("Credit", callback_data="sm_proj_dummy"),
              InlineKeyboardButton("Rental", callback_data="sm_proj_dummy")],
-            [InlineKeyboardButton("Ggomoonsin", callback_data="sm_proj_dummy"),
+            [InlineKeyboardButton("Ggomoosin", callback_data="sm_proj_dummy"),
              InlineKeyboardButton("Other", callback_data="sm_proj_dummy")],
             [InlineKeyboardButton("Hủy", callback_data="sm_cancel")],
         ])
@@ -19235,5 +19235,882 @@ async def tien_nga_check_supplies_handler(client, message: Message) -> None:
     except Exception as e:
         LogError(f"Error in check supplies handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi hệ thống khi xuất báo cáo.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+# =========================================================================================
+# BẢNG CÂN ĐỐI KẾ TOÁN - TIỀN VÀ TƯƠNG ĐƯƠNG TIỀN
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_balance_sheet", "tien_nga_can_bang_ke_toan"]) | filters.regex(r"^@\w+\s+/(tien_nga_balance_sheet|tien_nga_can_bang_ke_toan)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE)
+async def tien_nga_balance_sheet_handler(client, message: Message) -> None:
+    """
+    /tien_nga_can_bang_ke_toan mm/yyyy - mm/yyyy
+    Xuất file Excel Bảng Cân Đối Kế Toán - Tài sản ngắn hạn: Tiền và tương đương tiền
+    Dữ liệu từ bảng investments (status=ACTIVE, role=MEMBER)
+    """
+    args_text = (message.text or "").strip()
+    for cmd in ["tien_nga_balance_sheet", "tien_nga_can_bang_ke_toan"]:
+        args_text = re.sub(rf"^/?{cmd}\s*", "", args_text, flags=re.IGNORECASE).strip()
+    args_text = re.sub(r"^@\w+\s+/?(?:tien_nga_balance_sheet|tien_nga_can_bang_ke_toan)\s*", "", args_text, flags=re.IGNORECASE).strip()
+
+    if not args_text:
+        now = datetime.now()
+        await message.reply_text(
+            "<b>BẢNG CÂN ĐỐI KẾ TOÁN</b>\n\n"
+            "Cú pháp:\n"
+            f"<code>/tien_nga_can_bang_ke_toan {now.strftime('%m/%Y')}</code> (1 tháng)\n"
+            f"<code>/tien_nga_can_bang_ke_toan 01/{now.strftime('%Y')} - {now.strftime('%m/%Y')}</code> (khoảng thời gian)\n"
+            f"<code>/tien_nga_can_bang_ke_toan {now.strftime('%Y')}</code> (cả năm)",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    import calendar
+
+    start_date = None
+    end_date = None
+
+    # Format: mm/yyyy - mm/yyyy
+    range_match = re.match(r"(\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{4})", args_text)
+    # Format: mm/yyyy (single month)
+    single_month_match = re.match(r"^(\d{1,2}/\d{4})$", args_text)
+    # Format: yyyy (full year)
+    year_match = re.match(r"^(\d{4})$", args_text)
+
+    try:
+        if range_match:
+            s = datetime.strptime(range_match.group(1), "%m/%Y")
+            e = datetime.strptime(range_match.group(2), "%m/%Y")
+            start_date = s.date().replace(day=1)
+            last_day = calendar.monthrange(e.year, e.month)[1]
+            end_date = e.date().replace(day=last_day)
+        elif single_month_match:
+            s = datetime.strptime(single_month_match.group(1), "%m/%Y")
+            start_date = s.date().replace(day=1)
+            last_day = calendar.monthrange(s.year, s.month)[1]
+            end_date = s.date().replace(day=last_day)
+        elif year_match:
+            year = int(year_match.group(1))
+            start_date = datetime(year, 1, 1).date()
+            end_date = datetime(year, 12, 31).date()
+        else:
+            await message.reply_text(
+                "⚠️ Định dạng không hợp lệ.\n\n"
+                "Dùng: <code>mm/yyyy</code>, <code>mm/yyyy - mm/yyyy</code>, hoặc <code>yyyy</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+    except ValueError:
+        await message.reply_text("⚠️ Định dạng ngày không hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    from app.models.business import Investment
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import tempfile
+    import os
+
+    db = SessionLocal()
+    try:
+        investments = db.query(Investment).filter(
+            Investment.status == "ACTIVE",
+            Investment.role == "MEMBER"
+        ).order_by(Investment.investment_code).all()
+
+        if not investments:
+            await message.reply_text(
+                "⚠️ Không có khoản đầu tư nào (status=ACTIVE, role=MEMBER) trong hệ thống.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # ========== STYLES (giữ nguyên template balance_sheet.xlsx) ==========
+        # Colors from template
+        DARK_BLUE = "1B3A5C"
+        HEADER_BLUE = "6D9EEB"
+
+        # Fonts
+        font_title = Font(name="Calibri", size=16, bold=True, color="FFFFFF")
+        font_subtitle = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
+        font_unit = Font(name="Calibri", size=11, color="FFFFFF")
+        font_header = Font(name="Arial", bold=True, color="FFFFFF")
+        font_header_sub = Font(name="Arial", size=10)
+        font_section = Font(name="Arial", bold=True, color="FFFFFF")
+        font_group = Font(name="Arial", bold=True)
+        font_item = Font(name="Calibri", size=11)
+        font_total = Font(name="Calibri", size=11, bold=True)
+
+        # Fills
+        fill_dark = PatternFill("solid", fgColor=DARK_BLUE)
+        fill_header = PatternFill("solid", fgColor=HEADER_BLUE)
+        fill_white = PatternFill("solid", fgColor="FFFFFF")
+
+        # Borders
+        thin_side = Side(style="thin", color="BDBDBD")
+        med_side = Side(style="medium", color=DARK_BLUE)
+        border_thin = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+        border_med_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=med_side)
+
+        # Alignments
+        align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        align_left = Alignment(horizontal="left", vertical="center")
+        align_right = Alignment(horizontal="right", vertical="center")
+
+        VND_FMT = '#,##0'
+
+        # ========== TOTAL COLUMNS = 9 (A-I) ==========
+        TOTAL_COLS = 9
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "BẢNG CÂN BẰNG KẾ TOÁN"
+        ws.sheet_properties.tabColor = DARK_BLUE
+
+        # Column widths (matching template + new col H for Biến động)
+        col_widths = {
+            'A': 57.38, 'B': 22.25, 'C': 22.88,
+            'D': 22.13, 'E': 21.88, 'F': 20.63,
+            'G': 22.0,  'H': 22.0,  'I': 22.38
+        }
+        for col_letter, width in col_widths.items():
+            ws.column_dimensions[col_letter].width = width
+
+        # ---------- ROW 1: Company name ----------
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=TOTAL_COLS)
+        c = ws.cell(1, 1, "CÔNG TY TNHH TIẾN NGA")
+        c.font = font_title; c.fill = fill_dark; c.border = border_thin; c.alignment = align_center
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(1, cc)
+            cell.font = font_title; cell.fill = fill_dark; cell.border = border_thin; cell.alignment = align_center
+        ws.row_dimensions[1].height = 38.25
+
+        # ---------- ROW 2: Title ----------
+        period_label = f"{start_date.strftime('%m/%Y')} - {end_date.strftime('%m/%Y')}"
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=TOTAL_COLS)
+        c = ws.cell(2, 1, f"BẢNG CÂN ĐỐI KẾ TOÁN - {period_label}")
+        c.font = font_subtitle; c.fill = fill_dark; c.border = border_thin; c.alignment = align_center
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(2, cc)
+            cell.font = font_subtitle; cell.fill = fill_dark; cell.border = border_thin; cell.alignment = align_center
+        ws.row_dimensions[2].height = 30.75
+
+        # ---------- ROW 3: Unit ----------
+        ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=TOTAL_COLS)
+        c = ws.cell(3, 1, "(Đơn vị tính: VNĐ)")
+        c.font = font_unit; c.fill = fill_dark; c.border = border_thin; c.alignment = align_center
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(3, cc)
+            cell.font = font_unit; cell.fill = fill_dark; cell.border = border_thin; cell.alignment = align_center
+        ws.row_dimensions[3].height = 33.75
+
+        # ---------- ROW 4: Spacer ----------
+        ws.row_dimensions[4].height = 4.5
+
+        # ---------- ROW 5-6: Headers ----------
+        # Row 5: Merged headers
+        # A5:A6 = CHỈ TIÊU
+        ws.merge_cells('A5:A6')
+        c = ws.cell(5, 1, "CHỈ TIÊU")
+        c.font = font_header; c.fill = fill_header; c.border = border_med_bottom; c.alignment = align_center
+
+        # B5:B6 = ĐẦU KỲ (SẢN PHẨM)
+        ws.merge_cells('B5:B6')
+        c = ws.cell(5, 2, "ĐẦU KỲ (SẢN PHẨM)")
+        c.font = font_header; c.fill = fill_header; c.border = border_med_bottom; c.alignment = align_center
+
+        # C5:C6 = CUỐI KỲ (SẢN PHẨM)
+        ws.merge_cells('C5:C6')
+        c = ws.cell(5, 3, "CUỐI KỲ (SẢN PHẨM)")
+        c.font = font_header; c.fill = fill_header; c.border = border_med_bottom; c.alignment = align_center
+
+        # D5:E5 = ĐẦU KỲ (VNĐ)
+        ws.merge_cells('D5:E5')
+        c = ws.cell(5, 4, "ĐẦU KỲ (VNĐ)")
+        c.font = font_header; c.fill = fill_header; c.border = border_med_bottom; c.alignment = align_center
+        ws.cell(5, 5).font = font_header; ws.cell(5, 5).fill = fill_header; ws.cell(5, 5).border = border_med_bottom
+
+        # D6 = CHI, E6 = THU
+        c_d6 = ws.cell(6, 4, "CHI")
+        c_d6.font = font_header; c_d6.fill = fill_header; c_d6.border = border_med_bottom; c_d6.alignment = align_center
+        c_e6 = ws.cell(6, 5, "THU")
+        c_e6.font = font_header; c_e6.fill = fill_header; c_e6.border = border_med_bottom; c_e6.alignment = align_center
+
+        # F5:G5 = CUỐI KỲ (VNĐ)
+        ws.merge_cells('F5:G5')
+        c = ws.cell(5, 6, "CUỐI KỲ (VNĐ)")
+        c.font = font_header; c.fill = fill_header; c.border = border_med_bottom; c.alignment = align_center
+        ws.cell(5, 7).font = font_header; ws.cell(5, 7).fill = fill_header; ws.cell(5, 7).border = border_med_bottom
+
+        # F6 = CHI, G6 = THU
+        c_f6 = ws.cell(6, 6, "CHI")
+        c_f6.font = font_header; c_f6.fill = fill_header; c_f6.border = border_med_bottom; c_f6.alignment = align_center
+        c_g6 = ws.cell(6, 7, "THU")
+        c_g6.font = font_header; c_g6.fill = fill_header; c_g6.border = border_med_bottom; c_g6.alignment = align_center
+
+        # H5:H6 = BIẾN ĐỘNG (new column)
+        ws.merge_cells('H5:H6')
+        c = ws.cell(5, 8, "BIẾN ĐỘNG")
+        c.font = font_header; c.fill = fill_header; c.border = border_med_bottom; c.alignment = align_center
+
+        # I5:I6 = GHI CHÚ
+        ws.merge_cells('I5:I6')
+        c = ws.cell(5, 9, "GHI CHÚ")
+        c.font = font_header; c.fill = fill_header; c.border = border_med_bottom; c.alignment = align_center
+
+        # Style empty cells in row 6 for merged ranges
+        for cc in [1, 2, 3, 8, 9]:
+            cell = ws.cell(6, cc)
+            cell.fill = fill_header; cell.border = border_med_bottom
+
+        # ---------- ROW 7: TÀI SẢN (section header) ----------
+        ws.merge_cells(start_row=7, start_column=1, end_row=7, end_column=TOTAL_COLS)
+        c = ws.cell(7, 1, "TÀI SẢN")
+        c.font = font_section; c.fill = fill_header; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(7, cc)
+            cell.font = font_section; cell.fill = fill_header; cell.border = border_med_bottom
+
+        # ---------- ROW 8: A. TÀI SẢN NGẮN HẠN ----------
+        row = 8
+        c = ws.cell(row, 1, "A. TÀI SẢN NGẮN HẠN")
+        c.font = font_group; c.fill = fill_white; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row, cc)
+            cell.fill = fill_white; cell.border = border_med_bottom
+
+        # ---------- ROW 9: I. TIỀN VÀ TƯƠNG ĐƯƠNG TIỀN ----------
+        # ---------- ROW 9: I. TIỀN VÀ TƯƠNG ĐƯƠNG TIỀN (with totals - filled after data rows) ----------
+        row_tien = 9
+        c = ws.cell(row_tien, 1, "I. TIỀN VÀ TƯƠNG ĐƯƠNG TIỀN")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_tien, cc)
+            cell.border = border_med_bottom
+        ws.row_dimensions[row_tien].height = 30
+
+        # ---------- ROW 10: spacer ----------
+        ws.row_dimensions[10].height = 4.5
+
+        # ---------- DATA ROWS: Investments ----------
+        data_start_row = 11
+        row = data_start_row
+
+        total_dau_ky_chi = 0
+        total_dau_ky_thu = 0
+        total_cuoi_ky_chi = 0
+        total_cuoi_ky_thu = 0
+
+        for idx, inv in enumerate(investments, 1):
+            label = f"{idx}. [{inv.investment_code}] {inv.name}" if inv.investment_code else f"{idx}. {inv.name or 'N/A'}"
+
+            dau_ky_chi = 0
+            dau_ky_thu = inv.initial_capital or 0
+            cuoi_ky_thu = inv.total_income or 0
+            cuoi_ky_chi = inv.total_expense or 0
+            bien_dong = (cuoi_ky_thu - cuoi_ky_chi) - (dau_ky_thu - dau_ky_chi)
+
+            total_dau_ky_chi += dau_ky_chi
+            total_dau_ky_thu += dau_ky_thu
+            total_cuoi_ky_chi += cuoi_ky_chi
+            total_cuoi_ky_thu += cuoi_ky_thu
+
+            # A: Label
+            c = ws.cell(row, 1, label)
+            c.font = font_item; c.border = border_thin; c.alignment = align_left
+
+            # B: ĐẦU KỲ SẢN PHẨM (empty)
+            ws.cell(row, 2).border = border_thin
+
+            # C: CUỐI KỲ SẢN PHẨM (empty)
+            ws.cell(row, 3).border = border_thin
+
+            # D: ĐẦU KỲ CHI
+            c = ws.cell(row, 4, dau_ky_chi if dau_ky_chi else None)
+            c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+
+            # E: ĐẦU KỲ THU
+            c = ws.cell(row, 5, dau_ky_thu if dau_ky_thu else None)
+            c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+
+            # F: CUỐI KỲ CHI
+            c = ws.cell(row, 6, cuoi_ky_chi if cuoi_ky_chi else None)
+            c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+
+            # G: CUỐI KỲ THU
+            c = ws.cell(row, 7, cuoi_ky_thu if cuoi_ky_thu else None)
+            c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+
+            # H: BIẾN ĐỘNG
+            c = ws.cell(row, 8, bien_dong if bien_dong else None)
+            c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+
+            # I: GHI CHÚ
+            c = ws.cell(row, 9, inv.notes or "")
+            c.font = font_item; c.border = border_thin; c.alignment = align_left
+
+            ws.row_dimensions[row].height = 24
+            row += 1
+
+        # ---------- Fill totals on ROW 9 (I. TIỀN VÀ TƯƠNG ĐƯƠNG TIỀN) ----------
+        total_bien_dong = (total_cuoi_ky_thu - total_cuoi_ky_chi) - (total_dau_ky_thu - total_dau_ky_chi)
+
+        # D9: TỔNG ĐẦU KỲ CHI
+        c = ws.cell(row_tien, 4, total_dau_ky_chi if total_dau_ky_chi else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        # E9: TỔNG ĐẦU KỲ THU
+        c = ws.cell(row_tien, 5, total_dau_ky_thu if total_dau_ky_thu else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        # F9: TỔNG CUỐI KỲ CHI
+        c = ws.cell(row_tien, 6, total_cuoi_ky_chi if total_cuoi_ky_chi else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        # G9: TỔNG CUỐI KỲ THU
+        c = ws.cell(row_tien, 7, total_cuoi_ky_thu if total_cuoi_ky_thu else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        # H9: TỔNG BIẾN ĐỘNG
+        c = ws.cell(row_tien, 8, total_bien_dong if total_bien_dong else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        # ==========================================================================
+        # II. CÁC KHOẢN TIỀN KHÁCH HÀNG (từ partner_businesses theo khoảng thời gian)
+        # ==========================================================================
+        from app.models.business import Partners, PartnerBusinesses
+        from sqlalchemy import func as sql_func
+
+        # Spacer row
+        ws.row_dimensions[row].height = 4.5
+        row += 1
+
+        # Section header row (sẽ fill tổng sau)
+        row_kh = row
+        c = ws.cell(row_kh, 1, "II. CÁC KHOẢN TIỀN KHÁCH HÀNG")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_kh, cc)
+            cell.border = border_med_bottom
+        ws.row_dimensions[row_kh].height = 30
+        row += 1
+
+        # Spacer
+        ws.row_dimensions[row].height = 4.5
+        row += 1
+
+        # Query partner_businesses trong khoảng thời gian
+        partner_txns = db.query(PartnerBusinesses).filter(
+            PartnerBusinesses.day >= start_date,
+            PartnerBusinesses.day <= end_date
+        ).all()
+
+        # Group by partner_id → tính tổng chi (import) và thu (export)
+        partner_data = {}
+        for txn in partner_txns:
+            pid = txn.partner_id
+            if pid not in partner_data:
+                partner_data[pid] = {"chi": 0, "thu": 0}
+            if (txn.import_amount or 0) > 0:
+                partner_data[pid]["chi"] += txn.total_amount or 0
+            if (txn.export_amount or 0) > 0:
+                partner_data[pid]["thu"] += txn.total_amount or 0
+
+        # Lấy thông tin tên đối tác
+        partner_ids = list(partner_data.keys())
+        partners_map = {}
+        if partner_ids:
+            partners_list = db.query(Partners).filter(Partners.partner_id.in_(partner_ids)).all()
+            partners_map = {p.partner_id: p.partner_name for p in partners_list}
+
+        # Ghi data rows
+        kh_total_chi = 0
+        kh_total_thu = 0
+
+        for idx, (pid, amounts) in enumerate(sorted(partner_data.items()), 1):
+            p_name = partners_map.get(pid, pid)
+            label = f"{idx}. {p_name}"
+            cuoi_chi = amounts["chi"]
+            cuoi_thu = amounts["thu"]
+            bien_dong_kh = (cuoi_thu - cuoi_chi)
+
+            kh_total_chi += cuoi_chi
+            kh_total_thu += cuoi_thu
+
+            # A: Label
+            c = ws.cell(row, 1, label)
+            c.font = font_item; c.border = border_thin; c.alignment = align_left
+
+            # B, C: empty
+            ws.cell(row, 2).border = border_thin
+            ws.cell(row, 3).border = border_thin
+
+            # D: ĐẦU KỲ CHI (không có)
+            c = ws.cell(row, 4)
+            c.border = border_thin; c.number_format = VND_FMT
+
+            # E: ĐẦU KỲ THU (không có)
+            c = ws.cell(row, 5)
+            c.border = border_thin; c.number_format = VND_FMT
+
+            # F: CUỐI KỲ CHI
+            c = ws.cell(row, 6, cuoi_chi if cuoi_chi else None)
+            c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+
+            # G: CUỐI KỲ THU
+            c = ws.cell(row, 7, cuoi_thu if cuoi_thu else None)
+            c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+
+            # H: BIẾN ĐỘNG
+            c = ws.cell(row, 8, bien_dong_kh if bien_dong_kh else None)
+            c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+
+            # I: GHI CHÚ
+            c = ws.cell(row, 9, "")
+            c.font = font_item; c.border = border_thin; c.alignment = align_left
+
+            ws.row_dimensions[row].height = 24
+            row += 1
+
+        # Fill totals on section header row (II. CÁC KHOẢN TIỀN KHÁCH HÀNG)
+        kh_total_bien_dong = kh_total_thu - kh_total_chi
+
+        c = ws.cell(row_kh, 6, kh_total_chi if kh_total_chi else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        c = ws.cell(row_kh, 7, kh_total_thu if kh_total_thu else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        c = ws.cell(row_kh, 8, kh_total_bien_dong if kh_total_bien_dong else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        # ==========================================================================
+        # III. HÀNG HÓA
+        # ==========================================================================
+        from app.models.business import DailyPurchases
+
+        # Spacer row
+        ws.row_dimensions[row].height = 4.5
+        row += 1
+
+        # Section header row (sẽ fill tổng sau)
+        row_hh = row
+        c = ws.cell(row_hh, 1, "III. HÀNG HÓA")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_hh, cc)
+            cell.border = border_med_bottom
+        ws.row_dimensions[row_hh].height = 30
+        row += 1
+
+        # Spacer
+        ws.row_dimensions[row].height = 4.5
+        row += 1
+
+        hh_total_chi = 0
+        hh_total_thu = 0
+
+        # --- 1. Mủ nước (hàng hóa) ---
+        # Lấy partner_businesses có product_type = 'Mủ nước' trong khoảng thời gian → danh sách order_code
+        mu_nuoc_txns = db.query(PartnerBusinesses).filter(
+            PartnerBusinesses.day >= start_date,
+            PartnerBusinesses.day <= end_date,
+            PartnerBusinesses.product_type == "Mủ nước"
+        ).all()
+
+        mu_nuoc_order_codes = [txn.order_code for txn in mu_nuoc_txns if txn.order_code]
+
+        # Lấy daily_purchases có product_code nằm trong danh sách order_code
+        mu_nuoc_hh_chi = 0
+        if mu_nuoc_order_codes:
+            dp_hh = db.query(DailyPurchases).filter(
+                DailyPurchases.product_code.in_(mu_nuoc_order_codes)
+            ).all()
+            mu_nuoc_hh_chi = sum((dp.total_amount or 0) for dp in dp_hh)
+
+        mu_nuoc_hh_bien_dong = -mu_nuoc_hh_chi  # thu = 0, chi > 0
+
+        # THU cuối kỳ = tổng total_amount từ partner_businesses (product_type = 'Mủ nước')
+        mu_nuoc_hh_thu = sum((txn.total_amount or 0) for txn in mu_nuoc_txns)
+        mu_nuoc_hh_bien_dong = (mu_nuoc_hh_thu - mu_nuoc_hh_chi)
+
+        hh_total_chi += mu_nuoc_hh_chi
+        hh_total_thu += mu_nuoc_hh_thu
+
+        c = ws.cell(row, 1, "1. Mủ nước (hàng hóa)")
+        c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.cell(row, 2).border = border_thin
+        ws.cell(row, 3).border = border_thin
+        c = ws.cell(row, 4); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 5); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 6, mu_nuoc_hh_chi if mu_nuoc_hh_chi else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 7, mu_nuoc_hh_thu if mu_nuoc_hh_thu else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 8, mu_nuoc_hh_bien_dong if mu_nuoc_hh_bien_dong else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 9, ""); c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.row_dimensions[row].height = 24
+        row += 1
+
+        # --- 2. Mủ nước (nguyên liệu) ---
+        # Dùng mu_nuoc_order_codes đã lấy ở item 1
+
+        # Lấy daily_purchases trong khoảng thời gian mà product_code KHÔNG nằm trong order_codes
+        dp_query = db.query(DailyPurchases).filter(
+            DailyPurchases.day >= start_date,
+            DailyPurchases.day <= end_date
+        )
+        if mu_nuoc_order_codes:
+            dp_query = dp_query.filter(~DailyPurchases.product_code.in_(mu_nuoc_order_codes))
+
+        dp_records = dp_query.all()
+        mu_nuoc_nl_chi = sum((dp.total_amount or 0) for dp in dp_records)
+        mu_nuoc_nl_bien_dong = -mu_nuoc_nl_chi  # thu = 0, chi > 0 → biến động âm
+
+        hh_total_chi += mu_nuoc_nl_chi
+
+        c = ws.cell(row, 1, "2. Mủ nước (nguyên liệu)")
+        c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.cell(row, 2).border = border_thin
+        ws.cell(row, 3).border = border_thin
+        c = ws.cell(row, 4); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 5); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 6, mu_nuoc_nl_chi if mu_nuoc_nl_chi else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 7); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 8, mu_nuoc_nl_bien_dong if mu_nuoc_nl_bien_dong else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 9, ""); c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.row_dimensions[row].height = 24
+        row += 1
+
+        # --- 3. Cao su RSS3 (tạm thời để trống) ---
+        c = ws.cell(row, 1, "3. Cao su RSS3")
+        c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.cell(row, 2).border = border_thin
+        ws.cell(row, 3).border = border_thin
+        c = ws.cell(row, 4); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 5); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 6); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 7); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 8); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 9, ""); c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.row_dimensions[row].height = 24
+        row += 1
+
+        # --- 4. Cao su RSS3 (hàng hóa) (tạm thời để trống) ---
+        c = ws.cell(row, 1, "4. Cao su RSS3 (hàng hóa)")
+        c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.cell(row, 2).border = border_thin
+        ws.cell(row, 3).border = border_thin
+        c = ws.cell(row, 4); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 5); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 6); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 7); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 8); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 9, ""); c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.row_dimensions[row].height = 24
+        row += 1
+
+        # --- 5. Acid ---
+        from app.models.inventory import MaterialPurchase
+        acid_purchases = db.query(MaterialPurchase).filter(
+            MaterialPurchase.material_type == 'Acid',
+            MaterialPurchase.transaction_date >= start_date,
+            MaterialPurchase.transaction_date <= end_date
+        ).all()
+        acid_chi = sum((mp.total_amount or 0) for mp in acid_purchases)
+        acid_bien_dong = -acid_chi
+
+        hh_total_chi += acid_chi
+
+        c = ws.cell(row, 1, "5. Acid")
+        c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.cell(row, 2).border = border_thin
+        ws.cell(row, 3).border = border_thin
+        c = ws.cell(row, 4); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 5); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 6, acid_chi if acid_chi else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 7); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 8, acid_bien_dong if acid_bien_dong else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 9, ""); c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.row_dimensions[row].height = 24
+        row += 1
+
+        # --- 6. Amoniac ---
+        amoniac_purchases = db.query(MaterialPurchase).filter(
+            MaterialPurchase.material_type == 'Amoniac',
+            MaterialPurchase.transaction_date >= start_date,
+            MaterialPurchase.transaction_date <= end_date
+        ).all()
+        amoniac_chi = sum((mp.total_amount or 0) for mp in amoniac_purchases)
+        amoniac_bien_dong = -amoniac_chi
+
+        hh_total_chi += amoniac_chi
+
+        c = ws.cell(row, 1, "6. Amoniac")
+        c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.cell(row, 2).border = border_thin
+        ws.cell(row, 3).border = border_thin
+        c = ws.cell(row, 4); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 5); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 6, amoniac_chi if amoniac_chi else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 7); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 8, amoniac_bien_dong if amoniac_bien_dong else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 9, ""); c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.row_dimensions[row].height = 24
+        row += 1
+
+        # --- 7. Củi ---
+        cui_purchases = db.query(MaterialPurchase).filter(
+            MaterialPurchase.material_type == 'Củi',
+            MaterialPurchase.transaction_date >= start_date,
+            MaterialPurchase.transaction_date <= end_date
+        ).all()
+        cui_chi = sum((mp.total_amount or 0) for mp in cui_purchases)
+        cui_bien_dong = -cui_chi
+
+        hh_total_chi += cui_chi
+
+        c = ws.cell(row, 1, "7. Củi")
+        c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.cell(row, 2).border = border_thin
+        ws.cell(row, 3).border = border_thin
+        c = ws.cell(row, 4); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 5); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 6, cui_chi if cui_chi else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 7); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 8, cui_bien_dong if cui_bien_dong else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 9, ""); c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.row_dimensions[row].height = 24
+        row += 1
+
+        # --- 8. Dầu ăn ---
+        dau_an_purchases = db.query(MaterialPurchase).filter(
+            MaterialPurchase.material_type == 'Dầu ăn',
+            MaterialPurchase.transaction_date >= start_date,
+            MaterialPurchase.transaction_date <= end_date
+        ).all()
+        dau_an_chi = sum((mp.total_amount or 0) for mp in dau_an_purchases)
+        dau_an_bien_dong = -dau_an_chi
+
+        hh_total_chi += dau_an_chi
+
+        c = ws.cell(row, 1, "8. Dầu ăn")
+        c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.cell(row, 2).border = border_thin
+        ws.cell(row, 3).border = border_thin
+        c = ws.cell(row, 4); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 5); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 6, dau_an_chi if dau_an_chi else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 7); c.border = border_thin; c.number_format = VND_FMT
+        c = ws.cell(row, 8, dau_an_bien_dong if dau_an_bien_dong else None)
+        c.font = font_item; c.border = border_thin; c.alignment = align_right; c.number_format = VND_FMT
+        c = ws.cell(row, 9, ""); c.font = font_item; c.border = border_thin; c.alignment = align_left
+        ws.row_dimensions[row].height = 24
+        row += 1
+
+        # Fill totals on section header row (III. HÀNG HÓA)
+        hh_total_bien_dong = (hh_total_thu - hh_total_chi)
+
+        c = ws.cell(row_hh, 6, hh_total_chi if hh_total_chi else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        c = ws.cell(row_hh, 7, hh_total_thu if hh_total_thu else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        c = ws.cell(row_hh, 8, hh_total_bien_dong if hh_total_bien_dong else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        # ==========================================================================
+        # B. TÀI SẢN DÀI HẠN
+        # ==========================================================================
+
+        # Spacer row
+        ws.row_dimensions[row].height = 4.5
+        row += 1
+
+        # Section header: B. TÀI SẢN DÀI HẠN
+        row_tsdh = row
+        c = ws.cell(row_tsdh, 1, "B. TÀI SẢN DÀI HẠN")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_tsdh, cc)
+            cell.border = border_med_bottom
+        row += 1
+
+        # Spacer
+        ws.row_dimensions[row].height = 4.5
+        row += 1
+
+        # --- I. TÀI SẢN CỐ ĐỊNH (tạm thời để trống) ---
+        row_tscd = row
+        c = ws.cell(row_tscd, 1, "I. TÀI SẢN CỐ ĐỊNH")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_tscd, cc)
+            cell.border = border_med_bottom
+        ws.row_dimensions[row_tscd].height = 30
+        row += 1
+
+        # --- II. KHẤU HAO LŨY KẾ (tạm thời để trống) ---
+        row_khlk = row
+        c = ws.cell(row_khlk, 1, "II. KHẤU HAO LŨY KẾ")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_khlk, cc)
+            cell.border = border_med_bottom
+        ws.row_dimensions[row_khlk].height = 30
+        row += 1
+
+        # ==========================================================================
+        # NGUỒN VỐN
+        # ==========================================================================
+
+        # Spacer row
+        ws.row_dimensions[row].height = 4.5
+        row += 1
+
+        # Section header: NGUỒN VỐN (giống TÀI SẢN - dark blue)
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=TOTAL_COLS)
+        c = ws.cell(row, 1, "NGUỒN VỐN")
+        c.font = font_section; c.fill = fill_header; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row, cc)
+            cell.font = font_section; cell.fill = fill_header; cell.border = border_med_bottom
+        row += 1
+
+        # ==========================================================================
+        # A. NỢ PHẢI TRẢ
+        # ==========================================================================
+
+        # Spacer row
+        ws.row_dimensions[row].height = 4.5
+        row += 1
+
+        # Section header: A. NỢ PHẢI TRẢ
+        row_npt = row
+        c = ws.cell(row_npt, 1, "A. NỢ PHẢI TRẢ")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_npt, cc)
+            cell.border = border_med_bottom
+        row += 1
+
+        # Spacer
+        ws.row_dimensions[row].height = 4.5
+        row += 1
+
+        npt_total_chi = 0
+        npt_total_thu = 0
+
+        # --- I. NỢ HỘ DÂN ---
+        # Truy vấn bảng customers tính tổng total_debt
+        from app.models.business import Customers
+        from sqlalchemy import func as sqla_func
+
+        total_customer_debt = db.query(sqla_func.coalesce(sqla_func.sum(Customers.total_debt), 0)).scalar() or 0
+
+        npt_total_chi += total_customer_debt
+
+        row_nhd = row
+        c = ws.cell(row_nhd, 1, "I. NỢ HỘ DÂN")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_nhd, cc)
+            cell.border = border_med_bottom
+        ws.row_dimensions[row_nhd].height = 30
+
+        # Ghi tổng nợ hộ dân vào cột Chi cuối kỳ (F)
+        c = ws.cell(row_nhd, 6, total_customer_debt if total_customer_debt else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        # Biến động (H)
+        nhd_bien_dong = -total_customer_debt
+        c = ws.cell(row_nhd, 8, nhd_bien_dong if nhd_bien_dong else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+        row += 1
+
+        # --- II. THUẾ VÀ CÁC KHOẢN NỘP NHÀ NƯỚC (tạm thời để trống) ---
+        row_thue = row
+        c = ws.cell(row_thue, 1, "II. THUẾ VÀ CÁC KHOẢN NỘP NHÀ NƯỚC")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_thue, cc)
+            cell.border = border_med_bottom
+        ws.row_dimensions[row_thue].height = 30
+        row += 1
+
+        # --- III. NỢ NỘI BỘ NGẮN HẠN (tạm thời để trống) ---
+        row_nnb = row
+        c = ws.cell(row_nnb, 1, "III. NỢ NỘI BỘ NGẮN HẠN")
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_left
+        for cc in range(2, TOTAL_COLS + 1):
+            cell = ws.cell(row_nnb, cc)
+            cell.border = border_med_bottom
+        ws.row_dimensions[row_nnb].height = 30
+        row += 1
+
+        # Fill totals on A. NỢ PHẢI TRẢ
+        npt_total_bien_dong = (npt_total_thu - npt_total_chi)
+
+        c = ws.cell(row_npt, 6, npt_total_chi if npt_total_chi else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        c = ws.cell(row_npt, 7, npt_total_thu if npt_total_thu else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        c = ws.cell(row_npt, 8, npt_total_bien_dong if npt_total_bien_dong else None)
+        c.font = font_group; c.border = border_med_bottom; c.alignment = align_right; c.number_format = VND_FMT
+
+        # Freeze panes
+        ws.freeze_panes = "A7"
+
+        # ========== SAVE & SEND ==========
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+
+        now_str = datetime.now().strftime("%Y%m%d_%H%M")
+        file_name = f"can_bang_ke_toan_{now_str}.xlsx"
+
+        await message.reply_document(
+            document=tmp_path,
+            file_name=file_name,
+            caption=(
+                f"<b>BẢNG CÂN ĐỐI KẾ TOÁN</b>\n\n"
+                f"<b>Khoảng thời gian:</b> {period_label}\n"
+                f"<b>Mục:</b> Tài sản ngắn hạn - Tiền và tương đương tiền\n"
+                f"<b>Số khoản đầu tư:</b> {len(investments)}\n\n"
+                f"<i>Xuất lúc: {datetime.now().strftime('%H:%M %d/%m/%Y')}</i>"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+        os.remove(tmp_path)
+
+        LogInfo(
+            f"[TienNga] Balance sheet exported ({period_label}), {len(investments)} investments "
+            f"by @{message.from_user.username or message.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+
+    except Exception as e:
+        LogError(f"Error in balance sheet export: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
     finally:
         db.close()

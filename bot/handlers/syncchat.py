@@ -82,8 +82,8 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
             )
             return
 
-        # --- GGoMoonSin project sub-menu ---
-        if project and "ggomoonsin" in project.project_name.lower():
+        # --- GGoMooSin project sub-menu ---
+        if project and "ggomoosin" in project.project_name.lower():
             buttons = [
                 [InlineKeyboardButton("Nhóm tổng", callback_data=f"sync_dept_{project_id}_tong")],
                 [InlineKeyboardButton("Nhân sự", callback_data=f"sync_dept_{project_id}_hr")],
@@ -97,7 +97,7 @@ async def sync_proj_callback(client, callback_query: CallbackQuery):
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
             await callback_query.message.edit_text(
-                "<b>DỰ ÁN GGOMOONSIN</b>\n\nVui lòng chọn phòng ban / loại nhóm:",
+                "<b>DỰ ÁN GGOMOOSIN</b>\n\nVui lòng chọn phòng ban / loại nhóm:",
                 reply_markup=reply_markup,
                 parse_mode=ParseMode.HTML
             )

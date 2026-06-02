@@ -4,5 +4,5 @@ from . import credit
 from . import rental
 from . import other
 from . import tien_nga
-from . import ggomoonsin
+from . import ggomoosin
 from . import rosca

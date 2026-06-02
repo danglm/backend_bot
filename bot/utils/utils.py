@@ -428,7 +428,7 @@ async def list_employee_handler(client, message: Message) -> None:
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Công ty Tiến Nga", callback_data="cb_listemp_TN")],
-        [InlineKeyboardButton("Công ty GgoMoonSin", callback_data="cb_listemp_G")],
+        [InlineKeyboardButton("Công ty GgoMooSin", callback_data="cb_listemp_G")],
         [InlineKeyboardButton("Công ty Minh Khuê", callback_data="cb_listemp_MK")],
         [InlineKeyboardButton("Hủy", callback_data="cb_listemp_cancel")]
     ])
@@ -453,7 +453,7 @@ async def list_employee_callback(client, callback_query: CallbackQuery):
     if company_prefix == "TN":
         company_name = "Công ty Tiến Nga"
     elif company_prefix == "G":
-        company_name = "Công ty GgoMoonSin"
+        company_name = "Công ty GgoMooSin"
     elif company_prefix == "MK":
         company_name = "Công ty Minh Khuê"
     else:
@@ -505,7 +505,7 @@ async def list_employee_callback(client, callback_query: CallbackQuery):
 async def list_employee_back_callback(client, callback_query: CallbackQuery):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Công ty Tiến Nga", callback_data="cb_listemp_TN")],
-        [InlineKeyboardButton("Công ty GgoMoonSin", callback_data="cb_listemp_G")],
+        [InlineKeyboardButton("Công ty GgoMooSin", callback_data="cb_listemp_G")],
         [InlineKeyboardButton("Công ty Minh Khuê", callback_data="cb_listemp_MK")],
         [InlineKeyboardButton("Hủy", callback_data="cb_listemp_cancel")]
     ])

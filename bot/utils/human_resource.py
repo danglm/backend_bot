@@ -1,6 +1,6 @@
 """
 Human Resource Utilities
-Các hàm xử lý dùng chung cho quản lý nhân sự, dùng được cho nhiều dự án (Tiến Nga, GGoMoonSin, ...).
+Các hàm xử lý dùng chung cho quản lý nhân sự, dùng được cho nhiều dự án (Tiến Nga, GGoMooSin, ...).
 """
 import uuid
 import datetime
