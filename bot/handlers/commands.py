@@ -958,7 +958,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                 ]
 
         # ===================== GGOMOOSIN =====================
-        elif "ggoomoosin" in project_name.lower():
+        elif "ggomoosin" in project_name.lower():
             if custom_title == "super_main":
                 label = "GGoMooSin (Tổng Hợp)"
 
