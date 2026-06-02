@@ -411,30 +411,56 @@ def build_chotso_ketoan_html(data: dict) -> str:
     return html
 
 
-def _render_html_to_png_sync(html_content: str) -> bytes:
+def _render_html_to_png_sync(html_content: str, max_retries: int = 2) -> bytes:
     """
     Render HTML string thành PNG bytes bằng Playwright SYNC API.
     Chạy trong thread riêng để tránh lỗi NotImplementedError 
     trên Windows event loop (Pyrogram/ProactorEventLoop).
     """
     from playwright.sync_api import sync_playwright
-    
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page(
-            viewport={"width": 520, "height": 900},
-            device_scale_factor=2
-        )
-        
-        page.set_content(html_content, wait_until="networkidle")
-        page.wait_for_timeout(800)
-        
-        receipt = page.locator(".receipt")
-        screenshot = receipt.screenshot(type="png", omit_background=True)
-        
-        browser.close()
-    
-    return screenshot
+
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page(
+                    viewport={"width": 520, "height": 900},
+                    device_scale_factor=2
+                )
+
+                # HTML hoàn toàn self-contained (không có font/ảnh ngoài),
+                # nên "domcontentloaded" là đủ — tránh "networkidle" bị treo.
+                page.set_content(html_content, wait_until="domcontentloaded")
+
+                # Tắt mọi CSS animation/transition để Playwright không chờ
+                # "element to be stable" vô hạn do layout shift trên Windows.
+                page.add_style_tag(content="*, *::before, *::after { animation: none !important; transition: none !important; }")
+
+                # Chờ layout ổn định — 300ms đủ cho CSS inline tĩnh.
+                page.wait_for_timeout(300)
+
+                receipt = page.locator(".receipt")
+
+                # Đặt timeout rõ ràng (15s) thay vì dùng default 30s.
+                screenshot = receipt.screenshot(
+                    type="png",
+                    omit_background=True,
+                    timeout=15000
+                )
+
+                browser.close()
+
+            return screenshot
+
+        except Exception as e:
+            last_error = e
+            # Nếu còn retry, log và thử lại
+            if attempt < max_retries:
+                import time
+                time.sleep(1)
+                continue
+            raise last_error
 
 
 async def render_html_to_png(html_content: str) -> bytes:

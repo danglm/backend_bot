@@ -256,7 +256,7 @@ def build_attendance_html(
     return html
 
 
-def _render_attendance_to_png_sync(html_content: str) -> bytes:
+def _render_attendance_to_png_sync(html_content: str, max_retries: int = 2) -> bytes:
     """
     Render HTML attendance thành PNG bytes bằng Playwright SYNC API.
     Chạy trong thread riêng để tránh lỗi NotImplementedError
@@ -264,22 +264,33 @@ def _render_attendance_to_png_sync(html_content: str) -> bytes:
     """
     from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page(
-            viewport={"width": 760, "height": 1200},
-            device_scale_factor=2
-        )
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page(
+                    viewport={"width": 760, "height": 1200},
+                    device_scale_factor=2
+                )
 
-        page.set_content(html_content, wait_until="networkidle")
-        page.wait_for_timeout(800)
+                page.set_content(html_content, wait_until="domcontentloaded")
+                page.add_style_tag(content="*, *::before, *::after { animation: none !important; transition: none !important; }")
+                page.wait_for_timeout(300)
 
-        element = page.locator(".attendance")
-        screenshot = element.screenshot(type="png", omit_background=True)
+                element = page.locator(".attendance")
+                screenshot = element.screenshot(type="png", omit_background=True, timeout=15000)
 
-        browser.close()
+                browser.close()
 
-    return screenshot
+            return screenshot
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries:
+                import time
+                time.sleep(1)
+                continue
+            raise last_error
 
 
 async def render_attendance_to_png(html_content: str) -> bytes:

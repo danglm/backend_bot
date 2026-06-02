@@ -252,28 +252,40 @@ def build_purchase_chart_html(data: dict) -> str:
 </html>"""
     return html
 
-def _render_chart_html_to_png_sync(html_content: str) -> bytes:
+def _render_chart_html_to_png_sync(html_content: str, max_retries: int = 2) -> bytes:
     """Render HTML sang PNG bằng Playwright SYNC."""
     from playwright.sync_api import sync_playwright
     
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        # Viewport cao để tải trang rộng, chụp full_page hoặc theo element
-        page = browser.new_page(
-            viewport={"width": 1000, "height": 1000},
-            device_scale_factor=2
-        )
-        
-        page.set_content(html_content, wait_until="networkidle")
-        page.wait_for_timeout(1000)
-        
-        # Lấy toàn bộ khối Div tổng để screenshot tự giãn theo chiều dọc
-        container = page.locator(".main-wrapper")
-        screenshot = container.screenshot(type="png", omit_background=True)
-        
-        browser.close()
-    
-    return screenshot
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                # Viewport cao để tải trang rộng, chụp full_page hoặc theo element
+                page = browser.new_page(
+                    viewport={"width": 1000, "height": 1000},
+                    device_scale_factor=2
+                )
+                
+                # Giữ networkidle vì cần tải Chart.js từ CDN
+                page.set_content(html_content, wait_until="networkidle")
+                page.add_style_tag(content="*, *::before, *::after { animation: none !important; transition: none !important; }")
+                page.wait_for_timeout(1000)
+                
+                # Lấy toàn bộ khối Div tổng để screenshot tự giãn theo chiều dọc
+                container = page.locator(".main-wrapper")
+                screenshot = container.screenshot(type="png", omit_background=True, timeout=15000)
+                
+                browser.close()
+            
+            return screenshot
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries:
+                import time
+                time.sleep(1)
+                continue
+            raise last_error
 
 async def render_chart_html_to_png(html_content: str) -> bytes:
     """Async wrapper cho chart html."""
