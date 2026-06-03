@@ -7,7 +7,8 @@ from bot.utils.utils import check_command_target, require_user_type, require_pro
 from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
-from app.models.device import Smartphone, SmartphoneStatus, Laptop, LaptopStatus, SimCard, SimCardStatus, DeviceAssignment, Application, AppCategory, AppBillingCycle, AppStatus, InstalledApp
+from bot.utils.states import form_tracker
+from app.models.device import Smartphone, SmartphoneStatus, Laptop, LaptopStatus, SimCard, SimCardStatus, DeviceAssignment, Application, AppCategory, AppBillingCycle, AppStatus, InstalledApp, Screen, ScreenStatus, Camera, CameraStatus, OtherDevice, OtherDeviceStatus, DeviceCategory
 from app.models.vehicle import Vehicle, VehicleActivityLog
 from app.crud.device import get_smartphone_by_imei, create_smartphone, get_sim_card_by_phone
 from app.crud.vehicle import get_vehicle_by_license_plate, create_vehicle_activity_log
@@ -50,12 +51,16 @@ Ngày Mua (dd/mm/yyyy):
 Trạng Thái: available
 Phụ Kiện: 
 Ghi Chú: 
+Tài Khoản: 
+Mật Khẩu TK: 
 </p>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken
 Mã Định Danh: mã nội bộ do bạn tự đặt (VD: SP001, DT-001...)
-IMEI 1 là bắt buộc và không được trùng</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+IMEI 1 là bắt buộc và không được trùng
+Tài Khoản: iCloud hoặc Google Account</i>"""
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_smartphone", "create", form_msg.id)
         return
 
     # Parse form data
@@ -79,6 +84,8 @@ IMEI 1 là bắt buộc và không được trùng</i>"""
     status = data.get("Trạng Thái", "available").strip().lower()
     accessories = data.get("Phụ Kiện", "").strip()
     notes = data.get("Ghi Chú", "").strip()
+    account = data.get("Tài Khoản", "").strip()
+    account_password = data.get("Mật Khẩu TK", "").strip()
 
     if not model_name:
         await message.reply_text("⚠️ <b>Tên Model</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -154,6 +161,8 @@ IMEI 1 là bắt buộc và không được trùng</i>"""
             status=status,
             accessories=accessories or None,
             notes=notes or None,
+            account=account or None,
+            account_password=account_password or None,
         )
         db.add(new_phone)
         db.commit()
@@ -168,6 +177,14 @@ IMEI 1 là bắt buộc và không được trùng</i>"""
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[CreateSmartphone] Created {model_name} (IMEI: {imei_1}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_smartphone", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create smartphone form: {del_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()
@@ -230,10 +247,13 @@ Ngày Mua (dd/mm/yyyy): {fmt_date}
 Trạng Thái: {phone.status or "available"}
 Phụ Kiện: {phone.accessories or ""}
 Ghi Chú: {phone.notes or ""}
+Tài Khoản: {phone.account or ""}
+Mật Khẩu TK: {phone.account_password or ""}
 </p>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_smartphone", lookup, form_msg.id)
             return
 
         # Parse form data
@@ -270,6 +290,8 @@ Ghi Chú: {phone.notes or ""}
         status = data.get("Trạng Thái", "").strip().lower()
         accessories = data.get("Phụ Kiện", "").strip()
         notes = data.get("Ghi Chú", "").strip()
+        account = data.get("Tài Khoản", "").strip()
+        account_password = data.get("Mật Khẩu TK", "").strip()
 
         # Validate status if provided
         if status:
@@ -325,6 +347,8 @@ Ghi Chú: {phone.notes or ""}
         if status: phone.status = status
         phone.accessories = accessories if accessories else phone.accessories
         phone.notes = notes if notes else phone.notes
+        if "Tài Khoản" in data: phone.account = account or None
+        if "Mật Khẩu TK" in data: phone.account_password = account_password or None
 
         db.commit()
         db.refresh(phone)
@@ -338,6 +362,14 @@ Ghi Chú: {phone.notes or ""}
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[UpdateSmartphone] Updated {phone.model_name} (ID: {phone.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_smartphone", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update smartphone form: {del_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()
@@ -443,7 +475,28 @@ async def receive_device_handler(client, message: Message) -> None:
                 device = laptop
                 device_type = "laptop"
 
-        # 3. Fallback: Tìm Smartphone theo IMEI
+        # 3. Tìm trong Screen theo ID
+        if not device:
+            screen = db.query(Screen).filter(Screen.id == lookup).first()
+            if screen:
+                device = screen
+                device_type = "screen"
+
+        # 4. Tìm trong Camera theo ID
+        if not device:
+            camera = db.query(Camera).filter(Camera.id == lookup).first()
+            if camera:
+                device = camera
+                device_type = "camera"
+
+        # 5. Tìm trong OtherDevice theo ID
+        if not device:
+            other_dev = db.query(OtherDevice).filter(OtherDevice.id == lookup).first()
+            if other_dev:
+                device = other_dev
+                device_type = "other_device"
+
+        # 6. Fallback: Tìm Smartphone theo IMEI
         if not device:
             phone = get_smartphone_by_imei(db, lookup)
             if phone:
@@ -487,6 +540,30 @@ async def receive_device_handler(client, message: Message) -> None:
                 f"RAM: {device.ram_size or 'N/A'}\n"
                 f"Storage: {device.storage_specs or 'N/A'}\n"
                 f"Service Tag: <code>{device.service_tag or 'N/A'}</code>"
+            )
+        elif device_type == "screen":
+            initial_condition = device.notes or ""
+            device_name = f"{device.model_name} ({device.brand})"
+            device_detail = (
+                f"Kích thước: {device.screen_size or 'N/A'}\n"
+                f"Độ phân giải: {device.resolution or 'N/A'}\n"
+                f"Phụ kiện: {device.accessories or 'Không có'}"
+            )
+        elif device_type == "camera":
+            initial_condition = device.notes or ""
+            device_name = f"{device.model_name} ({device.brand})"
+            device_detail = (
+                f"Loại: {device.camera_type or 'N/A'}\n"
+                f"Vị trí: {device.location or 'N/A'}\n"
+                f"IP: {device.ip_address or 'N/A'}"
+            )
+        elif device_type == "other_device":
+            initial_condition = device.notes or ""
+            device_name = f"{device.device_name}"
+            device_detail = (
+                f"Danh mục: {device.device_category or 'N/A'}\n"
+                f"Vị trí: {device.location or 'N/A'}\n"
+                f"Phụ kiện: {device.accessories or 'Không có'}"
             )
 
         # Tạo bản ghi device_assignment
@@ -568,7 +645,28 @@ async def return_device_handler(client, message: Message) -> None:
                 device = laptop
                 device_type = "laptop"
 
-        # 3. Fallback: Tìm Smartphone theo IMEI
+        # 3. Tìm trong Screen theo ID
+        if not device:
+            screen = db.query(Screen).filter(Screen.id == lookup).first()
+            if screen:
+                device = screen
+                device_type = "screen"
+
+        # 4. Tìm trong Camera theo ID
+        if not device:
+            camera = db.query(Camera).filter(Camera.id == lookup).first()
+            if camera:
+                device = camera
+                device_type = "camera"
+
+        # 5. Tìm trong OtherDevice theo ID
+        if not device:
+            other_dev = db.query(OtherDevice).filter(OtherDevice.id == lookup).first()
+            if other_dev:
+                device = other_dev
+                device_type = "other_device"
+
+        # 6. Fallback: Tìm Smartphone theo IMEI
         if not device:
             phone = get_smartphone_by_imei(db, lookup)
             if phone:
@@ -632,6 +730,15 @@ async def return_device_handler(client, message: Message) -> None:
         elif device_type == "laptop":
             device_name = f"{device.model_name}"
             device_detail = f"Service Tag: <code>{device.service_tag or 'N/A'}</code>"
+        elif device_type == "screen":
+            device_name = f"{device.model_name} ({device.brand})"
+            device_detail = f"Kích thước: {device.screen_size or 'N/A'}"
+        elif device_type == "camera":
+            device_name = f"{device.model_name} ({device.brand})"
+            device_detail = f"Vị trí: {device.location or 'N/A'}"
+        elif device_type == "other_device":
+            device_name = f"{device.device_name}"
+            device_detail = f"Danh mục: {device.device_category or 'N/A'}"
         else:
             device_detail = ""
 
@@ -696,6 +803,24 @@ async def check_log_device_handler(client, message: Message) -> None:
                 device_type = "laptop"
 
         if not device:
+            screen = db.query(Screen).filter(Screen.id == lookup).first()
+            if screen:
+                device = screen
+                device_type = "screen"
+
+        if not device:
+            camera = db.query(Camera).filter(Camera.id == lookup).first()
+            if camera:
+                device = camera
+                device_type = "camera"
+
+        if not device:
+            other_dev = db.query(OtherDevice).filter(OtherDevice.id == lookup).first()
+            if other_dev:
+                device = other_dev
+                device_type = "other_device"
+
+        if not device:
             phone = get_smartphone_by_imei(db, lookup)
             if phone:
                 device = phone
@@ -708,13 +833,21 @@ async def check_log_device_handler(client, message: Message) -> None:
             )
             return
 
-        # Build device info
         if device_type == "smartphone":
             device_name = f"{device.model_name} ({device.brand})"
             device_detail = f"IMEI 1: {device.imei_1}"
         elif device_type == "laptop":
             device_name = f"{device.model_name}"
             device_detail = f"Service Tag: {device.service_tag or 'N/A'}"
+        elif device_type == "screen":
+            device_name = f"{device.model_name} ({device.brand})"
+            device_detail = f"Kích thước: {device.screen_size or 'N/A'}"
+        elif device_type == "camera":
+            device_name = f"{device.model_name} ({device.brand})"
+            device_detail = f"Vị trí: {device.location or 'N/A'}"
+        elif device_type == "other_device":
+            device_name = f"{device.device_name}"
+            device_detail = f"Danh mục: {device.device_category or 'N/A'}"
 
         # Đếm tổng số lượt nhận
         total_assignments = db.query(DeviceAssignment).filter(
@@ -855,7 +988,8 @@ Loại SIM:
 Loại SIM: eSIM, SIM vật lý, trả trước, trả sau...
 Mã Định Danh: mã nội bộ do bạn tự đặt (VD: SIM001)
 Đang Ở Thiết Bị: điền mã định danh điện thoại/thiết bị nếu SIM đang gắn trong đó</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_sim", "create", form_msg.id)
         return
 
     # Parse form
@@ -948,6 +1082,14 @@ Mã Định Danh: mã nội bộ do bạn tự đặt (VD: SIM001)
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[CreateSim] Created SIM {phone_number} (ID: {new_sim.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_sim", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create SIM form: {del_err}", LogType.SYSTEM_STATUS)
+
     except Exception as e:
         db.rollback()
         LogError(f"Error in create_sim_handler: {e}", LogType.SYSTEM_STATUS)
@@ -1006,7 +1148,8 @@ Loại SIM: {sim.sim_type or ""}
 </p>
 
 <i>Trạng thái gồm: active, blocked, expired</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_sim", lookup, form_msg.id)
             return
 
         # Parse form
@@ -1093,6 +1236,14 @@ Loại SIM: {sim.sim_type or ""}
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[UpdateSim] Updated SIM {sim.phone_number} (ID: {sim.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_sim", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update SIM form: {del_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()
@@ -1193,7 +1344,8 @@ Trạng Thái: active
 <i>Phân loại gồm: streaming, social, education, design, other
 Chu kỳ gồm: monthly, quarterly, yearly
 Trạng thái gồm: active, expired, suspended</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_app", "create", form_msg.id)
         return
 
     data = {}
@@ -1310,6 +1462,14 @@ Trạng thái gồm: active, expired, suspended</i>"""
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[CreateApp] Created {app_name} (ID: {new_app.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_app", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create app form: {del_err}", LogType.SYSTEM_STATUS)
+
     except Exception as e:
         db.rollback()
         LogError(f"Error in create_application_handler: {e}", LogType.SYSTEM_STATUS)
@@ -1376,7 +1536,8 @@ Trạng Thái: {app.status or "active"}
 <i>Phân loại gồm: streaming, social, education, design, other
 Chu kỳ gồm: monthly, quarterly, yearly
 Trạng thái gồm: active, expired, suspended</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_app", lookup, form_msg.id)
             return
 
         if len(args) < 2:
@@ -1488,6 +1649,14 @@ Trạng thái gồm: active, expired, suspended</i>"""
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[UpdateApp] Updated {app.app_name} (ID: {app.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_app", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update app form: {del_err}", LogType.SYSTEM_STATUS)
+
     except Exception as e:
         db.rollback()
         LogError(f"Error in update_application_handler: {e}", LogType.SYSTEM_STATUS)
@@ -1560,12 +1729,15 @@ async def list_device_handler(client, message: Message) -> None:
     try:
         smartphones = db.query(Smartphone).all()
         laptops = db.query(Laptop).all()
+        screens = db.query(Screen).all()
+        cameras = db.query(Camera).all()
+        other_devices = db.query(OtherDevice).all()
 
-        if not smartphones and not laptops:
+        if not smartphones and not laptops and not screens and not cameras and not other_devices:
             await message.reply_text("ℹ️ Chưa có thiết bị nào trong hệ thống.", parse_mode=ParseMode.HTML)
             return
 
-        total_devices = len(smartphones) + len(laptops)
+        total_devices = len(smartphones) + len(laptops) + len(screens) + len(cameras) + len(other_devices)
         entries = []
 
         # Build smartphone entries
@@ -1632,13 +1804,69 @@ async def list_device_handler(client, message: Message) -> None:
                 "imei": f"Tag: {lt.service_tag or 'N/A'}",
             })
 
+        # Build screen entries
+        for scr in screens:
+            assignment = db.query(DeviceAssignment).filter(
+                DeviceAssignment.device_id == scr.id,
+                DeviceAssignment.device_type == "screen",
+                DeviceAssignment.returned_at.is_(None)
+            ).order_by(DeviceAssignment.assigned_at.desc()).first()
+            holder = assignment.username if assignment else "Chưa giao"
+
+            entries.append({
+                "type": "MÀN HÌNH",
+                "id": scr.id,
+                "name": f"{scr.model_name} ({scr.brand})",
+                "status": scr.status,
+                "holder": holder,
+                "accessories": scr.accessories or "Không có",
+                "sim": "N/A",
+                "apps": "N/A",
+                "imei": f"Size: {scr.screen_size or 'N/A'}",
+            })
+
+        # Build camera entries
+        for cam in cameras:
+            entries.append({
+                "type": "CAMERA",
+                "id": cam.id,
+                "name": f"{cam.model_name} ({cam.brand})",
+                "status": cam.status,
+                "holder": cam.location or "N/A",
+                "accessories": "N/A",
+                "sim": "N/A",
+                "apps": "N/A",
+                "imei": f"IP: {cam.ip_address or 'N/A'}",
+            })
+
+        # Build other device entries
+        for od in other_devices:
+            assignment = db.query(DeviceAssignment).filter(
+                DeviceAssignment.device_id == od.id,
+                DeviceAssignment.device_type == "other_device",
+                DeviceAssignment.returned_at.is_(None)
+            ).order_by(DeviceAssignment.assigned_at.desc()).first()
+            holder = assignment.username if assignment else "Chưa giao"
+
+            entries.append({
+                "type": "TB KHÁC",
+                "id": od.id,
+                "name": od.device_name,
+                "status": od.status,
+                "holder": holder,
+                "accessories": od.accessories or "Không có",
+                "sim": "N/A",
+                "apps": "N/A",
+                "imei": f"Cat: {od.device_category or 'N/A'}",
+            })
+
         # Nếu > 20 thiết bị → xuất file txt
         if total_devices > 20:
             import os
             file_content = (
                 f"DANH SÁCH THIẾT BỊ\n"
                 f"{'='*50}\n"
-                f"Tổng: {total_devices} thiết bị ({len(smartphones)} điện thoại, {len(laptops)} laptop)\n"
+                f"Tổng: {total_devices} thiết bị ({len(smartphones)} ĐT, {len(laptops)} Laptop, {len(screens)} MH, {len(cameras)} Cam, {len(other_devices)} TB khác)\n"
                 f"{'='*50}\n\n"
             )
 
@@ -1664,7 +1892,7 @@ async def list_device_handler(client, message: Message) -> None:
 
             await message.reply_document(
                 document=file_path,
-                caption=f"<b>DANH SÁCH THIẾT BỊ</b>\nTổng: {total_devices} thiết bị ({len(smartphones)} ĐT, {len(laptops)} Laptop)",
+                caption=f"<b>DANH SÁCH THIẾT BỊ</b>\nTổng: {total_devices} thiết bị ({len(smartphones)} ĐT, {len(laptops)} Laptop, {len(screens)} MH, {len(cameras)} Cam, {len(other_devices)} TB khác)",
                 parse_mode=ParseMode.HTML
             )
             os.remove(file_path)
@@ -1673,7 +1901,7 @@ async def list_device_handler(client, message: Message) -> None:
         # <= 20 thiết bị → hiển thị inline
         response = (
             f"<b>DANH SÁCH THIẾT BỊ</b>\n"
-            f"Tổng: {total_devices} thiết bị ({len(smartphones)} ĐT, {len(laptops)} Laptop)\n"
+            f"Tổng: {total_devices} thiết bị ({len(smartphones)} ĐT, {len(laptops)} Laptop, {len(screens)} MH, {len(cameras)} Cam, {len(other_devices)} TB khác)\n"
             f"-------------------\n\n"
         )
 
@@ -1737,6 +1965,18 @@ async def check_device_handler(client, message: Message) -> None:
             device_type = "laptop"
 
         if not device:
+            device = db.query(Screen).filter(Screen.id == lookup).first()
+            device_type = "screen"
+
+        if not device:
+            device = db.query(Camera).filter(Camera.id == lookup).first()
+            device_type = "camera"
+
+        if not device:
+            device = db.query(OtherDevice).filter(OtherDevice.id == lookup).first()
+            device_type = "other_device"
+
+        if not device:
             device = get_smartphone_by_imei(db, lookup)
             device_type = "smartphone"
 
@@ -1760,14 +2000,43 @@ async def check_device_handler(client, message: Message) -> None:
                 f"<b>ĐIỆN THOẠI: {device.model_name} ({device.brand})</b>\n"
                 f"Mã: <code>{device.id}</code> | IMEI: <code>{device.imei_1}</code>\n"
                 f"Dung lượng: {device.storage_capacity or 'N/A'} | Pin: {device.battery_health or 'N/A'}%\n"
+                f"Tài khoản: {device.account or 'N/A'}\n"
                 f"Trạng thái: <b>{device.status}</b>\n\n"
                 f"<b>Người sử dụng:</b> {user_info}\n"
             )
-        else:
+        elif device_type == "laptop":
             base_info = (
                 f"<b>LAPTOP: {device.model_name}</b>\n"
                 f"Mã: <code>{device.id}</code> | Service Tag: <code>{device.service_tag or 'N/A'}</code>\n"
                 f"Cấu hình: {device.processor_cpu or 'N/A'} - {device.ram_size or 'N/A'} - {device.storage_specs or 'N/A'}\n"
+                f"Trạng thái: <b>{device.status}</b>\n\n"
+                f"<b>Người sử dụng:</b> {user_info}\n"
+            )
+        elif device_type == "screen":
+            base_info = (
+                f"<b>MÀN HÌNH: {device.model_name} ({device.brand})</b>\n"
+                f"Mã: <code>{device.id}</code>\n"
+                f"Kích thước: {device.screen_size or 'N/A'} | Độ phân giải: {device.resolution or 'N/A'}\n"
+                f"Tấm nền: {device.panel_type or 'N/A'} | Tần số: {device.refresh_rate or 'N/A'}\n"
+                f"Cổng kết nối: {device.ports or 'N/A'}\n"
+                f"Trạng thái: <b>{device.status}</b>\n\n"
+                f"<b>Người sử dụng:</b> {user_info}\n"
+            )
+        elif device_type == "camera":
+            base_info = (
+                f"<b>CAMERA: {device.model_name} ({device.brand})</b>\n"
+                f"Mã: <code>{device.id}</code>\n"
+                f"Loại: {device.camera_type or 'N/A'} | Độ phân giải: {device.resolution or 'N/A'}\n"
+                f"IP: {device.ip_address or 'N/A'} | Port: {device.port or 'N/A'}\n"
+                f"Vị trí: {device.location or 'N/A'} | Lưu trữ: {device.storage_type or 'N/A'}\n"
+                f"Trạng thái: <b>{device.status}</b>\n"
+            )
+        elif device_type == "other_device":
+            base_info = (
+                f"<b>THIẾT BỊ KHÁC: {device.device_name}</b>\n"
+                f"Mã: <code>{device.id}</code>\n"
+                f"Danh mục: {device.device_category or 'N/A'} | Thương hiệu: {device.brand or 'N/A'}\n"
+                f"Vị trí: {device.location or 'N/A'}\n"
                 f"Trạng thái: <b>{device.status}</b>\n\n"
                 f"<b>Người sử dụng:</b> {user_info}\n"
             )
@@ -2008,7 +2277,8 @@ Trạng Thái: available
 </p>
 
 <i>Trạng thái gồm: available, assigned, maintenance</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_laptop", "create", form_msg.id)
         return
 
     data = {}
@@ -2079,6 +2349,14 @@ Trạng Thái: available
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[CreateLaptop] Created {model_name} (ID: {new_laptop.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_laptop", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create laptop form: {del_err}", LogType.SYSTEM_STATUS)
+
     except Exception as e:
         db.rollback()
         LogError(f"Error in create_laptop_handler: {e}", LogType.SYSTEM_STATUS)
@@ -2136,7 +2414,8 @@ Trạng Thái: {laptop.status or "available"}
 </p>
 
 <i>Trạng thái gồm: available, assigned, maintenance</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_laptop", lookup, form_msg.id)
             return
 
         if len(args) < 2:
@@ -2200,6 +2479,14 @@ Trạng Thái: {laptop.status or "available"}
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[UpdateLaptop] Updated {laptop.model_name} (ID: {laptop.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_laptop", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update laptop form: {del_err}", LogType.SYSTEM_STATUS)
+
     except Exception as e:
         db.rollback()
         LogError(f"Error in update_laptop_handler: {e}", LogType.SYSTEM_STATUS)
@@ -2257,6 +2544,1245 @@ async def delete_laptop_handler(client, message: Message) -> None:
         db.close()
 
 
+# ===================== TẠO THIẾT BỊ (UNIFIED) =====================
+
+@bot.on_message(filters.command(["other_create_device", "other_tao_thiet_bi"]) | filters.regex(r"^@\w+\s+/(other_create_device|other_tao_thiet_bi)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def create_device_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_create_device", "other_tao_thiet_bi"])
+    if args is None: return
+
+    buttons = [
+        [
+            InlineKeyboardButton("Điện thoại", callback_data="create_dev|smartphone"),
+            InlineKeyboardButton("Laptop", callback_data="create_dev|laptop"),
+        ],
+        [
+            InlineKeyboardButton("Máy tính bảng", callback_data="create_dev|tablet"),
+            InlineKeyboardButton("Màn hình", callback_data="create_dev|screen"),
+        ],
+        [
+            InlineKeyboardButton("Camera", callback_data="create_dev|camera"),
+            InlineKeyboardButton("Thiết bị khác", callback_data="create_dev|other_device"),
+        ],
+        [InlineKeyboardButton("Huỷ", callback_data="create_dev|cancel")],
+    ]
+
+    await message.reply_text(
+        "<b>TẠO THIẾT BỊ MỚI</b>\n\nVui lòng chọn loại thiết bị muốn tạo:",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.HTML
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^create_dev\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def create_device_cb_handler(client, callback_query: CallbackQuery):
+    device_type = callback_query.matches[0].group(1)
+
+    if device_type == "cancel":
+        await callback_query.message.edit_text("❌ <b>Đã huỷ thao tác tạo thiết bị.</b>", parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+        return
+
+    forms = {
+        "smartphone": """<b>FORM TẠO ĐIỆN THOẠI MỚI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<p>/other_create_smartphone
+Mã Định Danh: 
+Tên Model: 
+Thương Hiệu: 
+IMEI 1: 
+IMEI 2: 
+Số Serial: 
+Phiên Bản OS: 
+Dung Lượng: 
+Tình Trạng Pin (%): 
+Ngày Mua (dd/mm/yyyy): 
+Trạng Thái: available
+Phụ Kiện: 
+Ghi Chú: 
+Tài Khoản: 
+Mật Khẩu TK: 
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+IMEI 1 là bắt buộc và không được trùng
+Tài Khoản: iCloud hoặc Google Account</i>""",
+
+        "tablet": """<b>FORM TẠO MÁY TÍNH BẢNG MỚI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<p>/other_create_smartphone
+Mã Định Danh: 
+Tên Model: 
+Thương Hiệu: 
+IMEI 1: 
+IMEI 2: 
+Số Serial: 
+Phiên Bản OS: 
+Dung Lượng: 
+Tình Trạng Pin (%): 
+Ngày Mua (dd/mm/yyyy): 
+Trạng Thái: available
+Phụ Kiện: 
+Ghi Chú: 
+Tài Khoản: 
+Mật Khẩu TK: 
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+IMEI 1 là bắt buộc và không được trùng
+Máy tính bảng dùng chung bảng Điện thoại
+Tài Khoản: iCloud hoặc Google Account</i>""",
+
+        "laptop": """<b>FORM TẠO LAPTOP MỚI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<p>/other_create_laptop
+Mã Thiết Bị (ID): 
+Tên Laptop: 
+CPU: 
+RAM: 
+Ổ Cứng: 
+Card Đồ Họa: 
+Service Tag: 
+MAC Address: 
+Hạn Bảo Hành (dd/mm/yyyy): 
+Phụ Kiện: 
+Trạng Thái: available
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance</i>""",
+
+        "screen": """<b>FORM TẠO MÀN HÌNH MỚI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<p>/other_create_screen
+Mã Thiết Bị (ID): 
+Tên Model: 
+Thương Hiệu: 
+Kích Thước: 
+Độ Phân Giải: 
+Loại Tấm Nền: 
+Tần Số Quét: 
+Cổng Kết Nối: 
+Số Serial: 
+Ngày Mua (dd/mm/yyyy): 
+Hạn Bảo Hành (dd/mm/yyyy): 
+Trạng Thái: available
+Phụ Kiện: 
+Ghi Chú: 
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Loại tấm nền: IPS, VA, TN, OLED
+Cổng kết nối: HDMI, DP, USB-C, VGA...</i>""",
+
+        "camera": """<b>FORM TẠO CAMERA MỚI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<p>/other_create_camera
+Mã Thiết Bị (ID): 
+Tên Model: 
+Thương Hiệu: 
+Loại Camera: 
+Độ Phân Giải: 
+Địa Chỉ IP: 
+MAC Address: 
+Port: 
+Tài Khoản: 
+Mật Khẩu: 
+Lưu Trữ: 
+Vị Trí Lắp Đặt: 
+Số Serial: 
+Ngày Mua (dd/mm/yyyy): 
+Hạn Bảo Hành (dd/mm/yyyy): 
+Trạng Thái: active
+Ghi Chú: 
+</p>
+
+<i>Trạng thái gồm: active, inactive, maintenance, broken
+Loại camera: IP, Analog, WiFi, PTZ
+Lưu trữ: SD Card, NVR, Cloud</i>""",
+
+        "other_device": """<b>FORM TẠO THIẾT BỊ KHÁC</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<p>/other_create_other_device
+Mã Thiết Bị (ID): 
+Tên Thiết Bị: 
+Danh Mục: 
+Thương Hiệu: 
+Model Số: 
+Số Serial: 
+Thông Số Kỹ Thuật: 
+Địa Chỉ IP: 
+MAC Address: 
+Tài Khoản: 
+Mật Khẩu: 
+Vị Trí: 
+Ngày Mua (dd/mm/yyyy): 
+Hạn Bảo Hành (dd/mm/yyyy): 
+Trạng Thái: available
+Phụ Kiện: 
+Ghi Chú: 
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Danh mục: printer, router, projector, ups, scanner, speaker, other</i>""",
+    }
+
+    form = forms.get(device_type)
+    if not form:
+        await callback_query.answer("Loại thiết bị không hợp lệ.", show_alert=True)
+        return
+
+    # Map device_type to command prefix for form tracker
+    cmd_map = {
+        "smartphone": "other_create_smartphone",
+        "tablet": "other_create_smartphone",
+        "laptop": "other_create_laptop",
+        "screen": "other_create_screen",
+        "camera": "other_create_camera",
+        "other_device": "other_create_other_device",
+    }
+
+    await callback_query.message.edit_text(form, parse_mode=ParseMode.HTML)
+    form_tracker.track(callback_query.message.chat.id, cmd_map[device_type], "create", callback_query.message.id)
+    await callback_query.answer()
+
+
+# ===================== TẠO MÀN HÌNH =====================
+
+@bot.on_message(filters.command(["other_create_screen", "other_tao_man_hinh"]) | filters.regex(r"^@\w+\s+/(other_create_screen|other_tao_man_hinh)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def create_screen_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_create_screen", "other_tao_man_hinh"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+
+    if len(lines) < 3:
+        form_template = """<b>FORM TẠO MÀN HÌNH MỚI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<p>/other_create_screen
+Mã Thiết Bị (ID): 
+Tên Model: 
+Thương Hiệu: 
+Kích Thước: 
+Độ Phân Giải: 
+Loại Tấm Nền: 
+Tần Số Quét: 
+Cổng Kết Nối: 
+Số Serial: 
+Ngày Mua (dd/mm/yyyy): 
+Hạn Bảo Hành (dd/mm/yyyy): 
+Trạng Thái: available
+Phụ Kiện: 
+Ghi Chú: 
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Loại tấm nền: IPS, VA, TN, OLED</i>"""
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_screen", "create", form_msg.id)
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    device_id = data.get("Mã Thiết Bị (ID)", "").strip()
+    model_name = data.get("Tên Model", "").strip()
+    brand = data.get("Thương Hiệu", "").strip()
+    screen_size = data.get("Kích Thước", "").strip()
+    resolution = data.get("Độ Phân Giải", "").strip()
+    panel_type = data.get("Loại Tấm Nền", "").strip()
+    refresh_rate = data.get("Tần Số Quét", "").strip()
+    ports = data.get("Cổng Kết Nối", "").strip()
+    serial_number = data.get("Số Serial", "").strip()
+    purchase_date_str = data.get("Ngày Mua (dd/mm/yyyy)", "").strip()
+    warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
+    status = data.get("Trạng Thái", "available").strip().lower()
+    accessories = data.get("Phụ Kiện", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
+
+    if not device_id or not model_name:
+        await message.reply_text("⚠️ <b>Mã Thiết Bị (ID)</b> và <b>Tên Model</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    if status not in [s.value for s in ScreenStatus]:
+        await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    purchase_date = None
+    if purchase_date_str:
+        try:
+            purchase_date = datetime.datetime.strptime(purchase_date_str, "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text("⚠️ <b>Ngày mua</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+            return
+
+    warranty_expiry = None
+    if warranty_expiry_str:
+        try:
+            warranty_expiry = datetime.datetime.strptime(warranty_expiry_str, "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text("⚠️ <b>Hạn bảo hành</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+            return
+
+    db = SessionLocal()
+    try:
+        existing = db.query(Screen).filter(Screen.id == device_id).first()
+        if existing:
+            await message.reply_text(f"⚠️ Màn hình với mã <b>{device_id}</b> đã tồn tại.", parse_mode=ParseMode.HTML)
+            return
+
+        new_screen = Screen(
+            id=device_id,
+            model_name=model_name,
+            brand=brand or None,
+            screen_size=screen_size or None,
+            resolution=resolution or None,
+            panel_type=panel_type or None,
+            refresh_rate=refresh_rate or None,
+            ports=ports or None,
+            serial_number=serial_number or None,
+            purchase_date=purchase_date,
+            warranty_expiry=warranty_expiry,
+            status=status,
+            accessories=accessories or None,
+            notes=notes or None,
+        )
+        db.add(new_screen)
+        db.commit()
+        db.refresh(new_screen)
+
+        result_text = (
+            f"✅ <b>Đã tạo màn hình thành công!</b>\n\n"
+            f"Mã: <code>{new_screen.id}</code>\n"
+            f"Model: <b>{model_name}</b> ({brand})\n"
+            f"Kích thước: {screen_size or 'N/A'} | {resolution or 'N/A'}\n"
+            f"Trạng thái: <b>{status}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[CreateScreen] Created {model_name} (ID: {new_screen.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_screen", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create screen form: {del_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in create_screen_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra trong quá trình tạo màn hình: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== CẬP NHẬT MÀN HÌNH =====================
+
+@bot.on_message(filters.command(["other_update_screen", "other_cap_nhat_man_hinh"]) | filters.regex(r"^@\w+\s+/(other_update_screen|other_cap_nhat_man_hinh)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def update_screen_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_update_screen", "other_cap_nhat_man_hinh"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+    db = SessionLocal()
+    try:
+        if len(lines) < 3:
+            if len(args) < 2:
+                await message.reply_text(
+                    "⚠️ Vui lòng cung cấp <b>Mã Thiết Bị</b>.\n"
+                    "Ví dụ: <code>/other_update_screen MH001</code>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            lookup = args[1].strip()
+            screen = db.query(Screen).filter(Screen.id == lookup).first()
+            if not screen:
+                await message.reply_text(f"⚠️ Không tìm thấy màn hình với mã <b>{lookup}</b>.", parse_mode=ParseMode.HTML)
+                return
+
+            fmt_purchase = screen.purchase_date.strftime("%d/%m/%Y") if screen.purchase_date else ""
+            fmt_warranty = screen.warranty_expiry.strftime("%d/%m/%Y") if screen.warranty_expiry else ""
+
+            form_template = f"""<b>FORM CẬP NHẬT MÀN HÌNH</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<p>/other_update_screen {screen.id}
+Tên Model: {screen.model_name or ""}
+Thương Hiệu: {screen.brand or ""}
+Kích Thước: {screen.screen_size or ""}
+Độ Phân Giải: {screen.resolution or ""}
+Loại Tấm Nền: {screen.panel_type or ""}
+Tần Số Quét: {screen.refresh_rate or ""}
+Cổng Kết Nối: {screen.ports or ""}
+Số Serial: {screen.serial_number or ""}
+Ngày Mua (dd/mm/yyyy): {fmt_purchase}
+Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
+Trạng Thái: {screen.status or "available"}
+Phụ Kiện: {screen.accessories or ""}
+Ghi Chú: {screen.notes or ""}
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_screen", lookup, form_msg.id)
+            return
+
+        if len(args) < 2:
+            await message.reply_text("⚠️ Không tìm thấy Mã Thiết Bị trong lệnh.", parse_mode=ParseMode.HTML)
+            return
+
+        lookup = args[1].strip()
+        screen = db.query(Screen).filter(Screen.id == lookup).first()
+        if not screen:
+            await message.reply_text(f"⚠️ Không tìm thấy màn hình với mã <b>{lookup}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        data = {}
+        for line in lines[1:]:
+            if ":" in line:
+                key, val = line.split(":", 1)
+                data[key.strip()] = val.strip()
+
+        model_name = data.get("Tên Model", "").strip()
+        brand = data.get("Thương Hiệu", "").strip()
+        screen_size = data.get("Kích Thước", "").strip()
+        resolution = data.get("Độ Phân Giải", "").strip()
+        panel_type = data.get("Loại Tấm Nền", "").strip()
+        refresh_rate = data.get("Tần Số Quét", "").strip()
+        ports = data.get("Cổng Kết Nối", "").strip()
+        serial_number = data.get("Số Serial", "").strip()
+        purchase_date_str = data.get("Ngày Mua (dd/mm/yyyy)", "").strip()
+        warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
+        status = data.get("Trạng Thái", "").strip().lower()
+        accessories = data.get("Phụ Kiện", "").strip()
+        notes = data.get("Ghi Chú", "").strip()
+
+        if status and status not in [s.value for s in ScreenStatus]:
+            await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
+            return
+
+        if purchase_date_str:
+            try:
+                screen.purchase_date = datetime.datetime.strptime(purchase_date_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ <b>Ngày mua</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        if warranty_expiry_str:
+            try:
+                screen.warranty_expiry = datetime.datetime.strptime(warranty_expiry_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ <b>Hạn bảo hành</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        if model_name: screen.model_name = model_name
+        screen.brand = brand if brand else screen.brand
+        screen.screen_size = screen_size if screen_size else screen.screen_size
+        screen.resolution = resolution if resolution else screen.resolution
+        screen.panel_type = panel_type if panel_type else screen.panel_type
+        screen.refresh_rate = refresh_rate if refresh_rate else screen.refresh_rate
+        screen.ports = ports if ports else screen.ports
+        screen.serial_number = serial_number if serial_number else screen.serial_number
+        screen.accessories = accessories if accessories else screen.accessories
+        screen.notes = notes if notes else screen.notes
+        if status: screen.status = status
+
+        db.commit()
+        db.refresh(screen)
+
+        result_text = (
+            f"✅ <b>Đã cập nhật màn hình thành công!</b>\n\n"
+            f"Mã: <code>{screen.id}</code>\n"
+            f"Model: <b>{screen.model_name}</b>\n"
+            f"Trạng thái: <b>{screen.status}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[UpdateScreen] Updated {screen.model_name} (ID: {screen.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_screen", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update screen form: {del_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in update_screen_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra trong quá trình cập nhật màn hình: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== XÓA MÀN HÌNH =====================
+
+@bot.on_message(filters.command(["other_delete_screen", "other_xoa_man_hinh"]) | filters.regex(r"^@\w+\s+/(other_delete_screen|other_xoa_man_hinh)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def delete_screen_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_delete_screen", "other_xoa_man_hinh"])
+    if args is None: return
+
+    if len(args) < 2:
+        await message.reply_text(
+            "⚠️ Vui lòng cung cấp <b>Mã Thiết Bị</b>.\n"
+            "Ví dụ: <code>/other_delete_screen MH001</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    lookup = args[1].strip()
+    db = SessionLocal()
+    try:
+        screen = db.query(Screen).filter(Screen.id == lookup).first()
+        if not screen:
+            await message.reply_text(f"⚠️ Không tìm thấy màn hình với mã <b>{lookup}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        old_status = screen.status
+        screen.status = ScreenStatus.BROKEN.value
+        db.commit()
+
+        result_text = (
+            f"✅ <b>Đã chuyển trạng thái màn hình thành công! (Xóa mềm)</b>\n\n"
+            f"Mã: <code>{screen.id}</code>\n"
+            f"Model: <b>{screen.model_name}</b>\n"
+            f"Trạng thái: <b>{old_status}</b> → <b>{ScreenStatus.BROKEN.value}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[DeleteScreen] Soft-deleted {screen.model_name} (ID: {screen.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in delete_screen_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== TẠO CAMERA =====================
+
+@bot.on_message(filters.command(["other_create_camera", "other_tao_camera"]) | filters.regex(r"^@\w+\s+/(other_create_camera|other_tao_camera)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def create_camera_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_create_camera", "other_tao_camera"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+
+    if len(lines) < 3:
+        form_template = """<b>FORM TẠO CAMERA MỚI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<p>/other_create_camera
+Mã Thiết Bị (ID): 
+Tên Model: 
+Thương Hiệu: 
+Loại Camera: 
+Độ Phân Giải: 
+Địa Chỉ IP: 
+MAC Address: 
+Port: 
+Tài Khoản: 
+Mật Khẩu: 
+Lưu Trữ: 
+Vị Trí Lắp Đặt: 
+Số Serial: 
+Ngày Mua (dd/mm/yyyy): 
+Hạn Bảo Hành (dd/mm/yyyy): 
+Trạng Thái: active
+Ghi Chú: 
+</p>
+
+<i>Trạng thái gồm: active, inactive, maintenance, broken
+Loại camera: IP, Analog, WiFi, PTZ
+Lưu trữ: SD Card, NVR, Cloud</i>"""
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_camera", "create", form_msg.id)
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    device_id = data.get("Mã Thiết Bị (ID)", "").strip()
+    model_name = data.get("Tên Model", "").strip()
+    brand = data.get("Thương Hiệu", "").strip()
+    camera_type = data.get("Loại Camera", "").strip()
+    resolution = data.get("Độ Phân Giải", "").strip()
+    ip_address = data.get("Địa Chỉ IP", "").strip()
+    mac_address = data.get("MAC Address", "").strip()
+    port = data.get("Port", "").strip()
+    login_account = data.get("Tài Khoản", "").strip()
+    login_password = data.get("Mật Khẩu", "").strip()
+    storage_type = data.get("Lưu Trữ", "").strip()
+    location = data.get("Vị Trí Lắp Đặt", "").strip()
+    serial_number = data.get("Số Serial", "").strip()
+    purchase_date_str = data.get("Ngày Mua (dd/mm/yyyy)", "").strip()
+    warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
+    status = data.get("Trạng Thái", "active").strip().lower()
+    notes = data.get("Ghi Chú", "").strip()
+
+    if not device_id or not model_name:
+        await message.reply_text("⚠️ <b>Mã Thiết Bị (ID)</b> và <b>Tên Model</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    if status not in [s.value for s in CameraStatus]:
+        await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    purchase_date = None
+    if purchase_date_str:
+        try:
+            purchase_date = datetime.datetime.strptime(purchase_date_str, "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text("⚠️ <b>Ngày mua</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+            return
+
+    warranty_expiry = None
+    if warranty_expiry_str:
+        try:
+            warranty_expiry = datetime.datetime.strptime(warranty_expiry_str, "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text("⚠️ <b>Hạn bảo hành</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+            return
+
+    db = SessionLocal()
+    try:
+        existing = db.query(Camera).filter(Camera.id == device_id).first()
+        if existing:
+            await message.reply_text(f"⚠️ Camera với mã <b>{device_id}</b> đã tồn tại.", parse_mode=ParseMode.HTML)
+            return
+
+        new_camera = Camera(
+            id=device_id,
+            model_name=model_name,
+            brand=brand or None,
+            camera_type=camera_type or None,
+            resolution=resolution or None,
+            ip_address=ip_address or None,
+            mac_address=mac_address or None,
+            port=port or None,
+            login_account=login_account or None,
+            login_password=login_password or None,
+            storage_type=storage_type or None,
+            location=location or None,
+            serial_number=serial_number or None,
+            purchase_date=purchase_date,
+            warranty_expiry=warranty_expiry,
+            status=status,
+            notes=notes or None,
+        )
+        db.add(new_camera)
+        db.commit()
+        db.refresh(new_camera)
+
+        result_text = (
+            f"✅ <b>Đã tạo camera thành công!</b>\n\n"
+            f"Mã: <code>{new_camera.id}</code>\n"
+            f"Model: <b>{model_name}</b> ({brand})\n"
+            f"Loại: {camera_type or 'N/A'} | {resolution or 'N/A'}\n"
+            f"Vị trí: {location or 'N/A'}\n"
+            f"Trạng thái: <b>{status}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[CreateCamera] Created {model_name} (ID: {new_camera.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_camera", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create camera form: {del_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in create_camera_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra trong quá trình tạo camera: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== CẬP NHẬT CAMERA =====================
+
+@bot.on_message(filters.command(["other_update_camera", "other_cap_nhat_camera"]) | filters.regex(r"^@\w+\s+/(other_update_camera|other_cap_nhat_camera)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def update_camera_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_update_camera", "other_cap_nhat_camera"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+    db = SessionLocal()
+    try:
+        if len(lines) < 3:
+            if len(args) < 2:
+                await message.reply_text(
+                    "⚠️ Vui lòng cung cấp <b>Mã Thiết Bị</b>.\n"
+                    "Ví dụ: <code>/other_update_camera CAM001</code>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            lookup = args[1].strip()
+            cam = db.query(Camera).filter(Camera.id == lookup).first()
+            if not cam:
+                await message.reply_text(f"⚠️ Không tìm thấy camera với mã <b>{lookup}</b>.", parse_mode=ParseMode.HTML)
+                return
+
+            fmt_purchase = cam.purchase_date.strftime("%d/%m/%Y") if cam.purchase_date else ""
+            fmt_warranty = cam.warranty_expiry.strftime("%d/%m/%Y") if cam.warranty_expiry else ""
+
+            form_template = f"""<b>FORM CẬP NHẬT CAMERA</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<p>/other_update_camera {cam.id}
+Tên Model: {cam.model_name or ""}
+Thương Hiệu: {cam.brand or ""}
+Loại Camera: {cam.camera_type or ""}
+Độ Phân Giải: {cam.resolution or ""}
+Địa Chỉ IP: {cam.ip_address or ""}
+MAC Address: {cam.mac_address or ""}
+Port: {cam.port or ""}
+Tài Khoản: {cam.login_account or ""}
+Mật Khẩu: {cam.login_password or ""}
+Lưu Trữ: {cam.storage_type or ""}
+Vị Trí Lắp Đặt: {cam.location or ""}
+Số Serial: {cam.serial_number or ""}
+Ngày Mua (dd/mm/yyyy): {fmt_purchase}
+Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
+Trạng Thái: {cam.status or "active"}
+Ghi Chú: {cam.notes or ""}
+</p>
+
+<i>Trạng thái gồm: active, inactive, maintenance, broken</i>"""
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_camera", lookup, form_msg.id)
+            return
+
+        if len(args) < 2:
+            await message.reply_text("⚠️ Không tìm thấy Mã Thiết Bị trong lệnh.", parse_mode=ParseMode.HTML)
+            return
+
+        lookup = args[1].strip()
+        cam = db.query(Camera).filter(Camera.id == lookup).first()
+        if not cam:
+            await message.reply_text(f"⚠️ Không tìm thấy camera với mã <b>{lookup}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        data = {}
+        for line in lines[1:]:
+            if ":" in line:
+                key, val = line.split(":", 1)
+                data[key.strip()] = val.strip()
+
+        model_name = data.get("Tên Model", "").strip()
+        brand = data.get("Thương Hiệu", "").strip()
+        camera_type = data.get("Loại Camera", "").strip()
+        resolution = data.get("Độ Phân Giải", "").strip()
+        ip_address = data.get("Địa Chỉ IP", "").strip()
+        mac_address = data.get("MAC Address", "").strip()
+        port = data.get("Port", "").strip()
+        login_account = data.get("Tài Khoản", "").strip()
+        login_password = data.get("Mật Khẩu", "").strip()
+        storage_type = data.get("Lưu Trữ", "").strip()
+        location = data.get("Vị Trí Lắp Đặt", "").strip()
+        serial_number = data.get("Số Serial", "").strip()
+        purchase_date_str = data.get("Ngày Mua (dd/mm/yyyy)", "").strip()
+        warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
+        status = data.get("Trạng Thái", "").strip().lower()
+        notes = data.get("Ghi Chú", "").strip()
+
+        if status and status not in [s.value for s in CameraStatus]:
+            await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
+            return
+
+        if purchase_date_str:
+            try:
+                cam.purchase_date = datetime.datetime.strptime(purchase_date_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ <b>Ngày mua</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        if warranty_expiry_str:
+            try:
+                cam.warranty_expiry = datetime.datetime.strptime(warranty_expiry_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ <b>Hạn bảo hành</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        if model_name: cam.model_name = model_name
+        cam.brand = brand if brand else cam.brand
+        cam.camera_type = camera_type if camera_type else cam.camera_type
+        cam.resolution = resolution if resolution else cam.resolution
+        if "Địa Chỉ IP" in data: cam.ip_address = ip_address or None
+        if "MAC Address" in data: cam.mac_address = mac_address or None
+        if "Port" in data: cam.port = port or None
+        if "Tài Khoản" in data: cam.login_account = login_account or None
+        if "Mật Khẩu" in data: cam.login_password = login_password or None
+        cam.storage_type = storage_type if storage_type else cam.storage_type
+        cam.location = location if location else cam.location
+        cam.serial_number = serial_number if serial_number else cam.serial_number
+        cam.notes = notes if notes else cam.notes
+        if status: cam.status = status
+
+        db.commit()
+        db.refresh(cam)
+
+        result_text = (
+            f"✅ <b>Đã cập nhật camera thành công!</b>\n\n"
+            f"Mã: <code>{cam.id}</code>\n"
+            f"Model: <b>{cam.model_name}</b>\n"
+            f"Trạng thái: <b>{cam.status}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[UpdateCamera] Updated {cam.model_name} (ID: {cam.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_camera", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update camera form: {del_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in update_camera_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra trong quá trình cập nhật camera: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== XÓA CAMERA =====================
+
+@bot.on_message(filters.command(["other_delete_camera", "other_xoa_camera"]) | filters.regex(r"^@\w+\s+/(other_delete_camera|other_xoa_camera)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def delete_camera_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_delete_camera", "other_xoa_camera"])
+    if args is None: return
+
+    if len(args) < 2:
+        await message.reply_text(
+            "⚠️ Vui lòng cung cấp <b>Mã Thiết Bị</b>.\n"
+            "Ví dụ: <code>/other_delete_camera CAM001</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    lookup = args[1].strip()
+    db = SessionLocal()
+    try:
+        cam = db.query(Camera).filter(Camera.id == lookup).first()
+        if not cam:
+            await message.reply_text(f"⚠️ Không tìm thấy camera với mã <b>{lookup}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        old_status = cam.status
+        cam.status = CameraStatus.BROKEN.value
+        db.commit()
+
+        result_text = (
+            f"✅ <b>Đã chuyển trạng thái camera thành công! (Xóa mềm)</b>\n\n"
+            f"Mã: <code>{cam.id}</code>\n"
+            f"Model: <b>{cam.model_name}</b>\n"
+            f"Trạng thái: <b>{old_status}</b> → <b>{CameraStatus.BROKEN.value}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[DeleteCamera] Soft-deleted {cam.model_name} (ID: {cam.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in delete_camera_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== TẠO THIẾT BỊ KHÁC =====================
+
+@bot.on_message(filters.command(["other_create_other_device", "other_tao_thiet_bi_khac"]) | filters.regex(r"^@\w+\s+/(other_create_other_device|other_tao_thiet_bi_khac)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def create_other_device_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_create_other_device", "other_tao_thiet_bi_khac"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+
+    if len(lines) < 3:
+        form_template = """<b>FORM TẠO THIẾT BỊ KHÁC</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<p>/other_create_other_device
+Mã Thiết Bị (ID): 
+Tên Thiết Bị: 
+Danh Mục: 
+Thương Hiệu: 
+Model Số: 
+Số Serial: 
+Thông Số Kỹ Thuật: 
+Địa Chỉ IP: 
+MAC Address: 
+Tài Khoản: 
+Mật Khẩu: 
+Vị Trí: 
+Ngày Mua (dd/mm/yyyy): 
+Hạn Bảo Hành (dd/mm/yyyy): 
+Trạng Thái: available
+Phụ Kiện: 
+Ghi Chú: 
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_other_device", "create", form_msg.id)
+        return
+
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    device_id = data.get("Mã Thiết Bị (ID)", "").strip()
+    device_name = data.get("Tên Thiết Bị", "").strip()
+    device_category = data.get("Danh Mục", "").strip().lower()
+    brand = data.get("Thương Hiệu", "").strip()
+    model_number = data.get("Model Số", "").strip()
+    serial_number = data.get("Số Serial", "").strip()
+    specs = data.get("Thông Số Kỹ Thuật", "").strip()
+    ip_address = data.get("Địa Chỉ IP", "").strip()
+    mac_address = data.get("MAC Address", "").strip()
+    login_account = data.get("Tài Khoản", "").strip()
+    login_password = data.get("Mật Khẩu", "").strip()
+    location = data.get("Vị Trí", "").strip()
+    purchase_date_str = data.get("Ngày Mua (dd/mm/yyyy)", "").strip()
+    warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
+    status = data.get("Trạng Thái", "available").strip().lower()
+    accessories = data.get("Phụ Kiện", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
+
+    if not device_id or not device_name:
+        await message.reply_text("⚠️ <b>Mã Thiết Bị (ID)</b> và <b>Tên Thiết Bị</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    if status not in [s.value for s in OtherDeviceStatus]:
+        await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    purchase_date = None
+    if purchase_date_str:
+        try:
+            purchase_date = datetime.datetime.strptime(purchase_date_str, "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text("⚠️ <b>Ngày mua</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+            return
+
+    warranty_expiry = None
+    if warranty_expiry_str:
+        try:
+            warranty_expiry = datetime.datetime.strptime(warranty_expiry_str, "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text("⚠️ <b>Hạn bảo hành</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+            return
+
+    db = SessionLocal()
+    try:
+        existing = db.query(OtherDevice).filter(OtherDevice.id == device_id).first()
+        if existing:
+            await message.reply_text(f"⚠️ Thiết bị với mã <b>{device_id}</b> đã tồn tại.", parse_mode=ParseMode.HTML)
+            return
+
+        new_device = OtherDevice(
+            id=device_id,
+            device_name=device_name,
+            device_category=device_category or None,
+            brand=brand or None,
+            model_number=model_number or None,
+            serial_number=serial_number or None,
+            specs=specs or None,
+            ip_address=ip_address or None,
+            mac_address=mac_address or None,
+            login_account=login_account or None,
+            login_password=login_password or None,
+            location=location or None,
+            purchase_date=purchase_date,
+            warranty_expiry=warranty_expiry,
+            status=status,
+            accessories=accessories or None,
+            notes=notes or None,
+        )
+        db.add(new_device)
+        db.commit()
+        db.refresh(new_device)
+
+        result_text = (
+            f"✅ <b>Đã tạo thiết bị khác thành công!</b>\n\n"
+            f"Mã: <code>{new_device.id}</code>\n"
+            f"Tên: <b>{device_name}</b>\n"
+            f"Danh mục: {device_category or 'N/A'}\n"
+            f"Trạng thái: <b>{status}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[CreateOtherDevice] Created {device_name} (ID: {new_device.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_other_device", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create other_device form: {del_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in create_other_device_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra trong quá trình tạo thiết bị: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== CẬP NHẬT THIẾT BỊ KHÁC =====================
+
+@bot.on_message(filters.command(["other_update_other_device", "other_cap_nhat_thiet_bi_khac"]) | filters.regex(r"^@\w+\s+/(other_update_other_device|other_cap_nhat_thiet_bi_khac)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def update_other_device_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_update_other_device", "other_cap_nhat_thiet_bi_khac"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+    db = SessionLocal()
+    try:
+        if len(lines) < 3:
+            if len(args) < 2:
+                await message.reply_text(
+                    "⚠️ Vui lòng cung cấp <b>Mã Thiết Bị</b>.\n"
+                    "Ví dụ: <code>/other_update_other_device TB001</code>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            lookup = args[1].strip()
+            dev = db.query(OtherDevice).filter(OtherDevice.id == lookup).first()
+            if not dev:
+                await message.reply_text(f"⚠️ Không tìm thấy thiết bị với mã <b>{lookup}</b>.", parse_mode=ParseMode.HTML)
+                return
+
+            fmt_purchase = dev.purchase_date.strftime("%d/%m/%Y") if dev.purchase_date else ""
+            fmt_warranty = dev.warranty_expiry.strftime("%d/%m/%Y") if dev.warranty_expiry else ""
+
+            form_template = f"""<b>FORM CẬP NHẬT THIẾT BỊ KHÁC</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<p>/other_update_other_device {dev.id}
+Tên Thiết Bị: {dev.device_name or ""}
+Danh Mục: {dev.device_category or ""}
+Thương Hiệu: {dev.brand or ""}
+Model Số: {dev.model_number or ""}
+Số Serial: {dev.serial_number or ""}
+Thông Số Kỹ Thuật: {dev.specs or ""}
+Địa Chỉ IP: {dev.ip_address or ""}
+MAC Address: {dev.mac_address or ""}
+Tài Khoản: {dev.login_account or ""}
+Mật Khẩu: {dev.login_password or ""}
+Vị Trí: {dev.location or ""}
+Ngày Mua (dd/mm/yyyy): {fmt_purchase}
+Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
+Trạng Thái: {dev.status or "available"}
+Phụ Kiện: {dev.accessories or ""}
+Ghi Chú: {dev.notes or ""}
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_other_device", lookup, form_msg.id)
+            return
+
+        if len(args) < 2:
+            await message.reply_text("⚠️ Không tìm thấy Mã Thiết Bị trong lệnh.", parse_mode=ParseMode.HTML)
+            return
+
+        lookup = args[1].strip()
+        dev = db.query(OtherDevice).filter(OtherDevice.id == lookup).first()
+        if not dev:
+            await message.reply_text(f"⚠️ Không tìm thấy thiết bị với mã <b>{lookup}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        data = {}
+        for line in lines[1:]:
+            if ":" in line:
+                key, val = line.split(":", 1)
+                data[key.strip()] = val.strip()
+
+        device_name = data.get("Tên Thiết Bị", "").strip()
+        device_category = data.get("Danh Mục", "").strip().lower()
+        brand = data.get("Thương Hiệu", "").strip()
+        model_number = data.get("Model Số", "").strip()
+        serial_number = data.get("Số Serial", "").strip()
+        specs = data.get("Thông Số Kỹ Thuật", "").strip()
+        ip_address = data.get("Địa Chỉ IP", "").strip()
+        mac_address = data.get("MAC Address", "").strip()
+        login_account = data.get("Tài Khoản", "").strip()
+        login_password = data.get("Mật Khẩu", "").strip()
+        location = data.get("Vị Trí", "").strip()
+        purchase_date_str = data.get("Ngày Mua (dd/mm/yyyy)", "").strip()
+        warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
+        status = data.get("Trạng Thái", "").strip().lower()
+        accessories = data.get("Phụ Kiện", "").strip()
+        notes = data.get("Ghi Chú", "").strip()
+
+        if status and status not in [s.value for s in OtherDeviceStatus]:
+            await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
+            return
+
+        if purchase_date_str:
+            try:
+                dev.purchase_date = datetime.datetime.strptime(purchase_date_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ <b>Ngày mua</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        if warranty_expiry_str:
+            try:
+                dev.warranty_expiry = datetime.datetime.strptime(warranty_expiry_str, "%d/%m/%Y").date()
+            except ValueError:
+                await message.reply_text("⚠️ <b>Hạn bảo hành</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+                return
+
+        if device_name: dev.device_name = device_name
+        dev.device_category = device_category if device_category else dev.device_category
+        dev.brand = brand if brand else dev.brand
+        dev.model_number = model_number if model_number else dev.model_number
+        dev.serial_number = serial_number if serial_number else dev.serial_number
+        dev.specs = specs if specs else dev.specs
+        if "Địa Chỉ IP" in data: dev.ip_address = ip_address or None
+        if "MAC Address" in data: dev.mac_address = mac_address or None
+        if "Tài Khoản" in data: dev.login_account = login_account or None
+        if "Mật Khẩu" in data: dev.login_password = login_password or None
+        dev.location = location if location else dev.location
+        dev.accessories = accessories if accessories else dev.accessories
+        dev.notes = notes if notes else dev.notes
+        if status: dev.status = status
+
+        db.commit()
+        db.refresh(dev)
+
+        result_text = (
+            f"✅ <b>Đã cập nhật thiết bị thành công!</b>\n\n"
+            f"Mã: <code>{dev.id}</code>\n"
+            f"Tên: <b>{dev.device_name}</b>\n"
+            f"Trạng thái: <b>{dev.status}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[UpdateOtherDevice] Updated {dev.device_name} (ID: {dev.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_other_device", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update other_device form: {del_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in update_other_device_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra trong quá trình cập nhật thiết bị: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== XÓA THIẾT BỊ KHÁC =====================
+
+@bot.on_message(filters.command(["other_delete_other_device", "other_xoa_thiet_bi_khac"]) | filters.regex(r"^@\w+\s+/(other_delete_other_device|other_xoa_thiet_bi_khac)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def delete_other_device_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_delete_other_device", "other_xoa_thiet_bi_khac"])
+    if args is None: return
+
+    if len(args) < 2:
+        await message.reply_text(
+            "⚠️ Vui lòng cung cấp <b>Mã Thiết Bị</b>.\n"
+            "Ví dụ: <code>/other_delete_other_device TB001</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    lookup = args[1].strip()
+    db = SessionLocal()
+    try:
+        dev = db.query(OtherDevice).filter(OtherDevice.id == lookup).first()
+        if not dev:
+            await message.reply_text(f"⚠️ Không tìm thấy thiết bị với mã <b>{lookup}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        old_status = dev.status
+        dev.status = OtherDeviceStatus.BROKEN.value
+        db.commit()
+
+        result_text = (
+            f"✅ <b>Đã chuyển trạng thái thiết bị thành công! (Xóa mềm)</b>\n\n"
+            f"Mã: <code>{dev.id}</code>\n"
+            f"Tên: <b>{dev.device_name}</b>\n"
+            f"Trạng thái: <b>{old_status}</b> → <b>{OtherDeviceStatus.BROKEN.value}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[DeleteOtherDevice] Soft-deleted {dev.device_name} (ID: {dev.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in delete_other_device_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
+    finally:
+        db.close()
+
+
 # ===================== TẠO XE =====================
 
 @bot.on_message(filters.command(["other_create_vehicle", "other_tao_xe"]) | filters.regex(r"^@\w+\s+/(other_create_vehicle|other_tao_xe)\b"))
@@ -2287,7 +3813,8 @@ Trạng Thái: inactivity
 
 <i>Trạng thái gồm: activited (đang hoạt động), inactivity (không hoạt động), is_removed (đã xóa)
 Biển Số là bắt buộc và không được trùng</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_vehicle", "create", form_msg.id)
         return
 
     # Parse form data
@@ -2354,7 +3881,15 @@ Biển Số là bắt buộc và không được trùng</i>"""
             f"<b>Trạng thái:</b> {status_display}"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
-        LogInfo(f"[CreateVehicle] Created vehicle {license_plate} by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+        LogInfo(f"[CreateVehicle] Created {brand or ''} {model or ''} (Biển số: {license_plate}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_vehicle", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create vehicle form: {del_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()
@@ -2414,7 +3949,8 @@ Trạng Thái: {vehicle.status or "inactivity"}
 </p>
 
 <i>Trạng thái gồm: activited (đang hoạt động), inactivity (không hoạt động), is_removed (đã xóa)</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_vehicle", lookup, form_msg.id)
             return
 
         # Parse form data
@@ -2491,6 +4027,14 @@ Trạng Thái: {vehicle.status or "inactivity"}
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[UpdateVehicle] Updated vehicle {vehicle.license_plate} by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_vehicle", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update vehicle form: {del_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()
@@ -2941,7 +4485,8 @@ Ghi Chú:
 </code>
 
 <i>Tên Giấy Tờ là bắt buộc. Mã Giấy Tờ nếu để trống sẽ tự động sinh ngẫu nhiên.</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_document", "create", form_msg.id)
         return
 
     # Parse form data
@@ -3023,6 +4568,14 @@ Ghi Chú:
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[CreateDocument] Created document {title} (ID: {new_doc.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_document", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create document form: {del_err}", LogType.SYSTEM_STATUS)
+
     except Exception as e:
         db.rollback()
         LogError(f"Error in create_document_handler: {e}", LogType.SYSTEM_STATUS)
@@ -3063,7 +4616,8 @@ Nhắc Trước (ngày): Nhắc trước X ngày khi giấy tờ hết hạn.
 Ngày Nhắc Nhở: Ngày hẹn nhắc cụ thể (nếu nhắc đúng ngày cố định).
 Chu kỳ: ONCE (Một lần), DAILY (Hàng ngày), WEEKLY (Hàng tuần), MONTHLY (Hàng tháng), YEARLY (Hàng năm).
 Nội Dung Nhắc Nhở: Tin nhắn tùy chỉnh gửi lên Telegram khi đến hẹn.</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_reminder", doc_id, form_msg.id)
         return
 
     if len(args) < 2:
@@ -3157,6 +4711,14 @@ Nội Dung Nhắc Nhở: Tin nhắn tùy chỉnh gửi lên Telegram khi đến 
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[CreateReminder] Created reminder for doc {doc.title} (ID: {new_reminder.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_reminder", doc_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create reminder form: {del_err}", LogType.SYSTEM_STATUS)
+
     except Exception as e:
         db.rollback()
         LogError(f"Error in create_reminder_handler: {e}", LogType.SYSTEM_STATUS)
@@ -3206,7 +4768,8 @@ Ngày Cấp (dd/mm/yyyy): {issue_str}
 Ngày Hết Hạn (dd/mm/yyyy): {expiry_str}
 Ghi Chú: {doc.description or ""}
 </pre>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_document", lookup, form_msg.id)
             return
 
         # Parse form data
@@ -3258,6 +4821,14 @@ Ghi Chú: {doc.description or ""}
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[UpdateDocument] Updated document {doc.title} (ID: {doc.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_document", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update document form: {del_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()
@@ -3360,7 +4931,8 @@ Nội Dung Nhắc Nhở: {reminder.reminder_content or ""}
 Trạng Thái: {reminder.status or "ACTIVE"}
 </pre>
 <i>Trạng thái: ACTIVE, INACTIVE</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_reminder", lookup, form_msg.id)
             return
 
         # Parse form data
@@ -3422,6 +4994,14 @@ Trạng Thái: {reminder.status or "ACTIVE"}
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[UpdateReminder] Updated reminder (ID: {reminder.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_reminder", lookup)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update reminder form: {del_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()
@@ -4067,4 +5647,444 @@ async def list_doc_pg_cb(client, callback_query: CallbackQuery):
         await callback_query.answer("❌ Có lỗi xảy ra khi chuyển trang.", show_alert=True)
     finally:
         db.close()
+
+
+# ===================== CẬP NHẬT THIẾT BỊ (UNIFIED) =====================
+
+@bot.on_message(filters.command(["other_update_device", "other_cap_nhat_thiet_bi"]) | filters.regex(r"^@\w+\s+/(other_update_device|other_cap_nhat_thiet_bi)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def update_device_unified_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_update_device", "other_cap_nhat_thiet_bi"])
+    if args is None: return
+
+    if len(args) < 2:
+        # Show selection buttons
+        buttons = [
+            [
+                InlineKeyboardButton("Điện thoại", callback_data="update_dev_sel|smartphone"),
+                InlineKeyboardButton("Laptop", callback_data="update_dev_sel|laptop"),
+            ],
+            [
+                InlineKeyboardButton("Máy tính bảng", callback_data="update_dev_sel|tablet"),
+                InlineKeyboardButton("Màn hình", callback_data="update_dev_sel|screen"),
+            ],
+            [
+                InlineKeyboardButton("Camera", callback_data="update_dev_sel|camera"),
+                InlineKeyboardButton("Thiết bị khác", callback_data="update_dev_sel|other_device"),
+            ],
+            [InlineKeyboardButton("Huỷ", callback_data="update_dev_sel|cancel")],
+        ]
+        await message.reply_text(
+            "<b>CẬP NHẬT THIẾT BỊ</b>\n\nVui lòng chọn loại thiết bị muốn cập nhật để xem hướng dẫn cú pháp hoặc gõ trực tiếp:\n<code>/other_cap_nhat_thiet_bi [Mã Thiết Bị / IMEI]</code>",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    lookup = args[1].strip()
+    db = SessionLocal()
+    try:
+        device = None
+        device_type = None
+
+        # 1. Smartphone ID
+        phone = db.query(Smartphone).filter(Smartphone.id == lookup).first()
+        if phone:
+            device = phone
+            device_type = "smartphone"
+
+        # 2. Laptop ID
+        if not device:
+            laptop = db.query(Laptop).filter(Laptop.id == lookup).first()
+            if laptop:
+                device = laptop
+                device_type = "laptop"
+
+        # 3. Screen ID
+        if not device:
+            screen = db.query(Screen).filter(Screen.id == lookup).first()
+            if screen:
+                device = screen
+                device_type = "screen"
+
+        # 4. Camera ID
+        if not device:
+            camera = db.query(Camera).filter(Camera.id == lookup).first()
+            if camera:
+                device = camera
+                device_type = "camera"
+
+        # 5. OtherDevice ID
+        if not device:
+            other_dev = db.query(OtherDevice).filter(OtherDevice.id == lookup).first()
+            if other_dev:
+                device = other_dev
+                device_type = "other_device"
+
+        # 6. Smartphone IMEI
+        if not device:
+            phone = get_smartphone_by_imei(db, lookup)
+            if phone:
+                device = phone
+                device_type = "smartphone"
+                lookup = phone.id
+
+        if not device:
+            await message.reply_text(
+                f"⚠️ Không tìm thấy thiết bị với mã/IMEI <b>{lookup}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Show appropriate form
+        if device_type == "smartphone":
+            fmt_date = device.purchase_date.strftime("%d/%m/%Y") if device.purchase_date else ""
+            form_template = f"""<b>FORM CẬP NHẬT ĐIỆN THOẠI</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<p>/other_update_smartphone {device.id}
+Tên Model: {device.model_name or ""}
+Thương Hiệu: {device.brand or ""}
+IMEI 1: {device.imei_1 or ""}
+IMEI 2: {device.imei_2 or ""}
+Số Serial: {device.serial_number or ""}
+Phiên Bản OS: {device.os_version or ""}
+Dung Lượng: {device.storage_capacity or ""}
+Tình Trạng Pin (%): {device.battery_health if device.battery_health is not None else ""}
+Ngày Mua (dd/mm/yyyy): {fmt_date}
+Trạng Thái: {device.status or "available"}
+Phụ Kiện: {device.accessories or ""}
+Ghi Chú: {device.notes or ""}
+Tài Khoản: {device.account or ""}
+Mật Khẩu TK: {device.account_password or ""}
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_smartphone", lookup, form_msg.id)
+
+        elif device_type == "laptop":
+            fmt_date = device.warranty_expiry.strftime("%d/%m/%Y") if device.warranty_expiry else ""
+            form_template = f"""<b>FORM CẬP NHẬT LAPTOP</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<p>/other_update_laptop {device.id}
+Tên Laptop: {device.model_name or ""}
+CPU: {device.processor_cpu or ""}
+RAM: {device.ram_size or ""}
+Ổ Cứng: {device.storage_specs or ""}
+Card Đồ Họa: {device.gpu_card or ""}
+Service Tag: {device.service_tag or ""}
+MAC Address: {device.mac_address or ""}
+Hạn Bảo Hành (dd/mm/yyyy): {fmt_date}
+Phụ Kiện: {device.accessories or ""}
+Trạng Thái: {device.status or "available"}
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance</i>"""
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_laptop", lookup, form_msg.id)
+
+        elif device_type == "screen":
+            fmt_purchase = device.purchase_date.strftime("%d/%m/%Y") if device.purchase_date else ""
+            fmt_warranty = device.warranty_expiry.strftime("%d/%m/%Y") if device.warranty_expiry else ""
+            form_template = f"""<b>FORM CẬP NHẬT MÀN HÌNH</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<p>/other_update_screen {device.id}
+Tên Model: {device.model_name or ""}
+Thương Hiệu: {device.brand or ""}
+Kích Thước: {device.screen_size or ""}
+Độ Phân Giải: {device.resolution or ""}
+Loại Tấm Nền: {device.panel_type or ""}
+Tần Số Quét: {device.refresh_rate or ""}
+Cổng Kết Nối: {device.ports or ""}
+Số Serial: {device.serial_number or ""}
+Ngày Mua (dd/mm/yyyy): {fmt_purchase}
+Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
+Trạng Thái: {device.status or "available"}
+Phụ Kiện: {device.accessories or ""}
+Ghi Chú: {device.notes or ""}
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_screen", lookup, form_msg.id)
+
+        elif device_type == "camera":
+            fmt_purchase = device.purchase_date.strftime("%d/%m/%Y") if device.purchase_date else ""
+            fmt_warranty = device.warranty_expiry.strftime("%d/%m/%Y") if device.warranty_expiry else ""
+            form_template = f"""<b>FORM CẬP NHẬT CAMERA</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<p>/other_update_camera {device.id}
+Tên Model: {device.model_name or ""}
+Thương Hiệu: {device.brand or ""}
+Loại Camera: {device.camera_type or ""}
+Độ Phân Giải: {device.resolution or ""}
+Địa Chỉ IP: {device.ip_address or ""}
+MAC Address: {device.mac_address or ""}
+Port: {device.port or ""}
+Tài Khoản: {device.login_account or ""}
+Mật Khẩu: {device.login_password or ""}
+Lưu Trữ: {device.storage_type or ""}
+Vị Trí Lắp Đặt: {device.location or ""}
+Số Serial: {device.serial_number or ""}
+Ngày Mua (dd/mm/yyyy): {fmt_purchase}
+Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
+Trạng Thái: {device.status or "active"}
+Ghi Chú: {device.notes or ""}
+</p>
+
+<i>Trạng thái gồm: active, inactive, maintenance, broken</i>"""
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_camera", lookup, form_msg.id)
+
+        elif device_type == "other_device":
+            fmt_purchase = device.purchase_date.strftime("%d/%m/%Y") if device.purchase_date else ""
+            fmt_warranty = device.warranty_expiry.strftime("%d/%m/%Y") if device.warranty_expiry else ""
+            form_template = f"""<b>FORM CẬP NHẬT THIẾT BỊ KHÁC</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<p>/other_update_other_device {device.id}
+Tên Thiết Bị: {device.device_name or ""}
+Danh Mục: {device.device_category or ""}
+Thương Hiệu: {device.brand or ""}
+Model Số: {device.model_number or ""}
+Số Serial: {device.serial_number or ""}
+Thông Số Kỹ Thuật: {device.specs or ""}
+Địa Chỉ IP: {device.ip_address or ""}
+MAC Address: {device.mac_address or ""}
+Tài Khoản: {device.login_account or ""}
+Mật Khẩu: {device.login_password or ""}
+Vị Trí: {device.location or ""}
+Ngày Mua (dd/mm/yyyy): {fmt_purchase}
+Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
+Trạng Thái: {device.status or "available"}
+Phụ Kiện: {device.accessories or ""}
+Ghi Chú: {device.notes or ""}
+</p>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "other_update_other_device", lookup, form_msg.id)
+
+    except Exception as e:
+        LogError(f"Error in update_device_unified_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^update_dev_sel\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def update_device_unified_cb_handler(client, callback_query: CallbackQuery):
+    device_type = callback_query.matches[0].group(1)
+
+    if device_type == "cancel":
+        await callback_query.message.edit_text("❌ <b>Đã huỷ thao tác cập nhật thiết bị.</b>", parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+        return
+
+    instructions = {
+        "smartphone": "Để cập nhật <b>Điện thoại</b>, vui lòng sử dụng lệnh:\n<code>/other_cap_nhat_dien_thoai [Mã Điện Thoại / IMEI]</code>\nVí dụ: <code>/other_cap_nhat_dien_thoai SP001</code>",
+        "tablet": "Để cập nhật <b>Máy tính bảng</b>, vui lòng sử dụng lệnh:\n<code>/other_cap_nhat_dien_thoai [Mã Máy Tính Bảng / IMEI]</code>\nVí dụ: <code>/other_cap_nhat_dien_thoai SP002</code>\n<i>(Máy tính bảng dùng chung bảng Điện thoại)</i>",
+        "laptop": "Để cập nhật <b>Laptop</b>, vui lòng sử dụng lệnh:\n<code>/other_cap_nhat_laptop [Mã Laptop]</code>\nVí dụ: <code>/other_cap_nhat_laptop LT001</code>",
+        "screen": "Để cập nhật <b>Màn hình</b>, vui lòng sử dụng lệnh:\n<code>/other_cap_nhat_man_hinh [Mã Màn Hình]</code>\nVí dụ: <code>/other_cap_nhat_man_hinh MH001</code>",
+        "camera": "Để cập nhật <b>Camera</b>, vui lòng sử dụng lệnh:\n<code>/other_cap_nhat_camera [Mã Camera]</code>\nVí dụ: <code>/other_cap_nhat_camera CAM001</code>",
+        "other_device": "Để cập nhật <b>Thiết bị khác</b>, vui lòng sử dụng lệnh:\n<code>/other_cap_nhat_thiet_bi_khac [Mã Thiết Bị]</code>\nVí dụ: <code>/other_cap_nhat_thiet_bi_khac TB001</code>",
+    }
+
+    text = instructions.get(device_type, "Loại thiết bị không hợp lệ.")
+    await callback_query.message.edit_text(text, parse_mode=ParseMode.HTML)
+    await callback_query.answer()
+
+
+# ===================== XÓA THIẾT BỊ (UNIFIED) =====================
+
+@bot.on_message(filters.command(["other_delete_device", "other_xoa_thiet_bi"]) | filters.regex(r"^@\w+\s+/(other_delete_device|other_xoa_thiet_bi)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def delete_device_unified_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_delete_device", "other_xoa_thiet_bi"])
+    if args is None: return
+
+    if len(args) < 2:
+        # Show selection buttons
+        buttons = [
+            [
+                InlineKeyboardButton("Điện thoại", callback_data="delete_dev_sel|smartphone"),
+                InlineKeyboardButton("Laptop", callback_data="delete_dev_sel|laptop"),
+            ],
+            [
+                InlineKeyboardButton("Máy tính bảng", callback_data="delete_dev_sel|tablet"),
+                InlineKeyboardButton("Màn hình", callback_data="delete_dev_sel|screen"),
+            ],
+            [
+                InlineKeyboardButton("Camera", callback_data="delete_dev_sel|camera"),
+                InlineKeyboardButton("Thiết bị khác", callback_data="delete_dev_sel|other_device"),
+            ],
+            [InlineKeyboardButton("Huỷ", callback_data="delete_dev_sel|cancel")],
+        ]
+        await message.reply_text(
+            "<b>XÓA THIẾT BỊ</b>\n\nVui lòng chọn loại thiết bị muốn xóa để xem hướng dẫn cú pháp hoặc gõ trực tiếp:\n<code>/other_xoa_thiet_bi [Mã Thiết Bị / IMEI]</code>",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    lookup = args[1].strip()
+    db = SessionLocal()
+    try:
+        device = None
+        device_type = None
+
+        # 1. Smartphone ID
+        phone = db.query(Smartphone).filter(Smartphone.id == lookup).first()
+        if phone:
+            device = phone
+            device_type = "smartphone"
+
+        # 2. Laptop ID
+        if not device:
+            laptop = db.query(Laptop).filter(Laptop.id == lookup).first()
+            if laptop:
+                device = laptop
+                device_type = "laptop"
+
+        # 3. Screen ID
+        if not device:
+            screen = db.query(Screen).filter(Screen.id == lookup).first()
+            if screen:
+                device = screen
+                device_type = "screen"
+
+        # 4. Camera ID
+        if not device:
+            camera = db.query(Camera).filter(Camera.id == lookup).first()
+            if camera:
+                device = camera
+                device_type = "camera"
+
+        # 5. OtherDevice ID
+        if not device:
+            other_dev = db.query(OtherDevice).filter(OtherDevice.id == lookup).first()
+            if other_dev:
+                device = other_dev
+                device_type = "other_device"
+
+        # 6. Smartphone IMEI
+        if not device:
+            phone = get_smartphone_by_imei(db, lookup)
+            if phone:
+                device = phone
+                device_type = "smartphone"
+
+        if not device:
+            await message.reply_text(
+                f"⚠️ Không tìm thấy thiết bị với mã/IMEI <b>{lookup}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        old_status = device.status
+        result_text = ""
+        log_name = ""
+
+        if device_type == "smartphone":
+            device.status = SmartphoneStatus.BROKEN.value
+            result_text = (
+                f"✅ <b>Đã chuyển trạng thái Điện thoại thành công! (Xóa mềm)</b>\n\n"
+                f"Mã: <code>{device.id}</code>\n"
+                f"Model: <b>{device.model_name}</b>\n"
+                f"Trạng thái: <b>{old_status}</b> → <b>{SmartphoneStatus.BROKEN.value}</b>"
+            )
+            log_name = f"[DeleteSmartphone] Soft-deleted {device.model_name} (ID: {device.id})"
+
+        elif device_type == "laptop":
+            device.status = LaptopStatus.MAINTENANCE.value
+            result_text = (
+                f"✅ <b>Đã chuyển trạng thái Laptop thành công! (Xóa mềm)</b>\n\n"
+                f"Mã: <code>{device.id}</code>\n"
+                f"Laptop: <b>{device.model_name}</b>\n"
+                f"Trạng thái: <b>{old_status}</b> → <b>{LaptopStatus.MAINTENANCE.value}</b>"
+            )
+            log_name = f"[DeleteLaptop] Maintained {device.model_name} (ID: {device.id})"
+
+        elif device_type == "screen":
+            device.status = ScreenStatus.BROKEN.value
+            result_text = (
+                f"✅ <b>Đã chuyển trạng thái màn hình thành công! (Xóa mềm)</b>\n\n"
+                f"Mã: <code>{device.id}</code>\n"
+                f"Model: <b>{device.model_name}</b>\n"
+                f"Trạng thái: <b>{old_status}</b> → <b>{ScreenStatus.BROKEN.value}</b>"
+            )
+            log_name = f"[DeleteScreen] Soft-deleted {device.model_name} (ID: {device.id})"
+
+        elif device_type == "camera":
+            device.status = CameraStatus.BROKEN.value
+            result_text = (
+                f"✅ <b>Đã chuyển trạng thái camera thành công! (Xóa mềm)</b>\n\n"
+                f"Mã: <code>{device.id}</code>\n"
+                f"Model: <b>{device.model_name}</b>\n"
+                f"Trạng thái: <b>{old_status}</b> → <b>{CameraStatus.BROKEN.value}</b>"
+            )
+            log_name = f"[DeleteCamera] Soft-deleted {device.model_name} (ID: {device.id})"
+
+        elif device_type == "other_device":
+            device.status = OtherDeviceStatus.BROKEN.value
+            result_text = (
+                f"✅ <b>Đã chuyển trạng thái thiết bị thành công! (Xóa mềm)</b>\n\n"
+                f"Mã: <code>{device.id}</code>\n"
+                f"Tên: <b>{device.device_name}</b>\n"
+                f"Trạng thái: <b>{old_status}</b> → <b>{OtherDeviceStatus.BROKEN.value}</b>"
+            )
+            log_name = f"[DeleteOtherDevice] Soft-deleted {device.device_name} (ID: {device.id})"
+
+        db.commit()
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"{log_name} by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in delete_device_unified_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^delete_dev_sel\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def delete_device_unified_cb_handler(client, callback_query: CallbackQuery):
+    device_type = callback_query.matches[0].group(1)
+
+    if device_type == "cancel":
+        await callback_query.message.edit_text("❌ <b>Đã huỷ thao tác xóa thiết bị.</b>", parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+        return
+
+    instructions = {
+        "smartphone": "Để xóa <b>Điện thoại</b>, vui lòng sử dụng lệnh:\n<code>/other_xoa_dien_thoai [Mã Điện Thoại / IMEI]</code>\nVí dụ: <code>/other_xoa_dien_thoai SP001</code>",
+        "tablet": "Để xóa <b>Máy tính bảng</b>, vui lòng sử dụng lệnh:\n<code>/other_xoa_dien_thoai [Mã Máy Tính Bảng / IMEI]</code>\nVí dụ: <code>/other_xoa_dien_thoai SP002</code>\n<i>(Máy tính bảng dùng chung bảng Điện thoại)</i>",
+        "laptop": "Để xóa <b>Laptop</b>, vui lòng sử dụng lệnh:\n<code>/other_xoa_laptop [Mã Laptop]</code>\nVí dụ: <code>/other_xoa_laptop LT001</code>",
+        "screen": "Để xóa <b>Màn hình</b>, vui lòng sử dụng lệnh:\n<code>/other_xoa_man_hinh [Mã Màn Hình]</code>\nVí dụ: <code>/other_xoa_man_hinh MH001</code>",
+        "camera": "Để xóa <b>Camera</b>, vui lòng sử dụng lệnh:\n<code>/other_xoa_camera [Mã Camera]</code>\nVí dụ: <code>/other_xoa_camera CAM001</code>",
+        "other_device": "Để xóa <b>Thiết bị khác</b>, vui lòng sử dụng lệnh:\n<code>/other_xoa_thiet_bi_khac [Mã Thiết Bị]</code>\nVí dụ: <code>/other_xoa_thiet_bi_khac TB001</code>",
+    }
+
+    text = instructions.get(device_type, "Loại thiết bị không hợp lệ.")
+    await callback_query.message.edit_text(text, parse_mode=ParseMode.HTML)
+    await callback_query.answer()
+
 

@@ -6,6 +6,7 @@ from bot.utils.utils import check_command_target, require_user_type, require_pro
 from bot.utils.enums import UserType, CustomTitle
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
+from bot.utils.states import form_tracker
 import re
 from datetime import datetime, timedelta
 import traceback
@@ -451,7 +452,8 @@ Ghi Chú: </pre>
 <i>Mã Viết Tắt dùng để tạo mã hàng tự động.
 Ví dụ: LT (Lạc Tánh), P (Phê), GA (Gia An)
 → Mã hàng sẽ là: LT20260505, P20260505, ...</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "tien_nga_create_cp", "create", form_msg.id)
         return
 
     # Parse form data
@@ -523,6 +525,14 @@ Ví dụ: LT (Lạc Tánh), P (Phê), GA (Gia An)
             f"<i>Mã hàng mẫu: {code_prefix + '20260505' if code_prefix else '(chưa có)'}</i>",
             parse_mode=ParseMode.HTML
         )
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "tien_nga_create_cp", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create CP form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         LogError(f"Error creating collection point: {e}", LogType.SYSTEM_STATUS)
         db.rollback()
@@ -675,6 +685,14 @@ async def tien_nga_update_collection_point_handler(client, message: Message) -> 
             f"<b>Ghi Chú:</b> {cp.notes or '—'}",
             parse_mode=ParseMode.HTML
         )
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "tien_nga_update_cp", cp_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update CP form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         LogError(f"Error updating collection point: {e}", LogType.SYSTEM_STATUS)
         db.rollback()
@@ -712,7 +730,8 @@ Mã Viết Tắt: {cp.code_prefix or ''}
 Người Quản Lý: {cp.manager_name or ''}
 SĐT Liên Lạc: {cp.manager_phone or ''}
 Ghi Chú: {cp.notes or ''}</pre>"""
-        await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(callback_query.message.chat.id, "tien_nga_update_cp", cp_id, form_msg.id)
         await callback_query.answer()
     except Exception as e:
         LogError(f"Error in update collection point callback: {e}", LogType.SYSTEM_STATUS)
@@ -815,6 +834,14 @@ async def tien_nga_create_customer_handler(client, message: Message) -> None:
         LogInfo(f"[TienNga] Created customer '{hoursehold_id}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
         
         await message.reply_text(f"✅ <b>TẠO KHÁCH HÀNG THÀNH CÔNG</b>\n\n<b>Mã Hộ:</b> {hoursehold_id}\n<b>Tên KH:</b> {fullname}", parse_mode=ParseMode.HTML)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "tien_nga_create_customer", cp_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create customer form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         LogError(f"Error creating customer: {e}", LogType.SYSTEM_STATUS)
         db.rollback()
@@ -858,7 +885,8 @@ Ngân Hàng:
 STK Ngân Hàng: </pre>
 
 <i>(*Ghi chú: Đang thêm khách hàng cho Xưởng: <b>{cp_name}</b>)</i>"""
-        await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(callback_query.message.chat.id, "tien_nga_create_customer", cp_id, form_msg.id)
         await callback_query.answer()
     except Exception as e:
         LogError(f"Error in select collection point: {e}", LogType.SYSTEM_STATUS)
@@ -914,7 +942,8 @@ Username: {customer.username or ''}
 Nhóm Telegram: {customer.telegram_group or ''}
 Ngân Hàng: {customer.bank_name or ''}
 STK Ngân Hàng: {customer.number_bank or ''}</pre>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "tien_nga_update_customer", hoursehold_id, form_msg.id)
         except Exception as e:
             LogError(f"Error fetching customer for update: {e}", LogType.SYSTEM_STATUS)
             await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
@@ -994,6 +1023,14 @@ STK Ngân Hàng: {customer.number_bank or ''}</pre>"""
             f"<b>Username:</b> {customer.username or '—'}",
             parse_mode=ParseMode.HTML
         )
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "tien_nga_update_customer", hoursehold_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update customer form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         LogError(f"Error updating customer: {e}", LogType.SYSTEM_STATUS)
         db.rollback()
@@ -1516,7 +1553,8 @@ Có Lưu Sổ: yes</pre>
 
 <i>Ghi chú: Số tiền ví dụ 424.080 hoặc 5.898.728,5
 Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "tien_nga_daily_purchase", hoursehold_id, form_msg.id)
         except Exception as e:
             LogError(f"Error fetching customer for daily purchase: {e}", LogType.SYSTEM_STATUS)
             await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
@@ -1679,8 +1717,15 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
             f"<i>Reply /cancel để hủy giao dịch này.</i>",
             parse_mode=ParseMode.HTML
         )
+
+        # Delete the form template message after successful purchase
+        form_msg_id = form_tracker.pop(message.chat.id, "tien_nga_daily_purchase", hoursehold_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete daily purchase form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
-        LogError(f"Error creating daily purchase: {e}", LogType.SYSTEM_STATUS)
         db.rollback()
         await message.reply_text("❌ Có lỗi xảy ra khi lưu dữ liệu.", parse_mode=ParseMode.HTML)
     finally:
@@ -4369,7 +4414,8 @@ Tạm Ứng: 0</pre>
 <i>Ghi chú:
 - Thành Tiền tự tính = Khối Lượng Củi x Đơn Giá
 - Số tiền ví dụ: 1.500.000 hoặc 500.000</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "tien_nga_purchase_firewood", hoursehold_id, form_msg.id)
         except Exception as e:
             LogError(f"Error fetching customer for firewood purchase: {e}", LogType.SYSTEM_STATUS)
             await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
@@ -4489,8 +4535,15 @@ Tạm Ứng: 0</pre>
             f"<b>Tạm Ứng:</b> <code>{fmt_money(advance_amount)}</code>",
             parse_mode=ParseMode.HTML
         )
+
+        # Delete the form template message after successful firewood purchase
+        form_msg_id = form_tracker.pop(message.chat.id, "tien_nga_purchase_firewood", hoursehold_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete firewood purchase form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
-        LogError(f"Error creating firewood purchase: {e}", LogType.SYSTEM_STATUS)
         db.rollback()
         traceback.print_exc()
         await message.reply_text("❌ Có lỗi xảy ra khi lưu vào database.", parse_mode=ParseMode.HTML)
@@ -4922,7 +4975,8 @@ Ngân Hàng:
 Số TK: </pre>
 
 <i>Ghi chú: Mã đối tác nên viết liền không dấu (VD: DT001).</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "tien_nga_create_partner", "create", form_msg.id)
         return
 
     data = {}
@@ -4992,9 +5046,15 @@ Số TK: </pre>
             f"<b>Trạng Thái:</b> ACTIVE",
             parse_mode=ParseMode.HTML
         )
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "tien_nga_create_partner", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create partner form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
-        import traceback as tb
-        LogError(f"Error creating partner: {tb.format_exc()}", LogType.SYSTEM_STATUS)
         db.rollback()
         await message.reply_text("❌ Có lỗi hệ thống khi lưu thông tin đối tác.", parse_mode=ParseMode.HTML)
     finally:
@@ -5051,7 +5111,8 @@ async def tien_nga_update_partner_handler(client, message: Message) -> None:
                 f"Số TK: {partner.bank_account or ''}\n"
                 f"Trạng Thái: {partner.status or 'ACTIVE'}</pre>"
             )
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "tien_nga_update_partner", partner_id, form_msg.id)
         except Exception as e:
             import traceback as tb
             LogError(f"Error fetching partner for update: {tb.format_exc()}", LogType.SYSTEM_STATUS)
@@ -5125,6 +5186,14 @@ async def tien_nga_update_partner_handler(client, message: Message) -> None:
             f"<b>Trạng Thái:</b> {partner.status}",
             parse_mode=ParseMode.HTML
         )
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "tien_nga_update_partner", partner_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update partner form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         import traceback as tb
         LogError(f"Error updating partner: {tb.format_exc()}", LogType.SYSTEM_STATUS)
@@ -11109,6 +11178,14 @@ async def tien_nga_confirm_shareholder_callback(client, callback_query):
         await callback_query.message.edit_text(success_msg, parse_mode=ParseMode.HTML)
         await callback_query.answer("✅ Đã xác nhận thành công!")
 
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(callback_query.message.chat.id, "tien_nga_create_shareholder", str(investment.id))
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=callback_query.message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create shareholder form: {del_err}", LogType.SYSTEM_STATUS)
+
         # Gửi thông báo xuống nhóm member của cổ đông
         if telegram_group:
             try:
@@ -11235,7 +11312,8 @@ Nhóm Telegram:
 Ghi Chú: </pre>
 
 <i>(*Ghi chú: Đang thêm cổ đông cho Quỹ: <b>{inv.name}</b>)</i>"""
-        await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(callback_query.message.chat.id, "tien_nga_create_shareholder", inv_id, form_msg.id)
         await callback_query.answer()
     except Exception as e:
         LogError(f"Error in select investment point: {e}", LogType.SYSTEM_STATUS)

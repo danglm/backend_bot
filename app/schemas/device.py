@@ -19,6 +19,8 @@ class SmartphoneBase(BaseModel):
     status: Optional[str] = "available"
     notes: Optional[str] = None
     accessories: Optional[str] = None
+    account: Optional[str] = None
+    account_password: Optional[str] = None
 
 
 class SmartphoneCreate(SmartphoneBase):
@@ -164,5 +166,107 @@ class InstalledAppCreate(InstalledAppBase):
 
 
 class InstalledApp(InstalledAppBase):
+    class Config:
+        orm_mode = True
+
+
+# ===================== SCREEN =====================
+
+class ScreenBase(BaseModel):
+    model_name: str
+    brand: Optional[str] = None
+    screen_size: Optional[str] = None
+    resolution: Optional[str] = None
+    panel_type: Optional[str] = None
+    refresh_rate: Optional[str] = None
+    ports: Optional[str] = None
+    serial_number: Optional[str] = None
+    purchase_date: Optional[date] = None
+    warranty_expiry: Optional[date] = None
+    status: Optional[str] = "available"
+    accessories: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ScreenCreate(ScreenBase):
+    pass
+
+
+class ScreenUpdate(ScreenBase):
+    model_name: Optional[str] = None
+
+
+class Screen(ScreenBase):
+    id: str
+    class Config:
+        orm_mode = True
+
+
+# ===================== CAMERA =====================
+
+class CameraBase(BaseModel):
+    model_name: str
+    brand: Optional[str] = None
+    camera_type: Optional[str] = None
+    resolution: Optional[str] = None
+    ip_address: Optional[str] = None
+    mac_address: Optional[str] = None
+    port: Optional[str] = None
+    login_account: Optional[str] = None
+    login_password: Optional[str] = None
+    storage_type: Optional[str] = None
+    location: Optional[str] = None
+    serial_number: Optional[str] = None
+    purchase_date: Optional[date] = None
+    warranty_expiry: Optional[date] = None
+    status: Optional[str] = "active"
+    notes: Optional[str] = None
+
+
+class CameraCreate(CameraBase):
+    pass
+
+
+class CameraUpdate(CameraBase):
+    model_name: Optional[str] = None
+
+
+class Camera(CameraBase):
+    id: str
+    class Config:
+        orm_mode = True
+
+
+# ===================== OTHER DEVICE =====================
+
+class OtherDeviceBase(BaseModel):
+    device_name: str
+    device_category: Optional[str] = None
+    brand: Optional[str] = None
+    model_number: Optional[str] = None
+    serial_number: Optional[str] = None
+    specs: Optional[str] = None
+    ip_address: Optional[str] = None
+    mac_address: Optional[str] = None
+    login_account: Optional[str] = None
+    login_password: Optional[str] = None
+    location: Optional[str] = None
+    purchase_date: Optional[date] = None
+    warranty_expiry: Optional[date] = None
+    status: Optional[str] = "available"
+    accessories: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class OtherDeviceCreate(OtherDeviceBase):
+    pass
+
+
+class OtherDeviceUpdate(OtherDeviceBase):
+    device_name: Optional[str] = None
+
+
+class OtherDevice(OtherDeviceBase):
+    id: str
     class Config:
         orm_mode = True

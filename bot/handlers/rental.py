@@ -6,6 +6,7 @@ from bot.utils.utils import check_command_target, require_user_type, require_pro
 from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
+from bot.utils.states import form_tracker
 import datetime
 
 # --- Rental: Create Customer ---
@@ -31,7 +32,8 @@ Số Điện Thoại:
 </pre>
 
 <i>Mã Khách Hàng là mã duy nhất để định danh khách hàng (ví dụ: KH001)</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "rental_create_customer", "create", form_msg.id)
         return
 
     # Parse Form
@@ -104,6 +106,14 @@ Số Điện Thoại:
 
         await message.reply_text(f"✅ Đã tạo khách hàng cho thuê <b>{customer_name}</b> (Mã: {customer_id_str}) thành công!", parse_mode=ParseMode.HTML)
         LogInfo(f"[RentalCreateCustomer] Created rental customer {customer_name} (ID: {customer_id_str}) by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "rental_create_customer", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete rental create customer form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
         LogError(f"Error in rental_create_customer_handler: {e}", LogType.SYSTEM_STATUS)
@@ -186,7 +196,8 @@ Số tiền nợ của khách: 0
 </pre>
 
 <i>Ví dụ mã hợp đồng: LMD-HD220101. Loại hợp đồng gồm (Nhà nguyên căn, Phòng trọ, Căn hộ, Mặt bằng, v.v.)</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "rental_create_contract", customer.customer_id, form_msg.id)
             return
 
         # If user actually submitted data in the form format
@@ -263,6 +274,14 @@ Số tiền nợ của khách: 0
         create_rental(db, obj_in=new_contract)
         await message.reply_text(f"✅ Đã tạo hợp đồng cho thuê <b>{contract_id}</b> cho khách hàng <b>{customer.customer_name}</b> thành công!", parse_mode=ParseMode.HTML)
         LogInfo(f"[RentalCreateContract] Created rental contract {contract_id} for {customer.customer_name} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "rental_create_contract", customer.customer_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete rental create contract form: {del_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()
@@ -1026,7 +1045,9 @@ Tiền Cọc: {deposit_val}
 Tiền Thuê / Tháng: {monthly_val}
 Trạng Thái (active/expired/cancelled): {contract.status or 'active'}
 </pre>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            # Track the form message so we can delete it after successful update
+            form_tracker.track(message.chat.id, "rental_update_contract", contract.contract_id, form_msg.id)
             return
 
         # Parse submitted form data
@@ -1089,6 +1110,14 @@ Trạng Thái (active/expired/cancelled): {contract.status or 'active'}
         db.commit()
         await message.reply_text(f"✅ Đã cập nhật hợp đồng cho thuê <b>{new_contract_id}</b> thành công!", parse_mode=ParseMode.HTML)
         LogInfo(f"[RentalUpdateContract] Updated rental contract {new_contract_id} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "rental_update_contract", contract_code)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete rental update form message: {del_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         db.rollback()

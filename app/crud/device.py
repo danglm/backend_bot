@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from app.models.device import (
-    Smartphone, Laptop, SimCard, Application, DeviceAssignment, InstalledApp
+    Smartphone, Laptop, SimCard, Application, DeviceAssignment, InstalledApp,
+    Screen, Camera, OtherDevice
 )
 from app.schemas.device import (
     SmartphoneCreate, SmartphoneUpdate,
@@ -9,6 +10,9 @@ from app.schemas.device import (
     ApplicationCreate, ApplicationUpdate,
     DeviceAssignmentCreate, DeviceAssignmentUpdate,
     InstalledAppCreate,
+    ScreenCreate, ScreenUpdate,
+    CameraCreate, CameraUpdate,
+    OtherDeviceCreate, OtherDeviceUpdate,
 )
 
 
@@ -269,6 +273,132 @@ def remove_installed_app(db: Session, device_id: str, app_id: str):
         InstalledApp.device_id == device_id,
         InstalledApp.app_id == app_id
     ).first()
+    if not db_obj:
+        return None
+    db.delete(db_obj)
+    db.commit()
+    return db_obj
+
+
+# ===================== SCREEN CRUD =====================
+
+def get_screen(db: Session, screen_id: str):
+    return db.query(Screen).filter(Screen.id == screen_id).first()
+
+
+def get_screens(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(Screen).offset(skip).limit(limit).all()
+
+
+def get_screens_by_status(db: Session, status: str):
+    return db.query(Screen).filter(Screen.status == status).all()
+
+
+def create_screen(db: Session, screen: ScreenCreate):
+    db_obj = Screen(**screen.dict())
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def update_screen(db: Session, screen_id: str, screen: ScreenUpdate):
+    db_obj = get_screen(db, screen_id)
+    if not db_obj:
+        return None
+    for field, value in screen.dict(exclude_unset=True).items():
+        setattr(db_obj, field, value)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def remove_screen(db: Session, screen_id: str):
+    db_obj = get_screen(db, screen_id)
+    if not db_obj:
+        return None
+    db.delete(db_obj)
+    db.commit()
+    return db_obj
+
+
+# ===================== CAMERA CRUD =====================
+
+def get_camera(db: Session, camera_id: str):
+    return db.query(Camera).filter(Camera.id == camera_id).first()
+
+
+def get_cameras(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(Camera).offset(skip).limit(limit).all()
+
+
+def get_cameras_by_status(db: Session, status: str):
+    return db.query(Camera).filter(Camera.status == status).all()
+
+
+def create_camera(db: Session, camera: CameraCreate):
+    db_obj = Camera(**camera.dict())
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def update_camera(db: Session, camera_id: str, camera: CameraUpdate):
+    db_obj = get_camera(db, camera_id)
+    if not db_obj:
+        return None
+    for field, value in camera.dict(exclude_unset=True).items():
+        setattr(db_obj, field, value)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def remove_camera(db: Session, camera_id: str):
+    db_obj = get_camera(db, camera_id)
+    if not db_obj:
+        return None
+    db.delete(db_obj)
+    db.commit()
+    return db_obj
+
+
+# ===================== OTHER DEVICE CRUD =====================
+
+def get_other_device(db: Session, device_id: str):
+    return db.query(OtherDevice).filter(OtherDevice.id == device_id).first()
+
+
+def get_other_devices(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(OtherDevice).offset(skip).limit(limit).all()
+
+
+def get_other_devices_by_status(db: Session, status: str):
+    return db.query(OtherDevice).filter(OtherDevice.status == status).all()
+
+
+def create_other_device(db: Session, device: OtherDeviceCreate):
+    db_obj = OtherDevice(**device.dict())
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def update_other_device(db: Session, device_id: str, device: OtherDeviceUpdate):
+    db_obj = get_other_device(db, device_id)
+    if not db_obj:
+        return None
+    for field, value in device.dict(exclude_unset=True).items():
+        setattr(db_obj, field, value)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def remove_other_device(db: Session, device_id: str):
+    db_obj = get_other_device(db, device_id)
     if not db_obj:
         return None
     db.delete(db_obj)

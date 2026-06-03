@@ -613,12 +613,15 @@ async def register_bot_command_handler(client, message: Message) -> None:
             if custom_title == "main_device":
                 label = "Other (Device)"
                 commands_to_set = [
-                    BotCommand("other_tao_dien_thoai", "Tạo điện thoại mới"),
-                    BotCommand("other_cap_nhat_dien_thoai", "Cập nhật điện thoại"),
-                    BotCommand("other_xoa_dien_thoai", "Xóa điện thoại"),
-                    BotCommand("other_tao_laptop", "Tạo laptop mới"),
-                    BotCommand("other_cap_nhat_laptop", "Cập nhật laptop"),
-                    BotCommand("other_xoa_laptop", "Xóa laptop"),
+                    # BotCommand("other_tao_dien_thoai", "Tạo điện thoại mới"),
+                    # BotCommand("other_cap_nhat_dien_thoai", "Cập nhật điện thoại"),
+                    # BotCommand("other_xoa_dien_thoai", "Xóa điện thoại"),
+                    # BotCommand("other_tao_laptop", "Tạo laptop mới"),
+                    # BotCommand("other_cap_nhat_laptop", "Cập nhật laptop"),
+                    # BotCommand("other_xoa_laptop", "Xóa laptop"),
+                    BotCommand("other_tao_thiet_bi", "Tạo thiết bị mới (chọn loại)"),
+                    BotCommand("other_cap_nhat_thiet_bi", "Cập nhật thiết bị"),
+                    BotCommand("other_xoa_thiet_bi", "Xóa thiết bị"),
                     BotCommand("other_tao_sim", "Tạo SIM mới"),
                     BotCommand("other_cap_nhat_sim", "Cập nhật SIM"),
                     BotCommand("other_xoa_sim", "Xóa SIM"),
@@ -631,6 +634,11 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("other_lich_su_thiet_bi", "Xem lịch sử thiết bị"),
                     BotCommand("other_danh_sach_thiet_bi", "Danh sách thiết bị"),
                     BotCommand("other_dong_bo_ung_dung", "Đồng bộ ứng dụng vào thiết bị"),
+                ]
+
+            elif custom_title == "main_image":
+                label = "Other (Image)"
+                commands_to_set = [
                     BotCommand("other_tao_giay_to", "Tạo giấy tờ mới"),
                     BotCommand("other_them_lich_hen", "Thêm lịch hẹn nhắc nhở"),
                     BotCommand("other_cap_nhat_giay_to", "Cập nhật giấy tờ"),

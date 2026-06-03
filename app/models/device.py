@@ -46,6 +46,37 @@ class AppStatus(str, enum.Enum):
     SUSPENDED = "suspended"
 
 
+class ScreenStatus(str, enum.Enum):
+    AVAILABLE = "available"        # Sẵn sàng sử dụng
+    ASSIGNED = "assigned"          # Đã giao cho nhân viên
+    MAINTENANCE = "maintenance"    # Đang bảo trì/sửa chữa
+    BROKEN = "broken"              # Hỏng, không sử dụng được
+
+
+class CameraStatus(str, enum.Enum):
+    ACTIVE = "active"              # Đang hoạt động
+    INACTIVE = "inactive"          # Không hoạt động
+    MAINTENANCE = "maintenance"    # Đang bảo trì/sửa chữa
+    BROKEN = "broken"              # Hỏng, không sử dụng được
+
+
+class OtherDeviceStatus(str, enum.Enum):
+    AVAILABLE = "available"        # Sẵn sàng sử dụng
+    ASSIGNED = "assigned"          # Đã giao cho nhân viên
+    MAINTENANCE = "maintenance"    # Đang bảo trì/sửa chữa
+    BROKEN = "broken"              # Hỏng, không sử dụng được
+
+
+class DeviceCategory(str, enum.Enum):
+    PRINTER = "printer"            # Máy in
+    ROUTER = "router"              # Router/Switch
+    PROJECTOR = "projector"        # Máy chiếu
+    UPS = "ups"                    # Bộ lưu điện
+    SCANNER = "scanner"            # Máy scan
+    SPEAKER = "speaker"            # Loa/Âm thanh
+    OTHER = "other"                # Khác
+
+
 # ===================== MODELS =====================
 
 class Smartphone(Base):
@@ -64,6 +95,8 @@ class Smartphone(Base):
     status = Column(String, default=SmartphoneStatus.AVAILABLE.value)  # Trạng thái
     notes = Column(Text)                 # Ghi chú thêm (máy trầy xước, mất hộp...)
     accessories = Column(String)         # Phụ kiện kèm theo (sạc, tai nghe, ốp lưng...)
+    account = Column(String)             # Tài khoản iCloud/Google
+    account_password = Column(String)    # Mật khẩu tài khoản
 
 
 class Laptop(Base):
@@ -133,3 +166,66 @@ class InstalledApp(Base):
     device_id = Column(String, primary_key=True)   # ID thiết bị
     app_id = Column(String, primary_key=True)       # ID ứng dụng
     install_at = Column(Date)                        # Ngày cài đặt
+
+
+class Screen(Base):
+    __tablename__ = "screens"
+
+    id = Column(String, primary_key=True)
+    model_name = Column(String)          # Tên model (Dell U2723QE, LG 27UK850...)
+    brand = Column(String)               # Thương hiệu (Dell, LG, Samsung...)
+    screen_size = Column(String)         # Kích thước (24", 27", 32"...)
+    resolution = Column(String)          # Độ phân giải (1920x1080, 3840x2160...)
+    panel_type = Column(String)          # Loại tấm nền (IPS, VA, TN, OLED)
+    refresh_rate = Column(String)        # Tần số quét (60Hz, 144Hz, 165Hz...)
+    ports = Column(String)               # Cổng kết nối (HDMI, DP, USB-C, VGA...)
+    serial_number = Column(String)       # Số Serial nhà sản xuất
+    purchase_date = Column(Date)         # Ngày mua
+    warranty_expiry = Column(Date)       # Ngày hết bảo hành
+    status = Column(String, default=ScreenStatus.AVAILABLE.value)  # Trạng thái
+    accessories = Column(String)         # Phụ kiện (cáp HDMI, chân đế, adapter...)
+    notes = Column(Text)                 # Ghi chú thêm
+
+
+class Camera(Base):
+    __tablename__ = "cameras"
+
+    id = Column(String, primary_key=True)
+    model_name = Column(String)          # Tên model (Hikvision DS-2CD1043...)
+    brand = Column(String)               # Thương hiệu (Hikvision, Dahua, Ezviz...)
+    camera_type = Column(String)         # Loại camera (IP, Analog, WiFi, PTZ...)
+    resolution = Column(String)          # Độ phân giải (2MP, 4MP, 4K...)
+    ip_address = Column(String)          # Địa chỉ IP (cho IP camera)
+    mac_address = Column(String)         # Địa chỉ MAC
+    port = Column(String)                # Port truy cập
+    login_account = Column(String)       # Tài khoản đăng nhập camera
+    login_password = Column(String)      # Mật khẩu đăng nhập camera
+    storage_type = Column(String)        # Loại lưu trữ (SD Card, NVR, Cloud...)
+    location = Column(String)            # Vị trí lắp đặt (Cổng chính, Kho, VP...)
+    serial_number = Column(String)       # Số Serial nhà sản xuất
+    purchase_date = Column(Date)         # Ngày mua
+    warranty_expiry = Column(Date)       # Ngày hết bảo hành
+    status = Column(String, default=CameraStatus.ACTIVE.value)  # Trạng thái
+    notes = Column(Text)                 # Ghi chú thêm
+
+
+class OtherDevice(Base):
+    __tablename__ = "other_devices"
+
+    id = Column(String, primary_key=True)
+    device_name = Column(String)         # Tên thiết bị (Máy in Canon LBP, Router TP-Link...)
+    device_category = Column(String)     # Danh mục (printer, router, projector...)
+    brand = Column(String)               # Thương hiệu
+    model_number = Column(String)        # Mã/Model số
+    serial_number = Column(String)       # Số Serial nhà sản xuất
+    specs = Column(Text)                 # Thông số kỹ thuật tổng thể
+    ip_address = Column(String)          # Địa chỉ IP (nếu có)
+    mac_address = Column(String)         # Địa chỉ MAC (nếu có)
+    login_account = Column(String)       # Tài khoản đăng nhập (nếu có)
+    login_password = Column(String)      # Mật khẩu đăng nhập (nếu có)
+    location = Column(String)            # Vị trí đặt thiết bị
+    purchase_date = Column(Date)         # Ngày mua
+    warranty_expiry = Column(Date)       # Ngày hết bảo hành
+    status = Column(String, default=OtherDeviceStatus.AVAILABLE.value)  # Trạng thái
+    accessories = Column(String)         # Phụ kiện kèm theo
+    notes = Column(Text)                 # Ghi chú thêm

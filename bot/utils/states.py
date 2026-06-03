@@ -65,6 +65,24 @@ class RequestTracker:
         if chat_id in self._mappings and user_msg_id in self._mappings[chat_id]:
             del self._mappings[chat_id][user_msg_id]
 
+class FormMessageTracker:
+    """Tracks form template messages so they can be deleted after successful submission.
+    
+    Key: (chat_id_str, command_prefix, lookup_key)
+    Value: form_message_id (int)
+    """
+    def __init__(self):
+        self._forms: Dict[tuple, int] = {}
+
+    def track(self, chat_id, command: str, lookup_key: str, form_msg_id: int):
+        """Save the form message ID for later deletion."""
+        self._forms[(str(chat_id), command, lookup_key)] = form_msg_id
+
+    def pop(self, chat_id, command: str, lookup_key: str):
+        """Retrieve and remove the tracked form message ID."""
+        return self._forms.pop((str(chat_id), command, lookup_key), None)
+
 # Singleton instances
 approval_manager = ApprovalManager()
 request_tracker = RequestTracker()
+form_tracker = FormMessageTracker()

@@ -6,6 +6,7 @@ from bot.utils.utils import check_command_target, require_user_type, require_gro
 from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
+from bot.utils.states import form_tracker
 import uuid
 
 # --- Rosca: Create User ---
@@ -31,7 +32,8 @@ Vai Trò (Owner/Player): Player
 </pre>
 
 <i>Lưu ý: Mã ID là bắt buộc (VD: NC01, CH01). Vai trò mặc định là Player (Người chơi). Username điền định dạng @username hoặc bỏ trống.</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "rosca_create_user", "create", form_msg.id)
         return
 
     # Parse Form
@@ -102,6 +104,14 @@ Vai Trò (Owner/Player): Player
 
         await message.reply_text(f"✅ Đã tạo hồ sơ <b>{full_name}</b> (Vai trò: {role}) thành công!", parse_mode=ParseMode.HTML)
         LogInfo(f"[RoscaCreateUser] Created {role} {full_name} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "rosca_create_user", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete rosca create user form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
         LogError(f"Error in rosca_create_user_handler: {e}", LogType.SYSTEM_STATUS)
@@ -143,7 +153,8 @@ Số CCCD: {user.cccd or ''}
 Vai Trò (Owner/Player): {user.role or 'Player'}
 </pre>
 """
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "rosca_update_user", user_id, form_msg.id)
         except Exception as e:
             LogError(f"Error checking user in rosca_update_user: {e}", LogType.SYSTEM_STATUS)
             await message.reply_text("❌ Có lỗi xảy ra trong quá trình truy xuất thông tin.")
@@ -213,6 +224,14 @@ Vai Trò (Owner/Player): {user.role or 'Player'}
 
         await message.reply_text(f"✅ Đã cập nhật hồ sơ <b>{full_name}</b> (Vai trò: {role}) thành công!", parse_mode=ParseMode.HTML)
         LogInfo(f"[RoscaUpdateUser] Updated user {user_id} ({full_name}) by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "rosca_update_user", user_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete rosca update user form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
         LogError(f"Error in rosca_update_user_handler: {e}", LogType.SYSTEM_STATUS)
@@ -329,7 +348,8 @@ Ghi Chú:
 </pre>
 
 <i>Lưu ý: Bạn có thể bỏ trống một số trường nếu chưa xác định, nhưng Mã Dây Hụi, ID Chủ Hụi và Số Tiền Gốc là bắt buộc. Số tiền viết liền không dấu phẩy hoặc có chấm phẩy đều được (VD: 10000000 hoặc 10.000.000).</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "rosca_create_rosca", "create", form_msg.id)
         return
 
     # Parse Form
@@ -461,6 +481,14 @@ Ghi Chú:
 
         await message.reply_text(f"✅ Đã tạo thành công Dây hụi <b>{code}</b> (Chủ hụi: {owner.full_name}).\nTrạng thái: <b>{status}</b>", parse_mode=ParseMode.HTML)
         LogInfo(f"[RoscaCreate] Created Rosca {code} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "rosca_create_rosca", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete rosca create form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
         LogError(f"Error in rosca_create_roscas_handler: {e}", LogType.SYSTEM_STATUS)
@@ -511,7 +539,8 @@ Loại Hụi (Hụi ngày/Hụi tuần/Hụi 2 tuần/Hụi Tháng): {rosca.peri
 Trạng Thái (Draft/Active/Closed): {rosca.status or 'Active'}
 Ghi Chú: {rosca.note or ''}
 </pre>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "rosca_update_rosca", code, form_msg.id)
         except Exception as e:
             LogError(f"Error checking rosca in rosca_update_roscas: {e}", LogType.SYSTEM_STATUS)
             await message.reply_text("❌ Có lỗi xảy ra trong quá trình truy xuất thông tin.")
@@ -644,6 +673,14 @@ Ghi Chú: {rosca.note or ''}
 
         await message.reply_text(f"✅ Đã cập nhật thành công Dây hụi <b>{code}</b>.", parse_mode=ParseMode.HTML)
         LogInfo(f"[RoscaUpdate] Updated Rosca {code} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "rosca_update_rosca", code)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete rosca update form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
         LogError(f"Error in rosca_update_roscas_handler: {e}", LogType.SYSTEM_STATUS)
@@ -958,7 +995,8 @@ Trạng Thái (Playing/Defaulted): {member.status or 'Playing'}
 Nhóm Chat Telegram (tùy chọn): {member.telegram_group or ''}
 Ghi Chú: {member.note or ''}
 </pre>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "rosca_update_member", member_id, form_msg.id)
         except Exception as e:
             LogError(f"Error checking member in rosca_update_member: {e}", LogType.SYSTEM_STATUS)
             await message.reply_text("❌ Có lỗi xảy ra trong quá trình truy xuất thông tin.")
@@ -1080,6 +1118,14 @@ Ghi Chú: {member.note or ''}
 
         await message.reply_text(f"✅ Đã cập nhật thành công thông tin Chân hụi <b>{member_id}</b>.", parse_mode=ParseMode.HTML)
         LogInfo(f"[RoscaUpdateMember] Updated member {member_id} in Rosca {rosca_code} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "rosca_update_member", member_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete rosca update member form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
         LogError(f"Error in rosca_update_member_handler: {e}", LogType.SYSTEM_STATUS)

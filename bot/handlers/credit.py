@@ -6,6 +6,7 @@ from bot.utils.utils import check_command_target, require_user_type, require_pro
 from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
+from bot.utils.states import form_tracker
 from app.models.business import Projects
 from app.models.telegram import TelegramProjectMember
 from app.models.credit import Credit, CreditStatus, CreditCustomer
@@ -70,7 +71,8 @@ Tổng Nợ Gốc Hiện Tại: 0
 </pre>
 
 <i>Mã Khách Hàng là mã duy nhất để định danh khách hàng (ví dụ: KH001)</i>"""
-        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "credit_create_customer", "create", form_msg.id)
         return
 
     # Parse Form
@@ -157,6 +159,14 @@ Tổng Nợ Gốc Hiện Tại: 0
         create_credit_customer(db, obj_in=new_customer)
         await message.reply_text(f"✅ Đã tạo khách hàng <b>{customer_name}</b> thành công!", parse_mode=ParseMode.HTML)
         LogInfo(f"[CreateCustomer] Created customer {customer_name} ({contact_info}) by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "credit_create_customer", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete credit create customer form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
         LogError(f"Error in create_customer_handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra trong quá trình xử lý lưu khách hàng.")
@@ -475,7 +485,8 @@ Tổng Hạn Mức Tín Dụng: {fmt_num(customer.total_credit_limit)}
 Hạn Mức Còn Lại: {fmt_num(customer.remaining_credit_limit)}
 Tổng Nợ Gốc Hiện Tại: {fmt_num(customer.total_principal_outstanding)}
 </pre>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "credit_update_customer", lookup_key, form_msg.id)
             return
 
         # Parse Form
@@ -562,6 +573,14 @@ Tổng Nợ Gốc Hiện Tại: {fmt_num(customer.total_principal_outstanding)}
         await message.reply_text(f"✅ Đã cập nhật thông tin khách hàng <b>{customer_name}</b> (Mã: {new_customer_id}) thành công!", parse_mode=ParseMode.HTML)
         LogInfo(f"[UpdateCustomer] Updated customer {customer_name} (ID: {new_customer_id}) by {message.from_user.id}", LogType.SYSTEM_STATUS)
 
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "credit_update_customer", target_customer_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete credit update customer form: {del_err}", LogType.SYSTEM_STATUS)
+
     except Exception as e:
         LogError(f"Error in update_customer_handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra trong quá trình cập nhật khách hàng.")
@@ -632,7 +651,8 @@ Nội Dung Tin Nhắn:
 </pre>
 
 <i>Ví dụ mã hợp đồng: HD220101. Loại hợp đồng gồm (Thế chấp [secured], Tín chấp [unsecured])</i>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "credit_create_contract", customer.customer_id, form_msg.id)
             return
             
         # If user actually submitted data in the form format
@@ -746,6 +766,14 @@ Nội Dung Tin Nhắn:
         create_credit(db, obj_in=new_contract)
         await message.reply_text(f"✅ Đã tạo hợp đồng <b>{contract_id}</b> cho khách hàng <b>{customer.customer_name}</b> thành công!", parse_mode=ParseMode.HTML)
         LogInfo(f"[CreateContract] Created contract {contract_id} for {customer.customer_name} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "credit_create_contract", customer.customer_id)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete credit create contract form: {del_err}", LogType.SYSTEM_STATUS)
         
     except Exception as e:
         LogError(f"Error in create_contract_handler: {e}", LogType.SYSTEM_STATUS)
@@ -855,7 +883,8 @@ Ghi Chú: {contract.notes or ""}
 Gửi Tin Nhắn Phát Sinh (Có/Không): {send_msg}
 Nội Dung Tin Nhắn: {contract.message_content or ""}
 </pre>"""
-            await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_tracker.track(message.chat.id, "credit_update_contract", contract_code, form_msg.id)
             return
 
         # If user actually submitted data in the form format
@@ -963,6 +992,14 @@ Nội Dung Tin Nhắn: {contract.message_content or ""}
         db.commit()
         await message.reply_text(f"✅ Đã cập nhật hợp đồng <b>{new_contract_id}</b> thành công!", parse_mode=ParseMode.HTML)
         LogInfo(f"[UpdateContract] Updated contract {new_contract_id} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful update
+        form_msg_id = form_tracker.pop(message.chat.id, "credit_update_contract", contract_code)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete credit update contract form: {del_err}", LogType.SYSTEM_STATUS)
         
     except Exception as e:
         LogError(f"Error in update_contract_handler: {e}", LogType.SYSTEM_STATUS)
