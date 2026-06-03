@@ -263,7 +263,7 @@ def _render_chart_html_to_png_sync(html_content: str, max_retries: int = 2) -> b
                 browser = p.chromium.launch(headless=True)
                 # Viewport cao để tải trang rộng, chụp full_page hoặc theo element
                 page = browser.new_page(
-                    viewport={"width": 1000, "height": 1000},
+                    viewport={"width": 1000, "height": 3000},
                     device_scale_factor=2
                 )
                 
@@ -274,7 +274,7 @@ def _render_chart_html_to_png_sync(html_content: str, max_retries: int = 2) -> b
                 
                 # Lấy toàn bộ khối Div tổng để screenshot tự giãn theo chiều dọc
                 container = page.locator(".main-wrapper")
-                screenshot = container.screenshot(type="png", omit_background=True, timeout=15000)
+                screenshot = container.screenshot(type="png", omit_background=True, timeout=15000, animations="disabled")
                 
                 browser.close()
             

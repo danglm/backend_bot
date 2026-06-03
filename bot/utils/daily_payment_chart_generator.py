@@ -317,7 +317,7 @@ def _render_chart_html_to_png_sync(html_content: str, max_retries: int = 2) -> b
                 browser = p.chromium.launch(headless=True)
                 # Tăng viewport width để có chỗ hiển thị nhãn số tiền lớn
                 page = browser.new_page(
-                    viewport={"width": 1200, "height": 1000},
+                    viewport={"width": 1200, "height": 3000},
                     device_scale_factor=2
                 )
                 
@@ -327,7 +327,7 @@ def _render_chart_html_to_png_sync(html_content: str, max_retries: int = 2) -> b
                 page.wait_for_timeout(1500)  # Đợi render ChartJS và plugins
                 
                 container = page.locator("#main-wrapper")
-                screenshot = container.screenshot(type="png", omit_background=True, timeout=15000)
+                screenshot = container.screenshot(type="png", omit_background=True, timeout=15000, animations="disabled")
                 
                 browser.close()
             

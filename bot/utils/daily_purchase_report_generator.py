@@ -354,7 +354,7 @@ def _render_to_png_sync(html_content: str, max_retries: int = 2) -> bytes:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page(
-                    viewport={"width": 1180, "height": 800},
+                    viewport={"width": 1180, "height": 3000},
                     device_scale_factor=1.5
                 )
 
@@ -363,7 +363,7 @@ def _render_to_png_sync(html_content: str, max_retries: int = 2) -> bytes:
                 page.wait_for_timeout(300)
 
                 element = page.locator(".report-box")
-                screenshot = element.screenshot(type="png", omit_background=True, timeout=15000)
+                screenshot = element.screenshot(type="png", omit_background=True, timeout=15000, animations="disabled")
 
                 browser.close()
 
