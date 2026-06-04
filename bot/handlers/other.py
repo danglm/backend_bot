@@ -48,7 +48,7 @@ Phiên Bản OS:
 Dung Lượng: 
 Tình Trạng Pin (%): 
 Ngày Mua (dd/mm/yyyy): 
-Trạng thái: available
+Trạng Thái: available
 Phụ Kiện: 
 Ghi Chú: 
 Tài Khoản: 
