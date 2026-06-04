@@ -4527,6 +4527,95 @@ async def other_check_log_vehicle_handler(client, message: Message) -> None:
         db.close()
 
 
+# ===================== DANH SÁCH PHƯƠNG TIỆN =====================
+
+@bot.on_message(filters.command(["other_list_vehicle", "other_danh_sach_phuong_tien"]) | filters.regex(r"^@\w+\s+/(other_list_vehicle|other_danh_sach_phuong_tien)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_VEHICLE)
+async def list_vehicle_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_list_vehicle", "other_danh_sach_phuong_tien"])
+    if args is None: return
+
+    db = SessionLocal()
+    try:
+        vehicles = db.query(Vehicle).filter(Vehicle.status != "is_removed").order_by(Vehicle.status, Vehicle.license_plate).all()
+
+        if not vehicles:
+            await message.reply_text("ℹ️ Chưa có phương tiện nào trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        status_labels = {
+            "activited": "🟢 Đang hoạt động",
+            "inactivity": "🔴 Không hoạt động",
+        }
+
+        # Group vehicles by status
+        from collections import defaultdict
+        grouped = defaultdict(list)
+        for v in vehicles:
+            grouped[v.status].append(v)
+
+        response = f"<b>DANH SÁCH PHƯƠNG TIỆN</b>\n"
+        response += f"Tổng cộng: <b>{len(vehicles)}</b> phương tiện\n"
+        response += f"-----------------------------------\n\n"
+
+        for status_key in ["activited", "inactivity"]:
+            v_list = grouped.get(status_key, [])
+            if not v_list:
+                continue
+
+            status_label = status_labels.get(status_key, status_key)
+            response += f"<b>{status_label} ({len(v_list)})</b>\n\n"
+
+            for v in v_list:
+                # Tìm người đang giữ xe (nếu đang hoạt động)
+                holder = "—"
+                if v.status == "activited":
+                    last_receive = db.query(VehicleActivityLog).filter(
+                        VehicleActivityLog.vehicle_id == v.id,
+                        VehicleActivityLog.action == "RECEIVE"
+                    ).order_by(VehicleActivityLog.timestamp.desc()).first()
+
+                    if last_receive:
+                        # Kiểm tra đã trả chưa
+                        last_return = db.query(VehicleActivityLog).filter(
+                            VehicleActivityLog.vehicle_id == v.id,
+                            VehicleActivityLog.action == "RETURN",
+                            VehicleActivityLog.timestamp > last_receive.timestamp
+                        ).first()
+
+                        if not last_return:
+                            holder = f"@{last_receive.telegram_username}"
+
+                response += (
+                    f"<b>Biển số:</b> <code>{v.license_plate}</code>\n"
+                    f"<b>Loại xe:</b> {v.vehicle_type or 'N/A'}\n"
+                    f"<b>Thương hiệu:</b> {v.brand or 'N/A'} {v.model or ''}\n"
+                    f"<b>Màu sắc:</b> {v.color or 'N/A'}\n"
+                    f"<b>Chủ xe:</b> {v.owner_name or 'N/A'}\n"
+                )
+                if v.status == "activited":
+                    response += f"<b>Tài xế hiện tại:</b> {holder}\n"
+                response += f"-------------------\n"
+
+            response += "\n"
+
+        # Gửi tin nhắn (chia nhỏ nếu quá dài)
+        if len(response) > 4096:
+            for i in range(0, len(response), 4000):
+                await message.reply_text(response[i:i+4000], parse_mode=ParseMode.HTML)
+        else:
+            await message.reply_text(response, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error in list_vehicle_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra khi tải danh sách phương tiện: {str(e)}")
+    finally:
+        db.close()
+
+
 # =========================================================================================
 # LỆNH QUẢN LÝ GIẤY TỜ, HỒ SƠ & LỊCH HẸN NHẮC NHỞ
 # =========================================================================================

@@ -1909,6 +1909,11 @@ async def daily_fund_summary_worker():
                         
                         tong_thu = sum(p.amount for p in today_payments if p.payment_type.lower() == 'thu')
                         tong_chi = sum(p.amount for p in today_payments if p.payment_type.lower() == 'chi')
+
+                        # Skip nếu không có thu/chi trong ngày
+                        if tong_thu == 0 and tong_chi == 0:
+                            LogInfo(f"Fund '{fund_name}': Không có thu/chi trong ngày {current_date}, bỏ qua.", LogType.SYSTEM_STATUS)
+                            continue
                         
                         so_du = (investment.total_income or 0) - (investment.total_expense or 0) + (investment.initial_capital or 0)
                         
@@ -2004,6 +2009,11 @@ async def generate_and_send_inventory_report(client, target_date: datetime.date 
                     total_export += txn.quantity or 0.0
                 elif txn.transaction_type == "Nhập":
                     total_import += txn.quantity or 0.0
+            
+            # Skip nếu không có giao dịch xuất/nhập trong ngày
+            if total_export == 0 and total_import == 0:
+                LogInfo(f"Inventory '{inv_name}': Không có xuất/nhập trong ngày {target_date}, bỏ qua.", LogType.SYSTEM_STATUS)
+                continue
             
             current_stock = inv.quantity or 0.0
             capacity = inv.capacity or 0.0
@@ -2175,6 +2185,11 @@ async def send_harvest_summary_report(db, project_id, current_date, client, spec
         total_actual_weight = sum(p.actual_weight or 0 for p in purchases)
         total_dry_rubber = sum(p.dry_rubber or 0 for p in purchases)
         total_purchase_amount = sum(p.total_amount or 0 for p in purchases)
+
+        # Skip nếu không có dữ liệu thu hoạch và thu mua trong ngày
+        if total_trees == 0 and total_harvest_amount == 0 and total_purchase_amount == 0:
+            LogInfo(f"Harvest '{aff}': Không có dữ liệu thu hoạch/thu mua trong ngày {current_date}, bỏ qua.", LogType.SYSTEM_STATUS)
+            continue
         
         # Averages
         if total_actual_weight > 0:

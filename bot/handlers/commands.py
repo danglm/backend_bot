@@ -657,6 +657,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("other_nhan_xe", "Nhận xe"),
                     BotCommand("other_tra_xe", "Trả xe"),
                     BotCommand("other_lich_su_xe", "Xem lịch sử xe"),
+                    BotCommand("other_danh_sach_phuong_tien", "Danh sách phương tiện"),
                 ]
 
         # ===================== CREDIT =====================
