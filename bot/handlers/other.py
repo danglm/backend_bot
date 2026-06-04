@@ -4547,8 +4547,8 @@ async def list_vehicle_handler(client, message: Message) -> None:
             return
 
         status_labels = {
-            "activited": "🟢 Đang hoạt động",
-            "inactivity": "🔴 Không hoạt động",
+            "activited": "Đang hoạt động",
+            "inactivity": "Không hoạt động",
         }
 
         # Group vehicles by status
