@@ -8,6 +8,7 @@ from app.schemas import telegram as schemas_telegram
 from app.crud import telegram as crud_telegram
 from app.models.employee import Credential
 from typing import Optional
+from bot.utils.bot import bot
 
 router = APIRouter()
 
@@ -47,29 +48,10 @@ class MockMessage:
 
 @router.post("/add_user")
 async def api_add_user(request: TelegramActionRequest):
-    if not bot.is_connected:
-        raise HTTPException(status_code=500, detail="Bot is not connected.")
-    
-    try:
-        # Get info from Telegram group
-        chat = await bot.get_chat(request.chat_id)
-        chat_title = chat.title or f"Group {request.chat_id}"
-        
-        # Create fake message
-        mock_msg = MockMessage(text=request.message, chat_id=request.chat_id, title=chat_title)
-        
-        # Push to handler
-        await add_user_handler(bot, mock_msg)
-        
-        return {
-            "status": "success", 
-            "message": "Add user handler executed",
-            "mock_message": request.message,
-            "chat_title": chat_title
-        }
-    except Exception as e:
-        LogError(f"API Error in /add_user: {e}", LogType.SYSTEM_STATUS)
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(
+        status_code=501, 
+        detail="add_user_handler is not implemented."
+    )
 
 class TelegramMultipleActionRequest(BaseModel):
     message: str # Format: "@bot_username /add_users @user1 @user2 +841234..."

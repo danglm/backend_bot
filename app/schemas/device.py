@@ -21,6 +21,7 @@ class SmartphoneBase(BaseModel):
     accessories: Optional[str] = None
     account: Optional[str] = None
     account_password: Optional[str] = None
+    classification: Optional[str] = None
 
 
 class SmartphoneCreate(SmartphoneBase):
@@ -50,6 +51,7 @@ class LaptopBase(BaseModel):
     mac_address: Optional[str] = None
     warranty_expiry: Optional[date] = None
     status: Optional[str] = "available"
+    classification: Optional[str] = None
 
 
 class LaptopCreate(LaptopBase):
@@ -186,6 +188,7 @@ class ScreenBase(BaseModel):
     status: Optional[str] = "available"
     accessories: Optional[str] = None
     notes: Optional[str] = None
+    classification: Optional[str] = None
 
 
 class ScreenCreate(ScreenBase):
@@ -221,6 +224,7 @@ class CameraBase(BaseModel):
     warranty_expiry: Optional[date] = None
     status: Optional[str] = "active"
     notes: Optional[str] = None
+    classification: Optional[str] = None
 
 
 class CameraCreate(CameraBase):
@@ -256,6 +260,7 @@ class OtherDeviceBase(BaseModel):
     status: Optional[str] = "available"
     accessories: Optional[str] = None
     notes: Optional[str] = None
+    classification: Optional[str] = None
 
 
 class OtherDeviceCreate(OtherDeviceBase):

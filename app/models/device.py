@@ -97,6 +97,7 @@ class Smartphone(Base):
     accessories = Column(String)         # Phụ kiện kèm theo (sạc, tai nghe, ốp lưng...)
     account = Column(String)             # Tài khoản iCloud/Google
     account_password = Column(String)    # Mật khẩu tài khoản
+    classification = Column(String)      # Phân loại (Cá nhân, công việc)
 
 
 class Laptop(Base):
@@ -113,6 +114,7 @@ class Laptop(Base):
     warranty_expiry = Column(Date)       # Ngày hết hạn bảo hành
     status = Column(String, default=LaptopStatus.AVAILABLE.value)  # Trạng thái
     accessories = Column(String)         # Phụ kiện kèm theo (sạc, chuột, túi...)
+    classification = Column(String)      # Phân loại (Cá nhân, công việc)
 
 
 class SimCard(Base):
@@ -185,6 +187,7 @@ class Screen(Base):
     status = Column(String, default=ScreenStatus.AVAILABLE.value)  # Trạng thái
     accessories = Column(String)         # Phụ kiện (cáp HDMI, chân đế, adapter...)
     notes = Column(Text)                 # Ghi chú thêm
+    classification = Column(String)      # Phân loại (Cá nhân, công việc)
 
 
 class Camera(Base):
@@ -207,6 +210,7 @@ class Camera(Base):
     warranty_expiry = Column(Date)       # Ngày hết bảo hành
     status = Column(String, default=CameraStatus.ACTIVE.value)  # Trạng thái
     notes = Column(Text)                 # Ghi chú thêm
+    classification = Column(String)      # Phân loại (Cá nhân, công việc)
 
 
 class OtherDevice(Base):
@@ -229,3 +233,4 @@ class OtherDevice(Base):
     status = Column(String, default=OtherDeviceStatus.AVAILABLE.value)  # Trạng thái
     accessories = Column(String)         # Phụ kiện kèm theo
     notes = Column(Text)                 # Ghi chú thêm
+    classification = Column(String)      # Phân loại (Cá nhân, công việc)

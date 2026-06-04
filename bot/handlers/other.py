@@ -37,7 +37,7 @@ async def create_smartphone_handler(client, message: Message) -> None:
         form_template = """<b>FORM TẠO ĐIỆN THOẠI MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_smartphone
+<pre>/other_create_smartphone
 Mã Định Danh: 
 Tên Model: 
 Thương Hiệu: 
@@ -48,14 +48,16 @@ Phiên Bản OS:
 Dung Lượng: 
 Tình Trạng Pin (%): 
 Ngày Mua (dd/mm/yyyy): 
-Trạng Thái: available
+Trạng thái: available
 Phụ Kiện: 
 Ghi Chú: 
 Tài Khoản: 
 Mật Khẩu TK: 
-</p>
+Phân Loại: công việc
+</pre>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 Mã Định Danh: mã nội bộ do bạn tự đặt (VD: SP001, DT-001...)
 IMEI 1 là bắt buộc và không được trùng
 Tài Khoản: iCloud hoặc Google Account</i>"""
@@ -86,6 +88,7 @@ Tài Khoản: iCloud hoặc Google Account</i>"""
     notes = data.get("Ghi Chú", "").strip()
     account = data.get("Tài Khoản", "").strip()
     account_password = data.get("Mật Khẩu TK", "").strip()
+    classification = data.get("Phân Loại", "công việc").strip()
 
     if not model_name:
         await message.reply_text("⚠️ <b>Tên Model</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -163,6 +166,7 @@ Tài Khoản: iCloud hoặc Google Account</i>"""
             notes=notes or None,
             account=account or None,
             account_password=account_password or None,
+            classification=classification or None,
         )
         db.add(new_phone)
         db.commit()
@@ -173,6 +177,7 @@ Tài Khoản: iCloud hoặc Google Account</i>"""
             f"<b>{model_name}</b> ({brand})\n"
             f"Mã: <code>{new_phone.id}</code>\n"
             f"IMEI 1: <code>{imei_1}</code>\n"
+            f"Phân loại: <b>{new_phone.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -234,7 +239,7 @@ async def update_smartphone_handler(client, message: Message) -> None:
             form_template = f"""<b>FORM CẬP NHẬT ĐIỆN THOẠI</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_smartphone {phone.id}
+<pre>/other_update_smartphone {phone.id}
 Tên Model: {phone.model_name or ""}
 Thương Hiệu: {phone.brand or ""}
 IMEI 1: {phone.imei_1 or ""}
@@ -249,9 +254,11 @@ Phụ Kiện: {phone.accessories or ""}
 Ghi Chú: {phone.notes or ""}
 Tài Khoản: {phone.account or ""}
 Mật Khẩu TK: {phone.account_password or ""}
-</p>
+Phân Loại: {phone.classification or "công việc"}
+</pre>
 
-<i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_smartphone", lookup, form_msg.id)
             return
@@ -292,6 +299,7 @@ Mật Khẩu TK: {phone.account_password or ""}
         notes = data.get("Ghi Chú", "").strip()
         account = data.get("Tài Khoản", "").strip()
         account_password = data.get("Mật Khẩu TK", "").strip()
+        classification = data.get("Phân Loại", "").strip()
 
         # Validate status if provided
         if status:
@@ -349,6 +357,7 @@ Mật Khẩu TK: {phone.account_password or ""}
         phone.notes = notes if notes else phone.notes
         if "Tài Khoản" in data: phone.account = account or None
         if "Mật Khẩu TK" in data: phone.account_password = account_password or None
+        if "Phân Loại" in data: phone.classification = classification or None
 
         db.commit()
         db.refresh(phone)
@@ -358,6 +367,7 @@ Mật Khẩu TK: {phone.account_password or ""}
             f"<b>{phone.model_name}</b> ({phone.brand})\n"
             f"Mã: <code>{phone.id}</code>\n"
             f"IMEI 1: <code>{phone.imei_1}</code>\n"
+            f"Phân loại: <b>{phone.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{phone.status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -972,7 +982,7 @@ async def create_sim_handler(client, message: Message) -> None:
         form_template = """<b>FORM TẠO SIM MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_sim
+<pre>/other_create_sim
 Mã Định Danh: 
 Số Điện Thoại: 
 Nhà Mạng: 
@@ -982,7 +992,7 @@ Gói Cước:
 Trạng Thái: active
 Loại SIM: 
 Đang Ở Thiết Bị: 
-</p>
+</pre>
 
 <i>Trạng thái gồm: active, blocked, expired
 Loại SIM: eSIM, SIM vật lý, trả trước, trả sau...
@@ -1136,7 +1146,7 @@ async def update_sim_handler(client, message: Message) -> None:
             form_template = f"""<b>FORM CẬP NHẬT SIM</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_sim {sim.id}
+<pre>/other_update_sim {sim.id}
 Số Điện Thoại: {sim.phone_number or ""}
 Nhà Mạng: {sim.carrier or ""}
 ICCID: {sim.iccid or ""}
@@ -1145,7 +1155,7 @@ Gói Cước: {sim.plan_name or ""}
 Trạng Thái: {sim.status or "active"}
 Loại SIM: {sim.sim_type or ""}
 Đang Ở Thiết Bị: {sim.smartphone_id or ""}
-</p>
+</pre>
 
 <i>Trạng thái gồm: active, blocked, expired</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
@@ -1324,7 +1334,7 @@ async def create_application_handler(client, message: Message) -> None:
         form_template = """<b>FORM TẠO ỨNG DỤNG MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_application
+<pre>/other_create_application
 Mã Định Danh (ID): 
 Tên Ứng Dụng: 
 Tên Gói (Package): 
@@ -1339,7 +1349,7 @@ Trả Phí (1/0): 0
 Ngày Gia Hạn (dd/mm/yyyy): 
 Trạng Thái: active
 Đang Ở Thiết Bị (Mã cách nhau bằng dấu phẩy): 
-</p>
+</pre>
 
 <i>Phân loại gồm: streaming, social, education, design, other
 Chu kỳ gồm: monthly, quarterly, yearly
@@ -1517,7 +1527,7 @@ async def update_application_handler(client, message: Message) -> None:
             form_template = f"""<b>FORM CẬP NHẬT ỨNG DỤNG</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_application {app.id}
+<pre>/other_update_application {app.id}
 Tên Ứng Dụng: {app.app_name or ""}
 Tên Gói (Package): {app.package_name or ""}
 Phân Loại: {app.service_category or "other"}
@@ -1531,7 +1541,7 @@ Trả Phí (1/0): {app.is_premium if app.is_premium is not None else 0}
 Ngày Gia Hạn (dd/mm/yyyy): {fmt_date}
 Trạng Thái: {app.status or "active"}
 Đang Ở Thiết Bị (Mã cách nhau bằng dấu phẩy): {existing_devices_str}
-</p>
+</pre>
 
 <i>Phân loại gồm: streaming, social, education, design, other
 Chu kỳ gồm: monthly, quarterly, yearly
@@ -2262,7 +2272,7 @@ async def create_laptop_handler(client, message: Message) -> None:
         form_template = """<b>FORM TẠO LAPTOP MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_laptop
+<pre>/other_create_laptop
 Mã Thiết Bị (ID): 
 Tên Laptop: 
 CPU: 
@@ -2274,9 +2284,11 @@ MAC Address:
 Hạn Bảo Hành (dd/mm/yyyy): 
 Phụ Kiện: 
 Trạng Thái: available
-</p>
+Phân Loại: công việc
+</pre>
 
-<i>Trạng thái gồm: available, assigned, maintenance</i>"""
+<i>Trạng thái gồm: available, assigned, maintenance
+Phân loại gồm: Cá nhân, công việc</i>"""
         form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         form_tracker.track(message.chat.id, "other_create_laptop", "create", form_msg.id)
         return
@@ -2298,6 +2310,7 @@ Trạng Thái: available
     warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
     accessories = data.get("Phụ Kiện", "").strip()
     status = data.get("Trạng Thái", "available").strip().lower()
+    classification = data.get("Phân Loại", "công việc").strip()
 
     if not device_id or not model_name:
         await message.reply_text("⚠️ <b>Mã Thiết Bị (ID)</b> và <b>Tên Laptop</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -2333,7 +2346,8 @@ Trạng Thái: available
             mac_address=mac_address or None,
             warranty_expiry=warranty_expiry,
             accessories=accessories or None,
-            status=status
+            status=status,
+            classification=classification or None
         )
         db.add(new_laptop)
         db.commit()
@@ -2344,6 +2358,7 @@ Trạng Thái: available
             f"Mã: <code>{new_laptop.id}</code>\n"
             f"Laptop: <b>{model_name}</b>\n"
             f"Cấu hình: {processor_cpu or 'N/A'} - {ram_size or 'N/A'}\n"
+            f"Phân loại: <b>{new_laptop.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -2400,7 +2415,7 @@ async def update_laptop_handler(client, message: Message) -> None:
             form_template = f"""<b>FORM CẬP NHẬT LAPTOP</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_laptop {laptop.id}
+<pre>/other_update_laptop {laptop.id}
 Tên Laptop: {laptop.model_name or ""}
 CPU: {laptop.processor_cpu or ""}
 RAM: {laptop.ram_size or ""}
@@ -2411,9 +2426,11 @@ MAC Address: {laptop.mac_address or ""}
 Hạn Bảo Hành (dd/mm/yyyy): {fmt_date}
 Phụ Kiện: {laptop.accessories or ""}
 Trạng Thái: {laptop.status or "available"}
-</p>
+Phân Loại: {laptop.classification or "công việc"}
+</pre>
 
-<i>Trạng thái gồm: available, assigned, maintenance</i>"""
+<i>Trạng thái gồm: available, assigned, maintenance
+Phân loại gồm: Cá nhân, công việc</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_laptop", lookup, form_msg.id)
             return
@@ -2445,6 +2462,7 @@ Trạng Thái: {laptop.status or "available"}
         warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
         accessories = data.get("Phụ Kiện", "").strip()
         status = data.get("Trạng Thái", "").strip().lower()
+        classification = data.get("Phân Loại", "").strip()
 
         if status and status not in [s.value for s in LaptopStatus]:
             await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
@@ -2466,6 +2484,7 @@ Trạng Thái: {laptop.status or "available"}
         laptop.mac_address = mac_address if mac_address else laptop.mac_address
         laptop.accessories = accessories if accessories else laptop.accessories
         if status: laptop.status = status
+        if "Phân Loại" in data: laptop.classification = classification or None
 
         db.commit()
         db.refresh(laptop)
@@ -2474,6 +2493,7 @@ Trạng Thái: {laptop.status or "available"}
             f"✅ <b>Đã cập nhật Laptop thành công!</b>\n\n"
             f"Mã: <code>{laptop.id}</code>\n"
             f"Laptop: <b>{laptop.model_name}</b>\n"
+            f"Phân loại: <b>{laptop.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{laptop.status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -2595,7 +2615,7 @@ async def create_device_cb_handler(client, callback_query: CallbackQuery):
         "smartphone": """<b>FORM TẠO ĐIỆN THOẠI MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_smartphone
+<pre>/other_create_smartphone
 Mã Định Danh: 
 Tên Model: 
 Thương Hiệu: 
@@ -2611,16 +2631,18 @@ Phụ Kiện:
 Ghi Chú: 
 Tài Khoản: 
 Mật Khẩu TK: 
-</p>
+Phân Loại: công việc
+</pre>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 IMEI 1 là bắt buộc và không được trùng
 Tài Khoản: iCloud hoặc Google Account</i>""",
 
         "tablet": """<b>FORM TẠO MÁY TÍNH BẢNG MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_smartphone
+<pre>/other_create_smartphone
 Mã Định Danh: 
 Tên Model: 
 Thương Hiệu: 
@@ -2636,9 +2658,11 @@ Phụ Kiện:
 Ghi Chú: 
 Tài Khoản: 
 Mật Khẩu TK: 
-</p>
+Phân Loại: công việc
+</pre>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 IMEI 1 là bắt buộc và không được trùng
 Máy tính bảng dùng chung bảng Điện thoại
 Tài Khoản: iCloud hoặc Google Account</i>""",
@@ -2646,7 +2670,7 @@ Tài Khoản: iCloud hoặc Google Account</i>""",
         "laptop": """<b>FORM TẠO LAPTOP MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_laptop
+<pre>/other_create_laptop
 Mã Thiết Bị (ID): 
 Tên Laptop: 
 CPU: 
@@ -2658,14 +2682,16 @@ MAC Address:
 Hạn Bảo Hành (dd/mm/yyyy): 
 Phụ Kiện: 
 Trạng Thái: available
-</p>
+Phân Loại: công việc
+</pre>
 
-<i>Trạng thái gồm: available, assigned, maintenance</i>""",
+<i>Trạng thái gồm: available, assigned, maintenance
+Phân loại gồm: Cá nhân, công việc</i>""",
 
         "screen": """<b>FORM TẠO MÀN HÌNH MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_screen
+<pre>/other_create_screen
 Mã Thiết Bị (ID): 
 Tên Model: 
 Thương Hiệu: 
@@ -2680,16 +2706,18 @@ Hạn Bảo Hành (dd/mm/yyyy):
 Trạng Thái: available
 Phụ Kiện: 
 Ghi Chú: 
-</p>
+Phân Loại: công việc
+</pre>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 Loại tấm nền: IPS, VA, TN, OLED
 Cổng kết nối: HDMI, DP, USB-C, VGA...</i>""",
 
         "camera": """<b>FORM TẠO CAMERA MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_camera
+<pre>/other_create_camera
 Mã Thiết Bị (ID): 
 Tên Model: 
 Thương Hiệu: 
@@ -2707,16 +2735,18 @@ Ngày Mua (dd/mm/yyyy):
 Hạn Bảo Hành (dd/mm/yyyy): 
 Trạng Thái: active
 Ghi Chú: 
-</p>
+Phân Loại: công việc
+</pre>
 
 <i>Trạng thái gồm: active, inactive, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 Loại camera: IP, Analog, WiFi, PTZ
 Lưu trữ: SD Card, NVR, Cloud</i>""",
 
         "other_device": """<b>FORM TẠO THIẾT BỊ KHÁC</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_other_device
+<pre>/other_create_other_device
 Mã Thiết Bị (ID): 
 Tên Thiết Bị: 
 Danh Mục: 
@@ -2734,9 +2764,11 @@ Hạn Bảo Hành (dd/mm/yyyy):
 Trạng Thái: available
 Phụ Kiện: 
 Ghi Chú: 
-</p>
+Phân Loại: công việc
+</pre>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 Danh mục: printer, router, projector, ups, scanner, speaker, other</i>""",
     }
 
@@ -2777,7 +2809,7 @@ async def create_screen_handler(client, message: Message) -> None:
         form_template = """<b>FORM TẠO MÀN HÌNH MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_screen
+<pre>/other_create_screen
 Mã Thiết Bị (ID): 
 Tên Model: 
 Thương Hiệu: 
@@ -2792,9 +2824,11 @@ Hạn Bảo Hành (dd/mm/yyyy):
 Trạng Thái: available
 Phụ Kiện: 
 Ghi Chú: 
-</p>
+Phân Loại: công việc
+</pre>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 Loại tấm nền: IPS, VA, TN, OLED</i>"""
         form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         form_tracker.track(message.chat.id, "other_create_screen", "create", form_msg.id)
@@ -2820,6 +2854,7 @@ Loại tấm nền: IPS, VA, TN, OLED</i>"""
     status = data.get("Trạng Thái", "available").strip().lower()
     accessories = data.get("Phụ Kiện", "").strip()
     notes = data.get("Ghi Chú", "").strip()
+    classification = data.get("Phân Loại", "công việc").strip()
 
     if not device_id or not model_name:
         await message.reply_text("⚠️ <b>Mã Thiết Bị (ID)</b> và <b>Tên Model</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -2867,6 +2902,7 @@ Loại tấm nền: IPS, VA, TN, OLED</i>"""
             status=status,
             accessories=accessories or None,
             notes=notes or None,
+            classification=classification or None,
         )
         db.add(new_screen)
         db.commit()
@@ -2877,6 +2913,7 @@ Loại tấm nền: IPS, VA, TN, OLED</i>"""
             f"Mã: <code>{new_screen.id}</code>\n"
             f"Model: <b>{model_name}</b> ({brand})\n"
             f"Kích thước: {screen_size or 'N/A'} | {resolution or 'N/A'}\n"
+            f"Phân loại: <b>{new_screen.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -2932,7 +2969,7 @@ async def update_screen_handler(client, message: Message) -> None:
             form_template = f"""<b>FORM CẬP NHẬT MÀN HÌNH</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_screen {screen.id}
+<pre>/other_update_screen {screen.id}
 Tên Model: {screen.model_name or ""}
 Thương Hiệu: {screen.brand or ""}
 Kích Thước: {screen.screen_size or ""}
@@ -2946,9 +2983,11 @@ Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
 Trạng Thái: {screen.status or "available"}
 Phụ Kiện: {screen.accessories or ""}
 Ghi Chú: {screen.notes or ""}
-</p>
+Phân Loại: {screen.classification or "công việc"}
+</pre>
 
-<i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_screen", lookup, form_msg.id)
             return
@@ -2982,6 +3021,7 @@ Ghi Chú: {screen.notes or ""}
         status = data.get("Trạng Thái", "").strip().lower()
         accessories = data.get("Phụ Kiện", "").strip()
         notes = data.get("Ghi Chú", "").strip()
+        classification = data.get("Phân Loại", "").strip()
 
         if status and status not in [s.value for s in ScreenStatus]:
             await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
@@ -3012,6 +3052,7 @@ Ghi Chú: {screen.notes or ""}
         screen.accessories = accessories if accessories else screen.accessories
         screen.notes = notes if notes else screen.notes
         if status: screen.status = status
+        if "Phân Loại" in data: screen.classification = classification or None
 
         db.commit()
         db.refresh(screen)
@@ -3020,6 +3061,7 @@ Ghi Chú: {screen.notes or ""}
             f"✅ <b>Đã cập nhật màn hình thành công!</b>\n\n"
             f"Mã: <code>{screen.id}</code>\n"
             f"Model: <b>{screen.model_name}</b>\n"
+            f"Phân loại: <b>{screen.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{screen.status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -3105,7 +3147,7 @@ async def create_camera_handler(client, message: Message) -> None:
         form_template = """<b>FORM TẠO CAMERA MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_camera
+<pre>/other_create_camera
 Mã Thiết Bị (ID): 
 Tên Model: 
 Thương Hiệu: 
@@ -3123,9 +3165,11 @@ Ngày Mua (dd/mm/yyyy):
 Hạn Bảo Hành (dd/mm/yyyy): 
 Trạng Thái: active
 Ghi Chú: 
-</p>
+Phân Loại: công việc
+</pre>
 
 <i>Trạng thái gồm: active, inactive, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 Loại camera: IP, Analog, WiFi, PTZ
 Lưu trữ: SD Card, NVR, Cloud</i>"""
         form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
@@ -3155,6 +3199,7 @@ Lưu trữ: SD Card, NVR, Cloud</i>"""
     warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
     status = data.get("Trạng Thái", "active").strip().lower()
     notes = data.get("Ghi Chú", "").strip()
+    classification = data.get("Phân Loại", "công việc").strip()
 
     if not device_id or not model_name:
         await message.reply_text("⚠️ <b>Mã Thiết Bị (ID)</b> và <b>Tên Model</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -3205,6 +3250,7 @@ Lưu trữ: SD Card, NVR, Cloud</i>"""
             warranty_expiry=warranty_expiry,
             status=status,
             notes=notes or None,
+            classification=classification or None,
         )
         db.add(new_camera)
         db.commit()
@@ -3216,6 +3262,7 @@ Lưu trữ: SD Card, NVR, Cloud</i>"""
             f"Model: <b>{model_name}</b> ({brand})\n"
             f"Loại: {camera_type or 'N/A'} | {resolution or 'N/A'}\n"
             f"Vị trí: {location or 'N/A'}\n"
+            f"Phân loại: <b>{new_camera.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -3271,7 +3318,7 @@ async def update_camera_handler(client, message: Message) -> None:
             form_template = f"""<b>FORM CẬP NHẬT CAMERA</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_camera {cam.id}
+<pre>/other_update_camera {cam.id}
 Tên Model: {cam.model_name or ""}
 Thương Hiệu: {cam.brand or ""}
 Loại Camera: {cam.camera_type or ""}
@@ -3288,9 +3335,11 @@ Ngày Mua (dd/mm/yyyy): {fmt_purchase}
 Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
 Trạng Thái: {cam.status or "active"}
 Ghi Chú: {cam.notes or ""}
-</p>
+Phân Loại: {cam.classification or "công việc"}
+</pre>
 
-<i>Trạng thái gồm: active, inactive, maintenance, broken</i>"""
+<i>Trạng thái gồm: active, inactive, maintenance, broken
+Phân loại gồm: Cá nhân, công việc</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_camera", lookup, form_msg.id)
             return
@@ -3327,6 +3376,7 @@ Ghi Chú: {cam.notes or ""}
         warranty_expiry_str = data.get("Hạn Bảo Hành (dd/mm/yyyy)", "").strip()
         status = data.get("Trạng Thái", "").strip().lower()
         notes = data.get("Ghi Chú", "").strip()
+        classification = data.get("Phân Loại", "").strip()
 
         if status and status not in [s.value for s in CameraStatus]:
             await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
@@ -3360,6 +3410,7 @@ Ghi Chú: {cam.notes or ""}
         cam.serial_number = serial_number if serial_number else cam.serial_number
         cam.notes = notes if notes else cam.notes
         if status: cam.status = status
+        if "Phân Loại" in data: cam.classification = classification or None
 
         db.commit()
         db.refresh(cam)
@@ -3368,6 +3419,7 @@ Ghi Chú: {cam.notes or ""}
             f"✅ <b>Đã cập nhật camera thành công!</b>\n\n"
             f"Mã: <code>{cam.id}</code>\n"
             f"Model: <b>{cam.model_name}</b>\n"
+            f"Phân loại: <b>{cam.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{cam.status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -3453,7 +3505,7 @@ async def create_other_device_handler(client, message: Message) -> None:
         form_template = """<b>FORM TẠO THIẾT BỊ KHÁC</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_other_device
+<pre>/other_create_other_device
 Mã Thiết Bị (ID): 
 Tên Thiết Bị: 
 Danh Mục: 
@@ -3471,9 +3523,11 @@ Hạn Bảo Hành (dd/mm/yyyy):
 Trạng Thái: available
 Phụ Kiện: 
 Ghi Chú: 
-</p>
+Phân Loại: công việc
+</pre>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
         form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         form_tracker.track(message.chat.id, "other_create_other_device", "create", form_msg.id)
@@ -3502,6 +3556,7 @@ Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
     status = data.get("Trạng Thái", "available").strip().lower()
     accessories = data.get("Phụ Kiện", "").strip()
     notes = data.get("Ghi Chú", "").strip()
+    classification = data.get("Phân Loại", "công việc").strip()
 
     if not device_id or not device_name:
         await message.reply_text("⚠️ <b>Mã Thiết Bị (ID)</b> và <b>Tên Thiết Bị</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -3552,6 +3607,7 @@ Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
             status=status,
             accessories=accessories or None,
             notes=notes or None,
+            classification=classification or None,
         )
         db.add(new_device)
         db.commit()
@@ -3562,6 +3618,7 @@ Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
             f"Mã: <code>{new_device.id}</code>\n"
             f"Tên: <b>{device_name}</b>\n"
             f"Danh mục: {device_category or 'N/A'}\n"
+            f"Phân loại: <b>{new_device.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -3617,7 +3674,7 @@ async def update_other_device_handler(client, message: Message) -> None:
             form_template = f"""<b>FORM CẬP NHẬT THIẾT BỊ KHÁC</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_other_device {dev.id}
+<pre>/other_update_other_device {dev.id}
 Tên Thiết Bị: {dev.device_name or ""}
 Danh Mục: {dev.device_category or ""}
 Thương Hiệu: {dev.brand or ""}
@@ -3634,9 +3691,11 @@ Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
 Trạng Thái: {dev.status or "available"}
 Phụ Kiện: {dev.accessories or ""}
 Ghi Chú: {dev.notes or ""}
-</p>
+Phân Loại: {dev.classification or "công việc"}
+</pre>
 
 <i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
 Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_other_device", lookup, form_msg.id)
@@ -3674,6 +3733,7 @@ Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
         status = data.get("Trạng Thái", "").strip().lower()
         accessories = data.get("Phụ Kiện", "").strip()
         notes = data.get("Ghi Chú", "").strip()
+        classification = data.get("Phân Loại", "").strip()
 
         if status and status not in [s.value for s in OtherDeviceStatus]:
             await message.reply_text(f"⚠️ Trạng thái <b>{status}</b> không hợp lệ.", parse_mode=ParseMode.HTML)
@@ -3707,6 +3767,7 @@ Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
         dev.accessories = accessories if accessories else dev.accessories
         dev.notes = notes if notes else dev.notes
         if status: dev.status = status
+        if "Phân Loại" in data: dev.classification = classification or None
 
         db.commit()
         db.refresh(dev)
@@ -3715,6 +3776,7 @@ Danh mục: printer, router, projector, ups, scanner, speaker, other</i>"""
             f"✅ <b>Đã cập nhật thiết bị thành công!</b>\n\n"
             f"Mã: <code>{dev.id}</code>\n"
             f"Tên: <b>{dev.device_name}</b>\n"
+            f"Phân loại: <b>{dev.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{dev.status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -3801,7 +3863,7 @@ async def create_vehicle_handler(client, message: Message) -> None:
         form_template = """<b>FORM TẠO XE MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<p>/other_create_vehicle
+<pre>/other_create_vehicle
 Biển Số: 
 Loại Xe: 
 Thương Hiệu: 
@@ -3809,7 +3871,7 @@ Model:
 Màu Sắc: 
 Chủ Xe: 
 Trạng Thái: inactivity
-</p>
+</pre>
 
 <i>Trạng thái gồm: activited (đang hoạt động), inactivity (không hoạt động), is_removed (đã xóa)
 Biển Số là bắt buộc và không được trùng</i>"""
@@ -3926,8 +3988,12 @@ async def update_vehicle_handler(client, message: Message) -> None:
             lookup = args[1].strip()
             vehicle = get_vehicle_by_license_plate(db, lookup)
             if not vehicle:
-                # Thử tìm bằng ID
-                vehicle = db.query(Vehicle).filter(Vehicle.id == lookup).first()
+                # Thử tìm bằng ID (chỉ tìm nếu là UUID hợp lệ)
+                try:
+                    uuid.UUID(lookup)
+                    vehicle = db.query(Vehicle).filter(Vehicle.id == lookup).first()
+                except ValueError:
+                    pass
             if not vehicle:
                 await message.reply_text(
                     f"⚠️ Không tìm thấy xe với biển số/ID <b>{lookup}</b>.",
@@ -3938,7 +4004,7 @@ async def update_vehicle_handler(client, message: Message) -> None:
             form_template = f"""<b>FORM CẬP NHẬT XE</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_vehicle {vehicle.license_plate}
+<pre>/other_update_vehicle {vehicle.license_plate}
 Biển Số: {vehicle.license_plate or ""}
 Loại Xe: {vehicle.vehicle_type or ""}
 Thương Hiệu: {vehicle.brand or ""}
@@ -3946,7 +4012,7 @@ Model: {vehicle.model or ""}
 Màu Sắc: {vehicle.color or ""}
 Chủ Xe: {vehicle.owner_name or ""}
 Trạng Thái: {vehicle.status or "inactivity"}
-</p>
+</pre>
 
 <i>Trạng thái gồm: activited (đang hoạt động), inactivity (không hoạt động), is_removed (đã xóa)</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
@@ -3961,7 +4027,11 @@ Trạng Thái: {vehicle.status or "inactivity"}
         lookup = args[1].strip()
         vehicle = get_vehicle_by_license_plate(db, lookup)
         if not vehicle:
-            vehicle = db.query(Vehicle).filter(Vehicle.id == lookup).first()
+            try:
+                uuid.UUID(lookup)
+                vehicle = db.query(Vehicle).filter(Vehicle.id == lookup).first()
+            except ValueError:
+                pass
         if not vehicle:
             await message.reply_text(
                 f"⚠️ Không tìm thấy xe với biển số/ID <b>{lookup}</b>.",
@@ -4068,7 +4138,11 @@ async def delete_vehicle_handler(client, message: Message) -> None:
     try:
         vehicle = get_vehicle_by_license_plate(db, lookup)
         if not vehicle:
-            vehicle = db.query(Vehicle).filter(Vehicle.id == lookup).first()
+            try:
+                uuid.UUID(lookup)
+                vehicle = db.query(Vehicle).filter(Vehicle.id == lookup).first()
+            except ValueError:
+                pass
         if not vehicle:
             await message.reply_text(
                 f"⚠️ Không tìm thấy xe với biển số/ID <b>{lookup}</b>.",
@@ -4617,7 +4691,7 @@ Ngày Nhắc Nhở: Ngày hẹn nhắc cụ thể (nếu nhắc đúng ngày c�
 Chu kỳ: ONCE (Một lần), DAILY (Hàng ngày), WEEKLY (Hàng tuần), MONTHLY (Hàng tháng), YEARLY (Hàng năm).
 Nội Dung Nhắc Nhở: Tin nhắn tùy chỉnh gửi lên Telegram khi đến hẹn.</i>"""
         form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
-        form_tracker.track(message.chat.id, "other_create_reminder", doc_id, form_msg.id)
+        form_tracker.track(message.chat.id, "other_create_reminder", doc_id_val, form_msg.id)
         return
 
     if len(args) < 2:
@@ -4712,7 +4786,7 @@ Nội Dung Nhắc Nhở: Tin nhắn tùy chỉnh gửi lên Telegram khi đến 
         LogInfo(f"[CreateReminder] Created reminder for doc {doc.title} (ID: {new_reminder.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
         # Delete the form template message after successful creation
-        form_msg_id = form_tracker.pop(message.chat.id, "other_create_reminder", doc_id)
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_reminder", doc_id_str)
         if form_msg_id:
             try:
                 await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
@@ -4769,7 +4843,7 @@ Ngày Hết Hạn (dd/mm/yyyy): {expiry_str}
 Ghi Chú: {doc.description or ""}
 </pre>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
-            form_tracker.track(message.chat.id, "other_update_document", lookup, form_msg.id)
+            form_tracker.track(message.chat.id, "other_update_document", doc_id_str, form_msg.id)
             return
 
         # Parse form data
@@ -4823,7 +4897,7 @@ Ghi Chú: {doc.description or ""}
         LogInfo(f"[UpdateDocument] Updated document {doc.title} (ID: {doc.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
         # Delete the form template message after successful update
-        form_msg_id = form_tracker.pop(message.chat.id, "other_update_document", lookup)
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_document", doc_id_str)
         if form_msg_id:
             try:
                 await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
@@ -4910,7 +4984,12 @@ async def update_reminder_handler(client, message: Message) -> None:
             return
 
         rem_id_str = args[1].strip()
-        reminder = db.query(DocumentReminder).filter(DocumentReminder.id == rem_id_str).first()
+        reminder = None
+        try:
+            uuid.UUID(rem_id_str)
+            reminder = db.query(DocumentReminder).filter(DocumentReminder.id == rem_id_str).first()
+        except ValueError:
+            pass
         if not reminder:
             await message.reply_text(f"⚠️ Không tìm thấy lịch hẹn với mã UUID: <code>{rem_id_str}</code>", parse_mode=ParseMode.HTML)
             return
@@ -4932,7 +5011,7 @@ Trạng Thái: {reminder.status or "ACTIVE"}
 </pre>
 <i>Trạng thái: ACTIVE, INACTIVE</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
-            form_tracker.track(message.chat.id, "other_update_reminder", lookup, form_msg.id)
+            form_tracker.track(message.chat.id, "other_update_reminder", rem_id_str, form_msg.id)
             return
 
         # Parse form data
@@ -4996,7 +5075,7 @@ Trạng Thái: {reminder.status or "ACTIVE"}
         LogInfo(f"[UpdateReminder] Updated reminder (ID: {reminder.id}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
         # Delete the form template message after successful update
-        form_msg_id = form_tracker.pop(message.chat.id, "other_update_reminder", lookup)
+        form_msg_id = form_tracker.pop(message.chat.id, "other_update_reminder", rem_id_str)
         if form_msg_id:
             try:
                 await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
@@ -5171,7 +5250,12 @@ async def delete_reminder_handler(client, message: Message) -> None:
             return
 
         rem_id_str = args[1].strip()
-        reminder = db.query(DocumentReminder).filter(DocumentReminder.id == rem_id_str).first()
+        reminder = None
+        try:
+            uuid.UUID(rem_id_str)
+            reminder = db.query(DocumentReminder).filter(DocumentReminder.id == rem_id_str).first()
+        except ValueError:
+            pass
         if not reminder:
             await message.reply_text(f"⚠️ Không tìm thấy lịch hẹn với mã UUID: <code>{rem_id_str}</code>", parse_mode=ParseMode.HTML)
             return
@@ -5745,7 +5829,7 @@ async def update_device_unified_handler(client, message: Message) -> None:
             form_template = f"""<b>FORM CẬP NHẬT ĐIỆN THOẠI</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_smartphone {device.id}
+<pre>/other_update_smartphone {device.id}
 Tên Model: {device.model_name or ""}
 Thương Hiệu: {device.brand or ""}
 IMEI 1: {device.imei_1 or ""}
@@ -5760,9 +5844,11 @@ Phụ Kiện: {device.accessories or ""}
 Ghi Chú: {device.notes or ""}
 Tài Khoản: {device.account or ""}
 Mật Khẩu TK: {device.account_password or ""}
-</p>
+Phân Loại: {device.classification or "công việc"}
+</pre>
 
-<i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_smartphone", lookup, form_msg.id)
 
@@ -5771,7 +5857,7 @@ Mật Khẩu TK: {device.account_password or ""}
             form_template = f"""<b>FORM CẬP NHẬT LAPTOP</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_laptop {device.id}
+<pre>/other_update_laptop {device.id}
 Tên Laptop: {device.model_name or ""}
 CPU: {device.processor_cpu or ""}
 RAM: {device.ram_size or ""}
@@ -5782,9 +5868,11 @@ MAC Address: {device.mac_address or ""}
 Hạn Bảo Hành (dd/mm/yyyy): {fmt_date}
 Phụ Kiện: {device.accessories or ""}
 Trạng Thái: {device.status or "available"}
-</p>
+Phân Loại: {device.classification or "công việc"}
+</pre>
 
-<i>Trạng thái gồm: available, assigned, maintenance</i>"""
+<i>Trạng thái gồm: available, assigned, maintenance
+Phân loại gồm: Cá nhân, công việc</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_laptop", lookup, form_msg.id)
 
@@ -5794,7 +5882,7 @@ Trạng Thái: {device.status or "available"}
             form_template = f"""<b>FORM CẬP NHẬT MÀN HÌNH</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_screen {device.id}
+<pre>/other_update_screen {device.id}
 Tên Model: {device.model_name or ""}
 Thương Hiệu: {device.brand or ""}
 Kích Thước: {device.screen_size or ""}
@@ -5808,9 +5896,11 @@ Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
 Trạng Thái: {device.status or "available"}
 Phụ Kiện: {device.accessories or ""}
 Ghi Chú: {device.notes or ""}
-</p>
+Phân Loại: {device.classification or "công việc"}
+</pre>
 
-<i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_screen", lookup, form_msg.id)
 
@@ -5820,7 +5910,7 @@ Ghi Chú: {device.notes or ""}
             form_template = f"""<b>FORM CẬP NHẬT CAMERA</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_camera {device.id}
+<pre>/other_update_camera {device.id}
 Tên Model: {device.model_name or ""}
 Thương Hiệu: {device.brand or ""}
 Loại Camera: {device.camera_type or ""}
@@ -5837,9 +5927,11 @@ Ngày Mua (dd/mm/yyyy): {fmt_purchase}
 Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
 Trạng Thái: {device.status or "active"}
 Ghi Chú: {device.notes or ""}
-</p>
+Phân Loại: {device.classification or "công việc"}
+</pre>
 
-<i>Trạng thái gồm: active, inactive, maintenance, broken</i>"""
+<i>Trạng thái gồm: active, inactive, maintenance, broken
+Phân loại gồm: Cá nhân, công việc</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_camera", lookup, form_msg.id)
 
@@ -5849,7 +5941,7 @@ Ghi Chú: {device.notes or ""}
             form_template = f"""<b>FORM CẬP NHẬT THIẾT BỊ KHÁC</b>
 Vui lòng sao chép form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
 
-<p>/other_update_other_device {device.id}
+<pre>/other_update_other_device {device.id}
 Tên Thiết Bị: {device.device_name or ""}
 Danh Mục: {device.device_category or ""}
 Thương Hiệu: {device.brand or ""}
@@ -5866,9 +5958,11 @@ Hạn Bảo Hành (dd/mm/yyyy): {fmt_warranty}
 Trạng Thái: {device.status or "available"}
 Phụ Kiện: {device.accessories or ""}
 Ghi Chú: {device.notes or ""}
-</p>
+Phân Loại: {device.classification or "công việc"}
+</pre>
 
-<i>Trạng thái gồm: available, assigned, maintenance, broken</i>"""
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "other_update_other_device", lookup, form_msg.id)
 
