@@ -33,6 +33,9 @@ def build_payroll_html(
     salary_earned = data.get("salary_earned")
     overtime_salary = data.get("overtime_salary_earned")
     bonus = data.get("bonus", 0)
+    lunch_allowance = data.get("lunch_allowance", 0)
+    productivity_bonus = data.get("productivity_bonus", 0)
+    other_allowance = data.get("other_allowance", 0)
     penalty = data.get("penalty", 0)
     bhxh = data.get("bhxh", 0)
     total_net = data.get("total_net_salary")
@@ -311,6 +314,18 @@ def build_payroll_html(
       <div class="salary-row">
         <span class="salary-label">Thưởng</span>
         <span class="salary-value salary-add">+{fmt_money(bonus)} đ</span>
+      </div>
+      <div class="salary-row">
+        <span class="salary-label">Tiền ăn trưa</span>
+        <span class="salary-value salary-add">+{fmt_money(lunch_allowance)} đ</span>
+      </div>
+      <div class="salary-row">
+        <span class="salary-label">Năng suất</span>
+        <span class="salary-value salary-add">+{fmt_money(productivity_bonus)} đ</span>
+      </div>
+      <div class="salary-row">
+        <span class="salary-label">Phụ cấp khác (Nhà ở + Xăng dầu)</span>
+        <span class="salary-value salary-add">+{fmt_money(other_allowance)} đ</span>
       </div>
       <div class="salary-row">
         <span class="salary-label">BHXH</span>

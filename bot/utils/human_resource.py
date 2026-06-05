@@ -53,6 +53,9 @@ Lương ngày (VNĐ):
 Lương giờ (VNĐ): 
 Lương làm thêm giờ (VNĐ): 
 Tiền thưởng (VNĐ): 
+Tiền ăn trưa (VNĐ): 
+Năng suất (VNĐ): 
+Phụ cấp khác (VNĐ): 
 Phúc lợi: 
 Số ngày phép năm: 
 Bảo hiểm: 
@@ -83,6 +86,9 @@ _KNOWN_FIELD_LABELS = [
     "Lương giờ (VNĐ)",
     "Lương làm thêm giờ (VNĐ)",
     "Tiền thưởng (VNĐ)",
+    "Tiền ăn trưa (VNĐ)",
+    "Năng suất (VNĐ)",
+    "Phụ cấp khác (VNĐ)",
     "Bảo hiểm xã hội (VNĐ)",
     "Auto chấm công (có/không)",
     "Loại công (1-4)",
@@ -190,6 +196,9 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
     try:
         base_salary = await _parse_float_or_reply(message, "Lương cơ bản", data.get("Lương cơ bản (VNĐ)", data.get("Lương cơ bản", "")).strip())
         bonus = await _parse_float_or_reply(message, "Tiền thưởng", data.get("Tiền thưởng (VNĐ)", data.get("Tiền thưởng", "")).strip())
+        lunch_allowance = await _parse_float_or_reply(message, "Tiền ăn trưa", data.get("Tiền ăn trưa (VNĐ)", data.get("Tiền ăn trưa", "")).strip())
+        productivity_bonus = await _parse_float_or_reply(message, "Năng suất", data.get("Năng suất (VNĐ)", data.get("Năng suất", "")).strip())
+        other_allowance = await _parse_float_or_reply(message, "Phụ cấp khác", data.get("Phụ cấp khác (VNĐ)", data.get("Phụ cấp khác", "")).strip())
         monthly_salary = await _parse_float_or_reply(message, "Lương tháng", data.get("Lương tháng (VNĐ)", data.get("Lương tháng", "")).strip())
         weekly_salary = await _parse_float_or_reply(message, "Lương tuần", data.get("Lương tuần (VNĐ)", data.get("Lương tuần", "")).strip())
         daily_salary = await _parse_float_or_reply(message, "Lương ngày", data.get("Lương ngày (VNĐ)", data.get("Lương ngày", "")).strip())
@@ -282,6 +291,9 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
             career_goal=data.get("Mục tiêu nghề nghiệp", "").strip() or None,
             benefits=data.get("Phúc lợi", "").strip() or None,
             bonus=bonus,
+            lunch_allowance=lunch_allowance,
+            productivity_bonus=productivity_bonus,
+            other_allowance=other_allowance,
             monthly_salary=monthly_salary,
             weekly_salary=weekly_salary,
             daily_salary=daily_salary,
@@ -399,6 +411,9 @@ def _build_prefilled_update_form(emp: "Employee", command_name: str) -> str:
     hourly_salary_str = _fmt_salary(emp.hourly_salary)
     overtime_salary_str = _fmt_salary(emp.overtime_salary)
     bonus_str = _fmt_salary(emp.bonus)
+    lunch_allowance_str = _fmt_salary(emp.lunch_allowance)
+    productivity_bonus_str = _fmt_salary(emp.productivity_bonus)
+    other_allowance_str = _fmt_salary(emp.other_allowance)
     rate_bhxh_str = _fmt_salary(emp.rate_bhxh)
     working_hours_str = ""
     if emp.working_hours is not None:
@@ -447,6 +462,9 @@ Lương ngày (VNĐ): {daily_salary_str}
 Lương giờ (VNĐ): {hourly_salary_str}
 Lương làm thêm giờ (VNĐ): {overtime_salary_str}
 Tiền thưởng (VNĐ): {bonus_str}
+Tiền ăn trưa (VNĐ): {lunch_allowance_str}
+Năng suất (VNĐ): {productivity_bonus_str}
+Phụ cấp khác (VNĐ): {other_allowance_str}
 Phúc lợi: {emp.benefits or ''}
 Số ngày phép năm: {emp.leave_balance if emp.leave_balance is not None else ''}
 Bảo hiểm: {emp.insurance or ''}
@@ -604,6 +622,24 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
             if bonus_str:
                 employee.bonus = await _parse_float_or_reply(message, "Tiền thưởng", bonus_str)
                 updated_fields.append("Tiền thưởng")
+
+            # Xử lý riêng: Tiền ăn trưa
+            lunch_str = data.get("Tiền ăn trưa (VNĐ)", data.get("Tiền ăn trưa", "")).strip()
+            if lunch_str:
+                employee.lunch_allowance = await _parse_float_or_reply(message, "Tiền ăn trưa", lunch_str)
+                updated_fields.append("Tiền ăn trưa")
+
+            # Xử lý riêng: Năng suất
+            productivity_str = data.get("Năng suất (VNĐ)", data.get("Năng suất", "")).strip()
+            if productivity_str:
+                employee.productivity_bonus = await _parse_float_or_reply(message, "Năng suất", productivity_str)
+                updated_fields.append("Năng suất")
+
+            # Xử lý riêng: Phụ cấp khác
+            other_str = data.get("Phụ cấp khác (VNĐ)", data.get("Phụ cấp khác", "")).strip()
+            if other_str:
+                employee.other_allowance = await _parse_float_or_reply(message, "Phụ cấp khác", other_str)
+                updated_fields.append("Phụ cấp khác")
 
             # Xử lý riêng: Bảo hiểm xã hội
             bhxh_str = data.get("Bảo hiểm xã hội (VNĐ)", data.get("Bảo hiểm xã hội", "")).strip()
@@ -3890,11 +3926,14 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
         overtime_salary_earned = round(total_overtime * overtime_rate, 2)
         
         bonus = employee.bonus or 0.0
+        lunch = employee.lunch_allowance or 0.0
+        productivity = employee.productivity_bonus or 0.0
+        other = employee.other_allowance or 0.0
         bhxh = employee.rate_bhxh or 0.0
         # penalty could be calculated here or passed directly
         penalty = 0.0
         
-        total_net_salary = round(salary_earned + overtime_salary_earned + bonus - bhxh - penalty, 2)
+        total_net_salary = round(salary_earned + overtime_salary_earned + bonus + lunch + productivity + other - bhxh - penalty, 2)
         
         payroll_record = db.query(Payroll).filter(
             Payroll.employee_id == emp_code,
@@ -3915,7 +3954,7 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
         payroll_record.overtime_salary_amount = overtime_salary_earned
         payroll_record.late_penalty = penalty
         payroll_record.total_salary = total_net_salary
-        payroll_record.note = f"Thưởng: {bonus} | BHXH: {bhxh} | Chốt: {datetime.datetime.now().strftime('%d/%m/%Y')}"
+        payroll_record.note = f"Thưởng: {bonus} | Ăn trưa: {lunch} | Năng suất: {productivity} | Phụ cấp khác: {other} | BHXH: {bhxh} | Chốt: {datetime.datetime.now().strftime('%d/%m/%Y')}"
         
         # Cập nhật cộng dồn công nợ lương cho nhân viên
         diff = total_net_salary - old_salary
@@ -3938,6 +3977,9 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
             "salary_earned": salary_earned,
             "overtime_salary_earned": overtime_salary_earned,
             "bonus": bonus,
+            "lunch_allowance": lunch,
+            "productivity_bonus": productivity,
+            "other_allowance": other,
             "penalty": penalty,
             "bhxh": bhxh,
             "total_net_salary": total_net_salary,
@@ -4076,7 +4118,9 @@ async def handle_list_payroll_excel(client, message, command_name: str) -> None:
         headers = [
             "STT", "Mã NV", "Họ tên", "Phòng ban", 
             "Ngày phép", "Nghỉ không phép", 
-            "Lương cơ bản", "Lương tăng ca", "Tiền phạt", "Lương thực nhận", "Ghi chú"
+            "Lương cơ bản", "Lương tăng ca", "Tiền phạt",
+            "Tiền ăn trưa", "Năng suất", "Phụ cấp khác",
+            "Lương thực nhận", "Ghi chú"
         ]
 
         # Formatting
@@ -4122,33 +4166,45 @@ async def handle_list_payroll_excel(client, message, command_name: str) -> None:
             penalty_cell.border = border
             penalty_cell.number_format = '#,##0'
             
+            lunch_cell = ws.cell(row=row_idx, column=10, value=format_currency(employee.lunch_allowance))
+            lunch_cell.border = border
+            lunch_cell.number_format = '#,##0'
+            
+            prod_cell = ws.cell(row=row_idx, column=11, value=format_currency(employee.productivity_bonus))
+            prod_cell.border = border
+            prod_cell.number_format = '#,##0'
+            
+            other_cell = ws.cell(row=row_idx, column=12, value=format_currency(employee.other_allowance))
+            other_cell.border = border
+            other_cell.number_format = '#,##0'
+            
             net = format_currency(payroll.total_salary)
             total_salary_all += net
             
-            total_cell = ws.cell(row=row_idx, column=10, value=net)
+            total_cell = ws.cell(row=row_idx, column=13, value=net)
             total_cell.border = border
             total_cell.number_format = '#,##0'
             
-            ws.cell(row=row_idx, column=11, value=payroll.note or "").border = border
+            ws.cell(row=row_idx, column=14, value=payroll.note or "").border = border
             
             row_idx += 1
 
         # Dòng tổng cộng
-        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=9)
+        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=12)
         total_label = ws.cell(row=row_idx, column=1, value="TỔNG CỘNG:")
         total_label.font = Font(bold=True)
         total_label.alignment = Alignment(horizontal="right", vertical="center")
-        for col_idx in range(1, 10):
+        for col_idx in range(1, 13):
             ws.cell(row=row_idx, column=col_idx).border = border
         
-        total_sum_cell = ws.cell(row=row_idx, column=10, value=total_salary_all)
+        total_sum_cell = ws.cell(row=row_idx, column=13, value=total_salary_all)
         total_sum_cell.font = Font(bold=True)
         total_sum_cell.border = border
         total_sum_cell.number_format = '#,##0'
-        ws.cell(row=row_idx, column=11, value="").border = border
+        ws.cell(row=row_idx, column=14, value="").border = border
 
         # Column widths
-        widths = [5, 12, 25, 20, 15, 15, 18, 18, 18, 20, 35]
+        widths = [5, 12, 25, 20, 15, 15, 18, 18, 18, 18, 18, 18, 20, 35]
         for col_num, width in enumerate(widths, 1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(col_num)].width = width
 

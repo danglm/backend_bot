@@ -50,6 +50,9 @@ class Employee(Base):
     hourly_salary = Column(Float)
     overtime_salary = Column(Float)
     rate_bhxh = Column(Float)
+    lunch_allowance = Column(Float)     ## Tiền ăn trưa
+    productivity_bonus = Column(Float)  ## Năng suất
+    other_allowance = Column(Float)     ## Phụ cấp khác (Nhà ở + Xăng dầu)
     leave_balance = Column(Integer)
     auto_attendance = Column(Boolean, default=True)  ## Auto chấm công
     work_type = Column(Integer, default=3)  ## Loại công: 1=T2-T6, 2=T2-T7(sáng), 3=T2-T7, 4=T2-CN
