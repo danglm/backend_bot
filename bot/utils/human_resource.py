@@ -56,7 +56,7 @@ Tiền thưởng (VNĐ):
 Phúc lợi: 
 Số ngày phép năm: 
 Bảo hiểm: 
-Tỷ lệ BHXH (%): 
+Bảo hiểm xã hội (VNĐ): 
 Mục tiêu nghề nghiệp: 
 Đánh giá hiệu suất: 
 Ngân hàng: 
@@ -83,7 +83,7 @@ _KNOWN_FIELD_LABELS = [
     "Lương giờ (VNĐ)",
     "Lương làm thêm giờ (VNĐ)",
     "Tiền thưởng (VNĐ)",
-    "Tỷ lệ BHXH (%)",
+    "Bảo hiểm xã hội (VNĐ)",
     "Auto chấm công (có/không)",
     "Loại công (1-4)",
     "Giờ vào ca T7 (hh:mm)",
@@ -195,7 +195,7 @@ async def handle_create_employee(client, message: Message, command_name: str) ->
         daily_salary = await _parse_float_or_reply(message, "Lương ngày", data.get("Lương ngày (VNĐ)", data.get("Lương ngày", "")).strip())
         hourly_salary = await _parse_float_or_reply(message, "Lương giờ", data.get("Lương giờ (VNĐ)", data.get("Lương giờ", "")).strip())
         overtime_salary = await _parse_float_or_reply(message, "Lương làm thêm giờ", data.get("Lương làm thêm giờ (VNĐ)", data.get("Lương làm thêm giờ", "")).strip())
-        rate_bhxh = await _parse_float_or_reply(message, "Tỷ lệ BHXH", data.get("Tỷ lệ BHXH (%)", data.get("Tỷ lệ BHXH", "")).strip())
+        rate_bhxh = await _parse_float_or_reply(message, "Bảo hiểm xã hội", data.get("Bảo hiểm xã hội (VNĐ)", data.get("Bảo hiểm xã hội", "")).strip())
         working_hours = await _parse_float_or_reply(message, "Số giờ làm việc", data.get("Số giờ làm việc (giờ/ngày)", data.get("Số giờ làm việc", "")).strip())
         leave_balance = await _parse_int_or_reply(message, "Số ngày phép năm", data.get("Số ngày phép năm", "").strip())
         work_type = await _parse_int_or_reply(message, "Loại công", data.get("Loại công (1-4)", data.get("Loại công", "")).strip())
@@ -399,9 +399,7 @@ def _build_prefilled_update_form(emp: "Employee", command_name: str) -> str:
     hourly_salary_str = _fmt_salary(emp.hourly_salary)
     overtime_salary_str = _fmt_salary(emp.overtime_salary)
     bonus_str = _fmt_salary(emp.bonus)
-    rate_bhxh_str = ""
-    if emp.rate_bhxh is not None:
-        rate_bhxh_str = str(int(emp.rate_bhxh) if emp.rate_bhxh == int(emp.rate_bhxh) else emp.rate_bhxh)
+    rate_bhxh_str = _fmt_salary(emp.rate_bhxh)
     working_hours_str = ""
     if emp.working_hours is not None:
         working_hours_str = str(int(emp.working_hours) if emp.working_hours == int(emp.working_hours) else emp.working_hours)
@@ -452,7 +450,7 @@ Tiền thưởng (VNĐ): {bonus_str}
 Phúc lợi: {emp.benefits or ''}
 Số ngày phép năm: {emp.leave_balance if emp.leave_balance is not None else ''}
 Bảo hiểm: {emp.insurance or ''}
-Tỷ lệ BHXH (%): {rate_bhxh_str}
+Bảo hiểm xã hội (VNĐ): {rate_bhxh_str}
 Mục tiêu nghề nghiệp: {emp.career_goal or ''}
 Đánh giá hiệu suất: {emp.performance_evaluation or ''}
 Ngân hàng: {emp.bank_name or ''}
@@ -607,11 +605,11 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
                 employee.bonus = await _parse_float_or_reply(message, "Tiền thưởng", bonus_str)
                 updated_fields.append("Tiền thưởng")
 
-            # Xử lý riêng: Tỷ lệ BHXH
-            bhxh_str = data.get("Tỷ lệ BHXH (%)", data.get("Tỷ lệ BHXH", "")).strip()
+            # Xử lý riêng: Bảo hiểm xã hội
+            bhxh_str = data.get("Bảo hiểm xã hội (VNĐ)", data.get("Bảo hiểm xã hội", "")).strip()
             if bhxh_str:
-                employee.rate_bhxh = await _parse_float_or_reply(message, "Tỷ lệ BHXH", bhxh_str)
-                updated_fields.append("Tỷ lệ BHXH")
+                employee.rate_bhxh = await _parse_float_or_reply(message, "Bảo hiểm xã hội", bhxh_str)
+                updated_fields.append("Bảo hiểm xã hội")
 
             # Xử lý riêng: Số giờ làm việc
             working_hours_str = data.get("Số giờ làm việc (giờ/ngày)", data.get("Số giờ làm việc", "")).strip()
@@ -1133,19 +1131,11 @@ async def _execute_check_out_for_employee(client, message: Message, employee: Em
     checkout_dt = now_vn.replace(tzinfo=None)
     attendance.check_out_time = checkout_dt
 
-    # Tính overtime nếu check-out sau end_time
-    overtime_minutes = 0
-    if current_time > end_time_obj:
-        now_dt = datetime.datetime.combine(today, current_time)
-        end_dt_full = datetime.datetime.combine(today, end_time_obj)
-        overtime_minutes = round((now_dt - end_dt_full).total_seconds() / 60)
-        attendance.overtime = round(overtime_minutes / 60, 2)
-
-    # Tính working_time (giờ làm việc)
+    # Tính working_time (giờ làm việc) = toàn bộ thời gian từ check-in đến check-out
+    # Lưu ý: KHÔNG tự động tính tăng ca (overtime) khi checkout muộn.
+    # Tăng ca chỉ được ghi nhận khi nhân viên đăng ký qua lệnh đăng ký tăng ca.
     if attendance.check_in_time:
         diff = (checkout_dt - attendance.check_in_time).total_seconds() / 3600
-        if overtime_minutes > 0:
-            diff -= (overtime_minutes / 60)
         attendance.working_time = round(diff, 2)
 
     db.commit()
@@ -1972,6 +1962,7 @@ async def handle_overtime_request_callback(client, callback_query) -> None:
                                 if existing_att:
                                     existing_att.start_overtime = start_dt
                                     existing_att.end_overtime = end_dt
+                                    existing_att.overtime = round((end_dt - start_dt).total_seconds() / 3600, 2)
                                     db.add(existing_att)
                                 else:
                                     new_att = Attendance(
@@ -1981,7 +1972,8 @@ async def handle_overtime_request_callback(client, callback_query) -> None:
                                         day=d,
                                         date_str=ds_vn,
                                         start_overtime=start_dt,
-                                        end_overtime=end_dt
+                                        end_overtime=end_dt,
+                                        overtime=round((end_dt - start_dt).total_seconds() / 3600, 2)
                                     )
                                     db.add(new_att)
                                 
@@ -4186,9 +4178,235 @@ async def handle_list_payroll_excel(client, message, command_name: str) -> None:
     finally:
         db.close()
 
+
 # ══════════════════════════════════════════════════════════════
-# RECREATE ATTENDANCE REPORT (IMAGE)
+# PUBLIC HOLIDAY (Nghỉ ngày lễ)
 # ══════════════════════════════════════════════════════════════
+
+async def handle_public_holiday(client, message: Message, command_name: str) -> None:
+    """
+    Chấm công nghỉ ngày lễ cho tất cả nhân viên trong dự án.
+    Cú pháp: /tien_nga_nghi_ngay_le dd/mm/yyyy [Ghi chú]
+
+    Flow:
+    1. Parse ngày từ tham số (dd/mm/yyyy)
+    2. Tìm project_id từ chat_id hiện tại (qua TelegramProjectMember)
+    3. Tìm tất cả nhóm member thuộc project → lấy chat_id / group_name
+    4. Tìm tất cả Employee active có telegram_group trùng với nhóm member
+    5. Với mỗi nhân viên:
+       - Nếu đã có Attendance record ngày đó → skip
+       - Nếu chưa có → tạo record với working_time = giờ chuẩn, error = ghi chú
+    6. Trả kết quả chi tiết
+    """
+    from app.models.finance import Attendance
+    from app.models.telegram import TelegramProjectMember
+
+    # Parse arguments — xử lý cả 2 dạng: "/cmd args" và "@bot /cmd args"
+    text = message.text or ""
+    raw_parts = text.strip().split()
+    # Bỏ @mention nếu có
+    if raw_parts and raw_parts[0].startswith("@"):
+        raw_parts = raw_parts[1:]
+    # Bỏ tên lệnh (/tien_nga_nghi_ngay_le)
+    if raw_parts and raw_parts[0].startswith("/"):
+        raw_parts = raw_parts[1:]
+    # raw_parts giờ chỉ còn: ["dd/mm/yyyy", "Ghi", "chú", ...]
+
+    if not raw_parts:
+        await message.reply_text(
+            f"⚠️ <b>Cú pháp:</b> <code>{command_name} dd/mm/yyyy [Ghi chú]</code>\n\n"
+            f"<b>Ví dụ:</b>\n"
+            f"<code>{command_name} 01/05/2026</code>\n"
+            f"<code>{command_name} 01/05/2026 Quốc tế Lao động</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    date_str = raw_parts[0].strip()
+    custom_note = " ".join(raw_parts[1:]).strip() if len(raw_parts) > 1 else ""
+
+
+    # Parse date
+    try:
+        target_date = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
+    except ValueError:
+        await message.reply_text(
+            f"⚠️ Ngày <b>{date_str}</b> không hợp lệ. Định dạng đúng: <code>dd/mm/yyyy</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    holiday_note = f"Nghỉ ngày lễ - {custom_note}" if custom_note else "Nghỉ ngày lễ"
+
+    # Tìm project_id từ chat hiện tại
+    db = SessionLocal()
+    try:
+        current_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(message.chat.id)
+        ).first()
+
+        if not current_member or not current_member.project_id:
+            await message.reply_text(
+                "⚠️ Không xác định được dự án từ nhóm hiện tại. Vui lòng chạy <code>/syncchat</code> trước.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        project_id = current_member.project_id
+
+        # Tìm tất cả nhóm member thuộc project
+        member_groups = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.project_id == project_id,
+            TelegramProjectMember.role == "member",
+            TelegramProjectMember.is_bot == False,
+        ).all()
+
+        # Tập hợp chat_id và group_name của nhóm member
+        member_chat_ids = set()
+        member_group_names = set()
+        for mg in member_groups:
+            if mg.chat_id:
+                member_chat_ids.add(mg.chat_id.strip())
+            if mg.group_name:
+                member_group_names.add(mg.group_name.strip())
+
+        if not member_chat_ids and not member_group_names:
+            await message.reply_text(
+                "⚠️ Không tìm thấy nhóm member nào thuộc dự án này.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        # Tìm tất cả Employee active có telegram_group trùng với nhóm member
+        employees = db.query(Employee).filter(
+            Employee.status != "inactive",
+            Employee.telegram_group != None,
+            Employee.telegram_group != "",
+        ).all()
+
+        # Lọc nhân viên thuộc project
+        project_employees = []
+        for emp in employees:
+            tg = (emp.telegram_group or "").strip()
+            if tg in member_chat_ids or tg in member_group_names:
+                project_employees.append(emp)
+
+        if not project_employees:
+            await message.reply_text(
+                "⚠️ Không tìm thấy nhân viên nào thuộc dự án này.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        # Ngày trong tuần
+        day_names_vn = {
+            0: "Thứ 2", 1: "Thứ 3", 2: "Thứ 4",
+            3: "Thứ 5", 4: "Thứ 6", 5: "Thứ 7", 6: "Chủ Nhật"
+        }
+        day_name = day_names_vn.get(target_date.weekday(), "")
+        y, m, d = target_date.year, target_date.month, target_date.day
+
+        created_count = 0
+        skipped = []
+
+        for emp in project_employees:
+            full_name = f"{emp.last_name or ''} {emp.first_name or ''}".strip()
+
+            # Kiểm tra đã có record chưa
+            existing = db.query(Attendance).filter(
+                Attendance.employee_id == emp.id,
+                Attendance.year == y,
+                Attendance.month == m,
+                Attendance.day == d,
+            ).first()
+
+            if existing:
+                # Xác định lý do skip
+                if existing.check_in_time:
+                    reason = "đã có check-in"
+                elif existing.error and "nghỉ phép" in existing.error.lower():
+                    reason = "đã có nghỉ phép"
+                elif existing.error and "nghỉ ngày lễ" in existing.error.lower():
+                    reason = "đã chấm công nghỉ lễ"
+                else:
+                    reason = "đã có dữ liệu"
+                skipped.append(f"• {full_name} ({emp.id}) - {reason}")
+                continue
+
+            # Tính working_time từ start_time và end_time
+            weekday = target_date.weekday()
+            if weekday == 5 and emp.sat_start_time and emp.sat_end_time:
+                start_t = emp.sat_start_time.time() if isinstance(emp.sat_start_time, datetime.datetime) else emp.sat_start_time
+                end_t = emp.sat_end_time.time() if isinstance(emp.sat_end_time, datetime.datetime) else emp.sat_end_time
+            else:
+                start_t = emp.start_time.time() if isinstance(emp.start_time, datetime.datetime) else emp.start_time if emp.start_time else None
+                end_t = emp.end_time.time() if isinstance(emp.end_time, datetime.datetime) else emp.end_time if emp.end_time else None
+
+            working_time = 0.0
+            checkin_dt = None
+            checkout_dt = None
+            if start_t and end_t:
+                start_dt = datetime.datetime.combine(target_date, start_t)
+                end_dt = datetime.datetime.combine(target_date, end_t)
+                working_time = round((end_dt - start_dt).total_seconds() / 3600, 2)
+                checkin_dt = start_dt
+                checkout_dt = end_dt
+
+            new_att = Attendance(
+                employee_id=emp.id,
+                year=y,
+                month=m,
+                day=d,
+                date_str=day_name,
+                check_in_time=checkin_dt,
+                check_out_time=checkout_dt,
+                working_time=working_time,
+                late_time=0.0,
+                error=holiday_note,
+            )
+            db.add(new_att)
+            created_count += 1
+
+        db.commit()
+
+        # Build response
+        result = (
+            f"<b>CHẤM CÔNG NGHỈ LỄ THÀNH CÔNG</b>\n\n"
+            f"<b>Ngày:</b> {date_str} ({day_name})\n"
+            f"<b>Ghi chú:</b> {holiday_note}\n"
+            f"<b>Tổng nhân viên:</b> {len(project_employees)}\n"
+            f"<b>Đã chấm công:</b> {created_count}\n"
+        )
+
+        if skipped:
+            result += f"<b>Bỏ qua (đã có dữ liệu):</b> {len(skipped)}\n\n"
+            result += "<b>Chi tiết bỏ qua:</b>\n"
+            # Giới hạn hiển thị 20 dòng để tránh tin nhắn quá dài
+            for line in skipped[:20]:
+                result += f"{line}\n"
+            if len(skipped) > 20:
+                result += f"<i>... và {len(skipped) - 20} nhân viên khác</i>\n"
+
+        await message.reply_text(result, parse_mode=ParseMode.HTML)
+
+        admin_username = message.from_user.username or message.from_user.id
+        LogInfo(
+            f"[PublicHoliday] @{admin_username} created holiday '{holiday_note}' on {date_str} "
+            f"for {created_count}/{len(project_employees)} employees (project {project_id})",
+            LogType.SYSTEM_STATUS,
+        )
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in handle_public_holiday: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(
+            "❌ Có lỗi xảy ra khi chấm công nghỉ lễ. Vui lòng thử lại.",
+            parse_mode=ParseMode.HTML,
+        )
+    finally:
+        db.close()
+
+
 
 async def handle_recreate_attendance_report(client, message, command_name: str) -> None:
     """

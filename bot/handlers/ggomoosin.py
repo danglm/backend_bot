@@ -341,3 +341,16 @@ async def ggomoosin_list_attendance_handler(client, message: Message) -> None:
     cmd = args[0] if args else "ggomoosin_list_attendance"
     message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
     await handle_list_attendance_excel(client, message, cmd)
+
+
+# --- Nghỉ ngày lễ ---
+@bot.on_message(filters.command(["ggomoosin_nghi_ngay_le"]) | filters.regex(r"^@\w+\s+/ggomoosin_nghi_ngay_le\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("GGoMooSin")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+async def ggomoosin_nghi_ngay_le_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["ggomoosin_nghi_ngay_le"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_public_holiday
+    await handle_public_holiday(client, message, "/ggomoosin_nghi_ngay_le")

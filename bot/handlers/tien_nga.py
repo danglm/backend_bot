@@ -428,7 +428,21 @@ async def tien_nga_list_attendance_handler(client, message: Message) -> None:
     await handle_list_attendance_excel(client, message, cmd)
 
 
-#############  Supplier #############
+# --- Nghỉ ngày lễ ---
+@bot.on_message(filters.command(["tien_nga_nghi_ngay_le"]) | filters.regex(r"^@\w+\s+/tien_nga_nghi_ngay_le\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+async def tien_nga_nghi_ngay_le_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_nghi_ngay_le"])
+    if args is None: return
+
+    from bot.utils.human_resource import handle_public_holiday
+    await handle_public_holiday(client, message, "/tien_nga_nghi_ngay_le")
+
+
+
 @bot.on_message(filters.command(["tien_nga_create_collection_point", "tien_nga_tao_diem_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_collection_point|tien_nga_tao_diem_thu_mua)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")

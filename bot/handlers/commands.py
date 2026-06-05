@@ -455,6 +455,7 @@ async def approval_reply_handler(client, message: Message) -> None:
                                 if existing_att:
                                     existing_att.start_overtime = start_dt
                                     existing_att.end_overtime = end_dt
+                                    existing_att.overtime = round((end_dt - start_dt).total_seconds() / 3600, 2)
                                     db.add(existing_att)
                                 else:
                                     new_att = Attendance(
@@ -464,7 +465,8 @@ async def approval_reply_handler(client, message: Message) -> None:
                                         day=d,
                                         date_str=ds_vn,
                                         start_overtime=start_dt,
-                                        end_overtime=end_dt
+                                        end_overtime=end_dt,
+                                        overtime=round((end_dt - start_dt).total_seconds() / 3600, 2)
                                     )
                                     db.add(new_att)
                                 
@@ -738,6 +740,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
                     BotCommand("tien_nga_danh_sach_nhan_vien", "Xuất DS nhân viên Excel"),
                     BotCommand("tien_nga_danh_sach_cham_cong", "Xuất DS chấm công"),
+                    BotCommand("tien_nga_nghi_ngay_le", "Chấm công nghỉ ngày lễ"),
                 ])
             if custom_title in ("super_main", "main_supplier"):
                 if custom_title != "super_main": label = "Tiến Nga (Nhà Cung Cấp)"
@@ -984,11 +987,12 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("ggomoosin_xoa_nhan_vien", "Xóa nhân viên"),
                     # BotCommand("ggomoosin_giao_viec", "Giao việc"),
                     BotCommand("ggomoosin_xuat_luong", "Xuất bảng lương"),
-                    BotCommand("ggomoosin_tao_lai_cham_cong", "Tạo lại báo cáo chấm công"),
+                    BotCommand("ggomoosin_tao_lai_bang_cham_cong", "Tạo lại bảng chấm công"),
                     # BotCommand("ggomoosin_danh_sach_cong_viec", "Xem công việc của nhân viên"),
                     BotCommand("ggomoosin_xuat_danh_sach_luong", "Xuất bảng lương Excel"),
                     BotCommand("ggomoosin_danh_sach_nhan_vien", "Xuất DS nhân viên Excel"),
                     BotCommand("ggomoosin_danh_sach_cham_cong", "Xuất DS chấm công"),
+                    BotCommand("ggomoosin_nghi_ngay_le", "Chấm công nghỉ ngày lễ"),
                 ])
             ## Member
             if custom_title == "member_hr":
