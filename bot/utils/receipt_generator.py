@@ -419,38 +419,46 @@ def _render_html_to_png_sync(html_content: str, max_retries: int = 2) -> bytes:
     """
     from playwright.sync_api import sync_playwright
 
+    # Inject CSS animation killer trực tiếp vào HTML trước khi load,
+    # tránh race condition khi dùng add_style_tag() sau set_content().
+    disable_anim_css = "<style>*, *::before, *::after { animation: none !important; transition: none !important; animation-duration: 0s !important; transition-duration: 0s !important; }</style>"
+    html_content = html_content.replace("</head>", f"{disable_anim_css}</head>", 1)
+
     last_error = None
     for attempt in range(max_retries + 1):
+        pw = None
+        browser = None
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page(
-                    viewport={"width": 520, "height": 3000},
-                    device_scale_factor=2
-                )
+            pw = sync_playwright().start()
+            browser = pw.chromium.launch(
+                headless=True,
+                args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"]
+            )
+            page = browser.new_page(
+                viewport={"width": 520, "height": 3000},
+                device_scale_factor=2
+            )
 
-                # HTML hoàn toàn self-contained (không có font/ảnh ngoài),
-                # nên "domcontentloaded" là đủ — tránh "networkidle" bị treo.
-                page.set_content(html_content, wait_until="domcontentloaded")
+            # HTML hoàn toàn self-contained (không có font/ảnh ngoài),
+            # nên "domcontentloaded" là đủ — tránh "networkidle" bị treo.
+            page.set_content(html_content, wait_until="domcontentloaded", timeout=30000)
 
-                # Tắt mọi CSS animation/transition để Playwright không chờ
-                # "element to be stable" vô hạn do layout shift trên Windows.
-                page.add_style_tag(content="*, *::before, *::after { animation: none !important; transition: none !important; }")
+            # Force layout reflow đồng bộ thay vì wait_for_timeout.
+            # getBoundingClientRect() buộc browser tính toán layout xong trước khi tiếp tục.
+            page.evaluate("""() => {
+                const el = document.querySelector('.receipt');
+                if (el) el.getBoundingClientRect();
+            }""")
 
-                # Chờ layout ổn định — 300ms đủ cho CSS inline tĩnh.
-                page.wait_for_timeout(300)
+            receipt = page.locator(".receipt")
 
-                receipt = page.locator(".receipt")
-
-                # Đặt timeout rõ ràng (15s) thay vì dùng default 30s.
-                screenshot = receipt.screenshot(
-                    type="png",
-                    omit_background=True,
-                    timeout=15000,
-                    animations="disabled"
-                )
-
-                browser.close()
+            # Đặt timeout rõ ràng (60s).
+            screenshot = receipt.screenshot(
+                type="png",
+                omit_background=True,
+                timeout=60000,
+                animations="disabled"
+            )
 
             return screenshot
 
@@ -462,6 +470,17 @@ def _render_html_to_png_sync(html_content: str, max_retries: int = 2) -> bytes:
                 time.sleep(1)
                 continue
             raise last_error
+        finally:
+            try:
+                if browser:
+                    browser.close()
+            except Exception:
+                pass
+            try:
+                if pw:
+                    pw.stop()
+            except Exception:
+                pass
 
 
 async def render_html_to_png(html_content: str) -> bytes:
