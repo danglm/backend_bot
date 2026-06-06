@@ -4559,7 +4559,7 @@ async def list_vehicle_handler(client, message: Message) -> None:
 
         response = f"<b>DANH SÁCH PHƯƠNG TIỆN</b>\n"
         response += f"Tổng cộng: <b>{len(vehicles)}</b> phương tiện\n"
-        response += f"-----------------------------------\n\n"
+        response += f"--------------------\n\n"
 
         for status_key in ["activited", "inactivity"]:
             v_list = grouped.get(status_key, [])
@@ -5487,7 +5487,7 @@ async def list_documents_handler(client, message: Message) -> None:
             else:
                 response += "   • <i>Chưa có lịch hẹn nhắc nhở nào.</i>\n"
             
-            response += "----------------------------------------\n"
+            response += "--------------------\n"
 
         markup = build_documents_list_keyboard(total_docs, page=page, limit=limit)
         await message.reply_text(response, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -5809,7 +5809,7 @@ async def list_doc_pg_cb(client, callback_query: CallbackQuery):
             else:
                 response += "   • <i>Chưa có lịch hẹn nhắc nhở nào.</i>\n"
             
-            response += "----------------------------------------\n"
+            response += "--------------------\n"
 
         markup = build_documents_list_keyboard(total_docs, page=page, limit=limit)
         await callback_query.message.edit_text(response, parse_mode=ParseMode.HTML, reply_markup=markup)

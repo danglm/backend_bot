@@ -232,12 +232,12 @@ async def check_customer_handler(client, message: Message) -> None:
             f"Tên Nhóm: <b>{customer.group_name or 'N/A'}</b>",
             f"Tên Khách Hàng: <b>{customer.customer_name}</b>",
             f"Liên Hệ: <b>{customer.contact_info}</b>",
-            f"---------------------------",
+            f"--------------------",
             f"<b>HẠN MỨC</b>",
             f"Tổng Hạn Mức Tín Dụng: <b>{fmt_num(customer.total_credit_limit):,} VNĐ</b>",
             f"Hạn Mức Còn Lại: <b>{fmt_num(customer.remaining_credit_limit):,} VNĐ</b>",
             f"Tổng Nợ Gốc Hiện Tại: <b>{fmt_num(customer.total_principal_outstanding):,} VNĐ</b>",
-            f"---------------------------",
+            f"--------------------",
             f"<b>DANH SÁCH HỢP ĐỒNG</b>"
         ]
 
@@ -424,12 +424,12 @@ async def check_debt_handler(client, message: Message) -> None:
         reply_lines = [
             f"<b>CÔNG NỢ HIỆN TẠI</b>",
             f"Khách hàng: <b>{customer.customer_name}</b> (Mã: {customer.customer_id})",
-            f"---------------------------",
+            f"--------------------",
             f"Tổng hợp đồng: <b>{len(active_credits)}</b>",
             f"Tổng nợ gốc: <b>{fmt_num(total_principal):,}</b>",
             f"Tổng nợ lãi: <b>{fmt_num(total_interest):,}</b>",
             f"Tổng nợ: <b>{fmt_num(total_debt):,}</b>",
-            f"---------------------------",
+            f"--------------------",
         ] + contract_lines
 
         await message.reply_text("\n".join(reply_lines), parse_mode=ParseMode.HTML)
@@ -1189,7 +1189,7 @@ async def credit_list_contract_handler(client, message: Message) -> None:
         lines = [
             "DANH SÁCH HỢP ĐỒNG TÍN DỤNG",
             f"Tổng: {len(all_contracts)} hợp đồng",
-            "---------------------------",
+            "--------------------",
         ]
 
         idx = 1
@@ -1219,7 +1219,7 @@ async def credit_list_contract_handler(client, message: Message) -> None:
             html_lines = [
                 f"<b>DANH SÁCH HỢP ĐỒNG TÍN DỤNG</b>",
                 f"Tổng: <b>{len(all_contracts)}</b> hợp đồng",
-                f"---------------------------",
+                f"--------------------",
             ]
             idx2 = 1
             for status in status_order:
@@ -1801,12 +1801,12 @@ async def report_cashflow_handler(client, message: Message) -> None:
         total_project_paid = sum(project_monthly_totals.values()) if project_monthly_totals else 0
         header_lines = [
             f"<b>BÁO CÁO DÒNG TIỀN DỰ ÁN</b>",
-            f"---------------------------",
+            f"--------------------",
             f"<b>Tổng Hợp Đồng Đang Vay:</b> {total_contracts}",
             f"<b>Tổng Nợ Gốc:</b> {fmt_vn(total_principal)}",
             f"<b>Tổng Nợ Lãi:</b> {fmt_vn(total_interest)}",
             f"<b>Tổng Lãi Đã Thu:</b> {fmt_vn(total_project_paid)}",
-            f"---------------------------"
+            f"--------------------"
         ]
         
         report_lines = header_lines + customer_lines
@@ -1874,7 +1874,7 @@ async def generate_revenue_report(client, message, project_id, start_date, end_d
         report_lines = [
             f"<b>BÁO CÁO DOANH THU (Lãi đã thu)</b>",
             f"<i>(Thời gian lọc: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})</i>",
-            f"---------------------------",
+            f"--------------------",
             f"<b>Tổng Lãi Đã Thu:</b> <b>{fmt_vn(total_collected)}</b>", 
             f"<b>Tổng Nợ Gốc:</b> {fmt_vn(total_outstanding_principal)}",
             f"<b>Tổng Nợ Lãi Chưa Trả:</b> {fmt_vn(total_outstanding_interest)}"

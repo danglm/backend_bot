@@ -352,7 +352,7 @@ async def rental_check_customer_handler(client, message: Message) -> None:
             f"Tên Khách Hàng: <b>{customer.customer_name}</b>",
             f"Liên Hệ: <b>{customer.contact_info}</b>",
             f"Số Điện Thoại: <b>{customer.number_phone or 'N/A'}</b>",
-            f"---------------------------",
+            f"--------------------",
             f"<b>DANH SÁCH HỢP ĐỒNG CHO THUÊ</b>"
         ]
 
@@ -544,11 +544,11 @@ async def rental_check_debt_handler(client, message: Message) -> None:
         reply_lines = [
             f"<b>TỔNG TIỀN THANH TOÁN HD HIỆN TẠI</b>",
             f"Khách hàng: <b>{customer.customer_name}</b> (Mã: {customer.customer_id})",
-            f"---------------------------",
+            f"--------------------",
             f"Tổng hợp đồng: <b>{len(active_rentals)}</b>",
             f"Tổng tiền thuê: <b>{fmt_num(total_monthly):,}</b>/tháng",
             f"Tổng tiền cần thanh toán: <b>{fmt_num(total_debt):,}</b>",
-            f"---------------------------",
+            f"--------------------",
         ] + contract_lines
 
         await message.reply_text("\n".join(reply_lines), parse_mode=ParseMode.HTML)
@@ -1174,7 +1174,7 @@ async def generate_rental_revenue_report(client, message, project_id, start_date
         report_lines = [
             f"<b>BÁO CÁO DOANH THU THUÊ NHÀ</b>",
             f"<i>(Thời gian lọc: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})</i>",
-            f"---------------------------",
+            f"--------------------",
             f"<b>Tổng Tiền Thuê Đã Thu:</b> <b>{fmt_vn(total_collected)}</b>", 
             # f"<b>Tổng Tiền Thanh Toán HD Của Khách Hàng:</b> {fmt_vn(total_outstanding_debt)}",
         ]
@@ -1379,12 +1379,12 @@ async def rental_cashflow_report_handler(client, message: Message) -> None:
         total_project_paid = sum(project_monthly_totals.values()) if project_monthly_totals else 0
         header_lines = [
             f"<b>BÁO CÁO DÒNG TIỀN DỰ ÁN THUÊ NHÀ</b>",
-            f"---------------------------",
+            f"--------------------",
             f"<b>Tổng Hợp Đồng Đang Thuê:</b> {total_contracts}",
             f"<b>Tổng Tiền Cọc Đang Giữ:</b> {fmt_vn(total_deposit)}",
             # f"<b>Tổng Tiền Thanh Toán HD Của Khách:</b> {fmt_vn(total_debt)}",
             f"<b>Tổng Tiền Thuê Đã Thu:</b> {fmt_vn(total_project_paid)}",
-            f"---------------------------"
+            f"--------------------"
         ]
         
         full_report_lines = header_lines + customer_lines
@@ -1478,7 +1478,7 @@ async def rental_list_contract_handler(client, message: Message) -> None:
         lines = [
             "DANH SÁCH HỢP ĐỒNG CHO THUÊ",
             f"Tổng: {len(all_contracts)} hợp đồng",
-            "---------------------------",
+            "--------------------",
         ]
 
         idx = 1
@@ -1508,7 +1508,7 @@ async def rental_list_contract_handler(client, message: Message) -> None:
             html_lines = [
                 f"<b>DANH SÁCH HỢP ĐỒNG CHO THUÊ</b>",
                 f"Tổng: <b>{len(all_contracts)}</b> hợp đồng",
-                f"---------------------------",
+                f"--------------------",
             ]
             idx2 = 1
             for status in status_order:

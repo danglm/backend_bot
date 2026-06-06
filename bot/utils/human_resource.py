@@ -1006,9 +1006,16 @@ async def _execute_check_in_for_employee(client, message: Message, employee: Emp
     now_vn = datetime.datetime.now(VN_TZ)
     today = now_vn.date()
     current_time = now_vn.time()
+    weekday = today.weekday()  # 0=Mon, 5=Sat, 6=Sun
+
+    # Override cho Thứ 7 nếu NV có sat_start_time
+    if weekday == 5 and employee.sat_start_time:
+        use_start_time = employee.sat_start_time
+    else:
+        use_start_time = employee.start_time
 
     # Kiểm tra start_time (giờ vào ca)
-    if not employee.start_time:
+    if not use_start_time:
         await message.reply_text(
             f"⚠️ Nhân viên <b>{employee.last_name} {employee.first_name}</b> chưa được cài đặt giờ vào ca. Vui lòng liên hệ quản lý.",
             parse_mode=ParseMode.HTML
@@ -1016,7 +1023,7 @@ async def _execute_check_in_for_employee(client, message: Message, employee: Emp
         return
 
     # Lấy giờ vào ca từ start_time (DateTime -> Time)
-    shift_time = employee.start_time.time() if isinstance(employee.start_time, datetime.datetime) else employee.start_time
+    shift_time = use_start_time.time() if isinstance(use_start_time, datetime.datetime) else use_start_time
     shift_start_str = shift_time.strftime("%H:%M")
 
     # Tính cửa sổ check-in: start_time - 30 phút → start_time + 30 phút
@@ -1113,16 +1120,23 @@ async def _execute_check_out_for_employee(client, message: Message, employee: Em
     now_vn = datetime.datetime.now(VN_TZ)
     today = now_vn.date()
     current_time = now_vn.time()
+    weekday = today.weekday()  # 0=Mon, 5=Sat, 6=Sun
+
+    # Override cho Thứ 7 nếu NV có sat_end_time
+    if weekday == 5 and employee.sat_end_time:
+        use_end_time = employee.sat_end_time
+    else:
+        use_end_time = employee.end_time
 
     # Kiểm tra end_time (giờ tan ca)
-    if not employee.end_time:
+    if not use_end_time:
         await message.reply_text(
             f"⚠️ Nhân viên <b>{employee.last_name} {employee.first_name}</b> chưa được cài đặt giờ tan ca. Vui lòng liên hệ quản lý.",
             parse_mode=ParseMode.HTML
         )
         return
 
-    end_time_obj = employee.end_time.time() if isinstance(employee.end_time, datetime.datetime) else employee.end_time
+    end_time_obj = use_end_time.time() if isinstance(use_end_time, datetime.datetime) else use_end_time
     end_time_str = end_time_obj.strftime("%H:%M")
 
     # Check-out chỉ được phép từ end_time đến 23:59 cùng ngày
