@@ -1,3 +1,4 @@
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.models.device import (
     Smartphone, Laptop, SimCard, Application, DeviceAssignment, InstalledApp,
@@ -23,7 +24,9 @@ def get_smartphone(db: Session, smartphone_id: str):
 
 
 def get_smartphone_by_imei(db: Session, imei: str):
-    return db.query(Smartphone).filter(Smartphone.imei_1 == imei).first()
+    if not imei or not imei.strip():
+        return None
+    return db.query(Smartphone).filter(or_(Smartphone.imei_1 == imei, Smartphone.imei_2 == imei)).first()
 
 
 def get_smartphones(db: Session, skip: int = 0, limit: int = 100):

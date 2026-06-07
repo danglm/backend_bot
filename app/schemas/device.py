@@ -9,7 +9,7 @@ from uuid import UUID
 class SmartphoneBase(BaseModel):
     model_name: str
     brand: Optional[str] = None
-    imei_1: str
+    imei_1: Optional[str] = None
     imei_2: Optional[str] = None
     serial_number: Optional[str] = None
     os_version: Optional[str] = None

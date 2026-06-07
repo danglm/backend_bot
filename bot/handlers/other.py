@@ -94,10 +94,6 @@ Tài Khoản: iCloud hoặc Google Account</i>"""
         await message.reply_text("⚠️ <b>Tên Model</b> là bắt buộc.", parse_mode=ParseMode.HTML)
         return
 
-    if not imei_1:
-        await message.reply_text("⚠️ <b>IMEI 1</b> là bắt buộc.", parse_mode=ParseMode.HTML)
-        return
-
     # Validate status
     valid_statuses = [s.value for s in SmartphoneStatus]
     if status not in valid_statuses:
@@ -130,14 +126,31 @@ Tài Khoản: iCloud hoặc Google Account</i>"""
 
     db = SessionLocal()
     try:
-        # Check IMEI duplicate
-        existing = get_smartphone_by_imei(db, imei_1)
-        if existing:
+        if imei_1 and imei_2 and imei_1 == imei_2:
             await message.reply_text(
-                f"⚠️ IMEI 1 <b>{imei_1}</b> đã tồn tại trong hệ thống (Model: {existing.model_name}).",
+                "⚠️ <b>IMEI 1</b> và <b>IMEI 2</b> không được trùng nhau.",
                 parse_mode=ParseMode.HTML
             )
             return
+
+        # Check IMEI duplicate
+        if imei_1:
+            existing = get_smartphone_by_imei(db, imei_1)
+            if existing:
+                await message.reply_text(
+                    f"⚠️ IMEI 1 <b>{imei_1}</b> đã tồn tại trong hệ thống (Model: {existing.model_name}).",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        if imei_2:
+            existing_imei2 = get_smartphone_by_imei(db, imei_2)
+            if existing_imei2:
+                await message.reply_text(
+                    f"⚠️ IMEI 2 <b>{imei_2}</b> đã tồn tại trong hệ thống (Model: {existing_imei2.model_name}).",
+                    parse_mode=ParseMode.HTML
+                )
+                return
 
         # Check device_id duplicate
         if device_id:
@@ -154,7 +167,7 @@ Tài Khoản: iCloud hoặc Google Account</i>"""
             id=device_id if device_id else None,
             model_name=model_name,
             brand=brand or None,
-            imei_1=imei_1,
+            imei_1=imei_1 or None,
             imei_2=imei_2 or None,
             serial_number=serial_number or None,
             os_version=os_version or None,
@@ -176,12 +189,12 @@ Tài Khoản: iCloud hoặc Google Account</i>"""
             f"✅ <b>Đã tạo điện thoại thành công!</b>\n\n"
             f"<b>{model_name}</b> ({brand})\n"
             f"Mã: <code>{new_phone.id}</code>\n"
-            f"IMEI 1: <code>{imei_1}</code>\n"
+            f"IMEI 1: <code>{new_phone.imei_1 or 'N/A'}</code>\n"
             f"Phân loại: <b>{new_phone.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{status}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
-        LogInfo(f"[CreateSmartphone] Created {model_name} (IMEI: {imei_1}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+        LogInfo(f"[CreateSmartphone] Created {model_name} (IMEI: {new_phone.imei_1 or 'N/A'}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
 
         # Delete the form template message after successful creation
         form_msg_id = form_tracker.pop(message.chat.id, "other_create_smartphone", "create")
@@ -332,12 +345,28 @@ Phân loại gồm: Cá nhân, công việc</i>"""
                 await message.reply_text("⚠️ <b>Ngày mua</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
                 return
 
+        if imei_1 and imei_2 and imei_1 == imei_2:
+            await message.reply_text(
+                "⚠️ <b>IMEI 1</b> và <b>IMEI 2</b> không được trùng nhau.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
         # Check IMEI duplicate if changed
         if imei_1 and imei_1 != phone.imei_1:
             existing = get_smartphone_by_imei(db, imei_1)
-            if existing:
+            if existing and existing.id != phone.id:
                 await message.reply_text(
                     f"⚠️ IMEI 1 <b>{imei_1}</b> đã tồn tại trong hệ thống (Model: {existing.model_name}).",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        if imei_2 and imei_2 != phone.imei_2:
+            existing_imei2 = get_smartphone_by_imei(db, imei_2)
+            if existing_imei2 and existing_imei2.id != phone.id:
+                await message.reply_text(
+                    f"⚠️ IMEI 2 <b>{imei_2}</b> đã tồn tại trong hệ thống (Model: {existing_imei2.model_name}).",
                     parse_mode=ParseMode.HTML
                 )
                 return
@@ -345,8 +374,10 @@ Phân loại gồm: Cá nhân, công việc</i>"""
         # Update fields
         if model_name: phone.model_name = model_name
         if brand: phone.brand = brand
-        if imei_1: phone.imei_1 = imei_1
-        phone.imei_2 = imei_2 if imei_2 else phone.imei_2
+        if "IMEI 1" in data:
+            phone.imei_1 = imei_1 or None
+        if "IMEI 2" in data:
+            phone.imei_2 = imei_2 or None
         if serial_number: phone.serial_number = serial_number
         if os_version: phone.os_version = os_version
         if storage_capacity: phone.storage_capacity = storage_capacity
@@ -366,7 +397,7 @@ Phân loại gồm: Cá nhân, công việc</i>"""
             f"✅ <b>Đã cập nhật điện thoại thành công!</b>\n\n"
             f"<b>{phone.model_name}</b> ({phone.brand})\n"
             f"Mã: <code>{phone.id}</code>\n"
-            f"IMEI 1: <code>{phone.imei_1}</code>\n"
+            f"IMEI 1: <code>{phone.imei_1 or 'N/A'}</code>\n"
             f"Phân loại: <b>{phone.classification or 'N/A'}</b>\n"
             f"Trạng thái: <b>{phone.status}</b>"
         )
@@ -429,7 +460,7 @@ async def delete_smartphone_handler(client, message: Message) -> None:
             f"✅ <b>Đã xóa (vô hiệu hóa) điện thoại thành công!</b>\n\n"
             f"<b>{phone.model_name}</b> ({phone.brand})\n"
             f"Mã: <code>{phone.id}</code>\n"
-            f"IMEI 1: <code>{phone.imei_1}</code>\n"
+            f"IMEI 1: <code>{phone.imei_1 or 'N/A'}</code>\n"
             f"Trạng thái: <b>{old_status}</b> → <b>{SmartphoneStatus.BROKEN.value}</b>"
         )
         await message.reply_text(result_text, parse_mode=ParseMode.HTML)
@@ -538,7 +569,7 @@ async def receive_device_handler(client, message: Message) -> None:
             initial_condition = device.notes or ""
             device_name = f"{device.model_name} ({device.brand})"
             device_detail = (
-                f"IMEI 1: <code>{device.imei_1}</code>\n"
+                f"IMEI 1: <code>{device.imei_1 or 'N/A'}</code>\n"
                 f"Phụ kiện: {device.accessories or 'Không có'}\n"
                 f"Tình trạng ban đầu: {device.notes or 'Không ghi chú'}"
             )
@@ -736,7 +767,7 @@ async def return_device_handler(client, message: Message) -> None:
         # Build device detail
         if device_type == "smartphone":
             device_name = f"{device.model_name} ({device.brand})"
-            device_detail = f"IMEI 1: <code>{device.imei_1}</code>"
+            device_detail = f"IMEI 1: <code>{device.imei_1 or 'N/A'}</code>"
         elif device_type == "laptop":
             device_name = f"{device.model_name}"
             device_detail = f"Service Tag: <code>{device.service_tag or 'N/A'}</code>"
@@ -845,7 +876,7 @@ async def check_log_device_handler(client, message: Message) -> None:
 
         if device_type == "smartphone":
             device_name = f"{device.model_name} ({device.brand})"
-            device_detail = f"IMEI 1: {device.imei_1}"
+            device_detail = f"IMEI 1: {device.imei_1 or 'N/A'}"
         elif device_type == "laptop":
             device_name = f"{device.model_name}"
             device_detail = f"Service Tag: {device.service_tag or 'N/A'}"
@@ -2008,7 +2039,7 @@ async def check_device_handler(client, message: Message) -> None:
         if device_type == "smartphone":
             base_info = (
                 f"<b>ĐIỆN THOẠI: {device.model_name} ({device.brand})</b>\n"
-                f"Mã: <code>{device.id}</code> | IMEI: <code>{device.imei_1}</code>\n"
+                f"Mã: <code>{device.id}</code> | IMEI: <code>{device.imei_1 or 'N/A'}</code>\n"
                 f"Dung lượng: {device.storage_capacity or 'N/A'} | Pin: {device.battery_health or 'N/A'}%\n"
                 f"Tài khoản: {device.account or 'N/A'}\n"
                 f"Trạng thái: <b>{device.status}</b>\n\n"
