@@ -4567,74 +4567,12 @@ Tạm Ứng: 0</pre>
 
 # ===================== XUẤT BÁO CÁO TỔNG HỢP (Export Summary) =====================
 
-@bot.on_message(filters.command(["tien_nga_export_summary", "tien_nga_xuat_bao_cao_tong_hop"]) | filters.regex(r"^@\w+\s+/tien_nga_export_summary|/tien_nga_xuat_bao_cao_tong_hop\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
-@require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
-async def tien_nga_export_summary_handler(client, message: Message) -> None:
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("1 ngày", callback_data="tn_sum_1d"),
-         InlineKeyboardButton("7 ngày", callback_data="tn_sum_7d"),
-         InlineKeyboardButton("14 ngày", callback_data="tn_sum_14d")],
-        [InlineKeyboardButton("21 ngày", callback_data="tn_sum_21d"),
-         InlineKeyboardButton("1 tháng", callback_data="tn_sum_1m"),
-         InlineKeyboardButton("3 tháng", callback_data="tn_sum_3m")],
-        [InlineKeyboardButton("6 tháng", callback_data="tn_sum_6m"),
-         InlineKeyboardButton("1 năm", callback_data="tn_sum_1y"),
-         InlineKeyboardButton("Năm trước", callback_data="tn_sum_py")],
-        [InlineKeyboardButton("Hủy", callback_data="tn_sum_cancel")]
-    ])
-    await message.reply_text(
-        "<b>XUẤT BÁO CÁO TỔNG HỢP MUA MỦ</b>\n\n"
-        "Vui lòng chọn khoảng thời gian:",
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML
-    )
-
-
-@bot.on_callback_query(filters.regex(r"^tn_sum_"))
-async def tien_nga_export_summary_callback(client, callback_query: CallbackQuery):
-    data = callback_query.data
-
-    if data == "tn_sum_cancel":
-        await callback_query.message.delete()
-        return
-
-    time_code = data[len("tn_sum_"):]
-
-    await callback_query.message.edit_text("⏳ <i>Đang tạo báo cáo tổng hợp Excel, vui lòng chờ...</i>", parse_mode=ParseMode.HTML)
-
-    today = datetime.now().date()
-    start_date = today
-    end_date = today
-
-    if time_code == "1d":
-        start_date = today
-    elif time_code == "7d":
-        start_date = today - timedelta(days=6)
-    elif time_code == "14d":
-        start_date = today - timedelta(days=13)
-    elif time_code == "21d":
-        start_date = today - timedelta(days=20)
-    elif time_code == "1m":
-        start_date = today - timedelta(days=29)
-    elif time_code == "3m":
-        start_date = today - timedelta(days=89)
-    elif time_code == "6m":
-        start_date = today - timedelta(days=179)
-    elif time_code == "1y":
-        start_date = today - timedelta(days=364)
-    elif time_code == "py":
-        last_year = today.year - 1
-        start_date = datetime(last_year, 1, 1).date()
-        end_date = datetime(last_year, 12, 31).date()
-
+async def _do_generate_and_send_summary(client, chat_id, start_date, end_date, progress_msg=None):
     from app.db.session import SessionLocal
     from app.models.business import DailyPurchases, CollectionPoint
     from sqlalchemy import func
     import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     import tempfile
     import os
 
@@ -4924,23 +4862,39 @@ async def tien_nga_export_summary_callback(client, callback_query: CallbackQuery
             dws.freeze_panes = "A2"
 
         if sheets_with_data == 0:
-            await callback_query.message.edit_text(
-                "⚠️ Không có dữ liệu mua mủ trong khoảng thời gian đã chọn.",
-                parse_mode=ParseMode.HTML
-            )
+            if progress_msg:
+                try:
+                    await progress_msg.edit_text(
+                        "⚠️ Không có dữ liệu mua mủ trong khoảng thời gian đã chọn.",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception:
+                    pass
+            else:
+                await client.send_message(
+                    chat_id=chat_id,
+                    text="⚠️ Không có dữ liệu mua mủ trong khoảng thời gian đã chọn.",
+                    parse_mode=ParseMode.HTML
+                )
             return
 
         # Save & send
-        file_name = f"summary_{today.strftime('%Y_%m_%d')}.xlsx"
+        today_str = datetime.now().strftime("%Y_%m_%d")
+        file_name = f"summary_{today_str}.xlsx"
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
 
         timeframe_str = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
 
-        await callback_query.message.delete()
+        if progress_msg:
+            try:
+                await progress_msg.delete()
+            except Exception:
+                pass
+
         await client.send_document(
-            chat_id=callback_query.message.chat.id,
+            chat_id=chat_id,
             document=tmp_path,
             file_name=file_name,
             caption=(
@@ -4960,9 +4914,145 @@ async def tien_nga_export_summary_callback(client, callback_query: CallbackQuery
     except Exception as e:
         import traceback as tb
         LogError(f"[TienNga] Error export summary: {tb.format_exc()}", LogType.SYSTEM_STATUS)
-        await callback_query.message.edit_text("❌ Có lỗi xảy ra khi tạo báo cáo.", parse_mode=ParseMode.HTML)
+        if progress_msg:
+            try:
+                await progress_msg.edit_text("❌ Có lỗi xảy ra khi tạo báo cáo.", parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+        else:
+            await client.send_message(
+                chat_id=chat_id,
+                text="❌ Có lỗi xảy ra khi tạo báo cáo.",
+                parse_mode=ParseMode.HTML
+            )
     finally:
         db.close()
+
+
+@bot.on_message(filters.command(["tien_nga_export_summary", "tien_nga_xuat_bao_cao_tong_hop"]) | filters.regex(r"^@\w+\s+/tien_nga_export_summary|/tien_nga_xuat_bao_cao_tong_hop\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_export_summary_handler(client, message: Message) -> None:
+    # Check if there are date arguments
+    text = message.text.strip()
+    parts = text.split(None, 1)
+    if len(parts) >= 2:
+        arg_str = parts[1].strip()
+
+        # Helper to parse dates
+        def parse_date_vietnamese(date_str: str):
+            date_str = date_str.strip()
+            for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%d/%m/%y", "%d-%m-%y", "%d.%m.%y"):
+                try:
+                    return datetime.strptime(date_str, fmt).date()
+                except ValueError:
+                    continue
+            return None
+
+        # Split by range separator
+        import re
+        date_parts = re.split(r'\s*(?:-|to|đến)\s*', arg_str)
+
+        if len(date_parts) == 1:
+            dt = parse_date_vietnamese(date_parts[0])
+            if not dt:
+                await message.reply_text(
+                    "⚠️ Định dạng ngày không hợp lệ. Vui lòng sử dụng định dạng <code>DD/MM/YYYY</code>.\n"
+                    "Ví dụ: <code>/tien_nga_xuat_bao_cao_tong_hop 01/06/2026</code> hoặc <code>/tien_nga_xuat_bao_cao_tong_hop 01/06/2026 - 08/06/2026</code>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            start_date = dt
+            end_date = dt
+        elif len(date_parts) == 2:
+            start_dt = parse_date_vietnamese(date_parts[0])
+            end_dt = parse_date_vietnamese(date_parts[1])
+            if not start_dt or not end_dt:
+                await message.reply_text(
+                    "⚠️ Định dạng khoảng ngày không hợp lệ. Vui lòng sử dụng định dạng <code>DD/MM/YYYY - DD/MM/YYYY</code>.\n"
+                    "Ví dụ: <code>/tien_nga_xuat_bao_cao_tong_hop 01/06/2026 - 08/06/2026</code>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            start_date = start_dt
+            end_date = end_dt
+        else:
+            await message.reply_text(
+                "⚠️ Định dạng không hợp lệ. Vui lòng sử dụng: <code>/tien_nga_xuat_bao_cao_tong_hop [Ngày bắt đầu] - [Ngày kết thúc]</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        progress_msg = await message.reply_text("⏳ <i>Đang tạo báo cáo tổng hợp Excel, vui lòng chờ...</i>", parse_mode=ParseMode.HTML)
+        await _do_generate_and_send_summary(client, message.chat.id, start_date, end_date, progress_msg=progress_msg)
+        return
+
+    # No arguments, show inline keyboard
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("1 ngày", callback_data="tn_sum_1d"),
+         InlineKeyboardButton("7 ngày", callback_data="tn_sum_7d"),
+         InlineKeyboardButton("14 ngày", callback_data="tn_sum_14d")],
+        [InlineKeyboardButton("21 ngày", callback_data="tn_sum_21d"),
+         InlineKeyboardButton("1 tháng", callback_data="tn_sum_1m"),
+         InlineKeyboardButton("3 tháng", callback_data="tn_sum_3m")],
+        [InlineKeyboardButton("6 tháng", callback_data="tn_sum_6m"),
+         InlineKeyboardButton("1 năm", callback_data="tn_sum_1y"),
+         InlineKeyboardButton("Năm trước", callback_data="tn_sum_py")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_sum_cancel")]
+    ])
+    await message.reply_text(
+        "<b>XUẤT BÁO CÁO TỔNG HỢP MUA MỦ</b>\n\n"
+        "Bạn có thể chọn khoảng thời gian nhanh bên dưới, hoặc nhập trực tiếp theo cú pháp:\n"
+        "<code>/tien_nga_xuat_bao_cao_tong_hop [Ngày bắt đầu] - [Ngày kết thúc]</code>\n"
+        "<i>Ví dụ: <code>/tien_nga_xuat_bao_cao_tong_hop 01/06/2026 - 08/06/2026</code></i>",
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_sum_"))
+async def tien_nga_export_summary_callback(client, callback_query: CallbackQuery):
+    data = callback_query.data
+
+    if data == "tn_sum_cancel":
+        await callback_query.message.delete()
+        return
+
+    time_code = data[len("tn_sum_"):]
+
+    await callback_query.message.edit_text("⏳ <i>Đang tạo báo cáo tổng hợp Excel, vui lòng chờ...</i>", parse_mode=ParseMode.HTML)
+
+    today = datetime.now().date()
+    start_date = today
+    end_date = today
+
+    if time_code == "1d":
+        start_date = today
+    elif time_code == "7d":
+        start_date = today - timedelta(days=6)
+    elif time_code == "14d":
+        start_date = today - timedelta(days=13)
+    elif time_code == "21d":
+        start_date = today - timedelta(days=20)
+    elif time_code == "1m":
+        start_date = today - timedelta(days=29)
+    elif time_code == "3m":
+        start_date = today - timedelta(days=89)
+    elif time_code == "6m":
+        start_date = today - timedelta(days=179)
+    elif time_code == "1y":
+        start_date = today - timedelta(days=364)
+    elif time_code == "py":
+        last_year = today.year - 1
+        start_date = datetime(last_year, 1, 1).date()
+        end_date = datetime(last_year, 12, 31).date()
+
+    await _do_generate_and_send_summary(client, callback_query.message.chat.id, start_date, end_date, progress_msg=callback_query.message)
 
 # ===================== ĐỐI TÁC =====================
 
