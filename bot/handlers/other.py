@@ -4667,7 +4667,7 @@ async def create_document_handler(client, message: Message) -> None:
         form_template = """<b>FORM TẠO GIẤY TỜ / HỒ SƠ MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<code>/other_tao_giay_to
+<pre>/other_tao_giay_to
 Mã Giấy Tờ: 
 Tên Giấy Tờ: 
 Số Hiệu: 
@@ -4676,7 +4676,7 @@ Chủ Sở Hữu:
 Ngày Cấp (dd/mm/yyyy): 
 Ngày Hết Hạn (dd/mm/yyyy): 
 Ghi Chú: 
-</code>
+</pre>
 
 <i>Tên Giấy Tờ là bắt buộc. Mã Giấy Tờ nếu để trống sẽ tự động sinh ngẫu nhiên.</i>"""
         form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
