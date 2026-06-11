@@ -156,6 +156,8 @@ class DailyPayment(Base):
     day = Column(Date)                                  # Ngày giao dịch
     status = Column(String, default="APPROVED")         # Trạng thái duyệt
     notes = Column(String)                              # Ghi chú
+    transaction_code = Column(String, default="K", nullable=True) # Mã phân loại giao dịch (MN/MTP/MPP/NL/LNV/K)
+
 
 class Shareholder(Base):
     __tablename__ = "shareholders"

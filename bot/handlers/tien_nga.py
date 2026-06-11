@@ -8204,12 +8204,21 @@ Mã Đầu Tư: {form_code}
 Loại: {payment_type}
 Ngày: {today_str}
 Số Tiền: 
+Mã Giao Dịch (MN/MTP/MPP/NL/LNV/K): 
 Người Yêu Cầu: 
 Người Thực Hiện: 
 Người Nhận: 
 Mục Đích: 
 Lý Do: 
 Ghi Chú: </pre>
+
+💡 <b>Gợi ý Mã Giao Dịch:</b>
+• <code>MN</code>: Mủ Nước
+• <code>MTP</code>: Mủ Thành Phẩm
+• <code>MPP</code>: Mủ Phụ Phẩm
+• <code>NL</code>: Nguyên Liệu
+• <code>LNV</code>: Lương Nhân Viên
+• <code>K</code>: Khác
 
 <i>(*Đang tạo phiếu {type_label.lower()} cho: <b>{inv_name}</b>)</i>"""
 
@@ -8241,6 +8250,26 @@ async def _process_daily_payment_form(client, message: Message, lines: list):
     purpose = data.get("Mục Đích", "").strip()
     reason = data.get("Lý Do", "").strip()
     notes = data.get("Ghi Chú", "").strip()
+
+    # Parse and validate transaction_code
+    txn_code_raw = None
+    for k, v in data.items():
+        if k.startswith("Mã Giao Dịch"):
+            txn_code_raw = v.strip().upper()
+            break
+    if not txn_code_raw:
+        txn_code_raw = data.get("Mã Giao Dịch", "").strip().upper()
+
+    if not txn_code_raw:
+        transaction_code = "K"
+    elif txn_code_raw not in ("MN", "MTP", "MPP", "NL", "LNV", "K"):
+        await message.reply_text(
+            "⚠️ <b>Mã Giao Dịch</b> phải là một trong các giá trị: <code>MN, MTP, MPP, NL, LNV, K</code>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    else:
+        transaction_code = txn_code_raw
 
     # Validate required fields
     if not inv_id or not payment_type or not amount_str:
@@ -8328,6 +8357,7 @@ async def _process_daily_payment_form(client, message: Message, lines: list):
             day=day,
             notes=notes or None,
             status="PENDING" if requires_approval else "APPROVED",
+            transaction_code=transaction_code,
         )
         db.add(new_payment)
 
@@ -8364,6 +8394,7 @@ async def _process_daily_payment_form(client, message: Message, lines: list):
             approval_msg = (
                 f"⚠️ <b>YÊU CẦU DUYỆT PHIẾU CHI SỐ TIỀN LỚN</b> ⚠️\n\n"
                 f"<b>Khoản Đầu Tư:</b> {inv.name}\n"
+                f"<b>Mã Giao Dịch:</b> <code>{transaction_code}</code>\n"
                 f"<b>Người Yêu Cầu:</b> {requester or 'N/A'}\n"
                 f"<b>Mục Đích:</b> {purpose or 'N/A'}\n"
                 f"<b>Số Tiền:</b> <code>{fmt_vn(amount)}</code>\n"
@@ -8379,6 +8410,7 @@ async def _process_daily_payment_form(client, message: Message, lines: list):
             f"✅ <b>ĐÃ GHI NHẬN PHIẾU {type_label}</b>\n\n"
             f"<b>Khoản Đầu Tư:</b> {inv.name}\n"
             f"<b>Loại:</b> {type_label}\n"
+            f"<b>Mã Giao Dịch:</b> <code>{transaction_code}</code>\n"
             f"<b>Ngày:</b> {day.strftime('%d/%m/%Y')}\n"
             f"<b>Số Tiền:</b> <code>{fmt_vn(amount)}</code>\n"
         )
@@ -8458,6 +8490,7 @@ async def tien_nga_confirm_payment_handler(client, message: Message) -> None:
             f"✅ <b>ĐÃ PHÊ DUYỆT PHIẾU CHI</b>\n\n"
             f"<b>Mã Phiếu:</b> <code>{payment.id}</code>\n"
             f"<b>Người duyệt:</b> {message.from_user.first_name}\n"
+            f"<b>Mã Giao Dịch:</b> <code>{payment.transaction_code or 'K'}</code>\n"
             f"<b>Số Tiền:</b> <code>{fmt_vn(payment.amount)}</code>\n"
             f"<b>Đã giải ngân hạch toán thành công!</b>"
         )
@@ -9106,6 +9139,7 @@ async def cpd_selinv_callback(client, callback_query: CallbackQuery):
                         day=today,
                         status="APPROVED",
                         notes=f"Tự động từ xác nhận công nợ - {emp.id}",
+                        transaction_code="LNV",
                     )
                     db.add(dp)
                     inv.total_expense = (inv.total_expense or 0) + old_debt
@@ -9202,6 +9236,7 @@ async def cpd_selinv_callback(client, callback_query: CallbackQuery):
                         day=today,
                         status="APPROVED",
                         notes=f"Tự động từ xác nhận công nợ - {cust.hoursehold_id}",
+                        transaction_code="MN",
                     )
                     db.add(dp)
                     inv.total_expense = (inv.total_expense or 0) + old_debt
@@ -9458,7 +9493,7 @@ async def edp_inv_cb(client, callback_query: CallbackQuery):
         ws = wb.active
         ws.title = "Báo Cáo Thu Chi"
         
-        headers = ["Ngày", "Mã Phiếu", "Tên Đầu Tư", "Loại", "Số Tiền", "Trạng thái", "Người Yêu Cầu", "Người Thực Hiện", "Người Nhận", "Mục Đích", "Lý Do", "Ghi Chú"]
+        headers = ["Ngày", "Mã Phiếu", "Mã Giao Dịch", "Tên Đầu Tư", "Loại", "Số Tiền", "Trạng thái", "Người Yêu Cầu", "Người Thực Hiện", "Người Nhận", "Mục Đích", "Lý Do", "Ghi Chú"]
         ws.append(headers)
         
         header_font = Font(bold=True, color="FFFFFF")
@@ -9484,6 +9519,7 @@ async def edp_inv_cb(client, callback_query: CallbackQuery):
             row_data = [
                 p.day.strftime("%d/%m/%Y") if p.day else "",
                 str(p.id)[:8],
+                p.transaction_code or "K",
                 inv_name,
                 ptype,
                 amt,
@@ -9498,31 +9534,31 @@ async def edp_inv_cb(client, callback_query: CallbackQuery):
             ws.append(row_data)
             
             # Format currency
-            ws.cell(row=row_idx, column=5).number_format = '#,##0'
+            ws.cell(row=row_idx, column=6).number_format = '#,##0'
             
             # Add color for THU / CHI
             if ptype == "THU":
-                ws.cell(row=row_idx, column=4).font = Font(color="00B050", bold=True)
+                ws.cell(row=row_idx, column=5).font = Font(color="00B050", bold=True)
             elif ptype == "CHI":
-                ws.cell(row=row_idx, column=4).font = Font(color="C00000", bold=True)
+                ws.cell(row=row_idx, column=5).font = Font(color="C00000", bold=True)
                 
             if getattr(p, "status", "APPROVED") != "APPROVED":
-                ws.cell(row=row_idx, column=6).font = Font(color="ED7D31", bold=False)
+                ws.cell(row=row_idx, column=7).font = Font(color="ED7D31", bold=False)
                 
         # Append sum rows
         r = len(payments) + 2
-        ws.cell(row=r, column=4, value="Tổng Thu (Approved):").font = Font(bold=True, color="00B050")
-        ws.cell(row=r, column=5, value=total_thu).number_format = '#,##0'
+        ws.cell(row=r, column=5, value="Tổng Thu (Approved):").font = Font(bold=True, color="00B050")
+        ws.cell(row=r, column=6, value=total_thu).number_format = '#,##0'
         
-        ws.cell(row=r+1, column=4, value="Tổng Chi (Approved):").font = Font(bold=True, color="C00000")
-        ws.cell(row=r+1, column=5, value=total_chi).number_format = '#,##0'
+        ws.cell(row=r+1, column=5, value="Tổng Chi (Approved):").font = Font(bold=True, color="C00000")
+        ws.cell(row=r+1, column=6, value=total_chi).number_format = '#,##0'
         
-        ws.cell(row=r+2, column=4, value="Chênh Lệch:").font = Font(bold=True)
-        ws.cell(row=r+2, column=5, value=total_thu - total_chi).number_format = '#,##0'
+        ws.cell(row=r+2, column=5, value="Chênh Lệch:").font = Font(bold=True)
+        ws.cell(row=r+2, column=6, value=total_thu - total_chi).number_format = '#,##0'
         
         # Format font bold for sum values
         for i in range(3):
-            ws.cell(row=r+i, column=5).font = Font(bold=True)
+            ws.cell(row=r+i, column=6).font = Font(bold=True)
         
         # Auto adjust width
         for col in ws.columns:
@@ -9950,7 +9986,7 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
             f"<b>Vốn Ban Đầu:</b> <code>{fmt_vn(inv.initial_capital or 0)}</code>\n"
             f"<b>Tổng Thu:</b> <code>{fmt_vn(inv.total_income or 0)}</code>\n"
             f"<b>Tổng Chi:</b> <code>{fmt_vn(inv.total_expense or 0)}</code>\n"
-            f"<b>Lợi Nhuận / Số Dư:</b> <code>{fmt_vn(inv.profit or 0)}</code>\n\n"
+            f"<b>Lợi Nhuận:</b> <code>{fmt_vn(inv.profit or 0)}</code>\n\n"
             f"<b>Ghi chú:</b> {inv.notes or 'Không có'}\n"
         )
 
@@ -11188,9 +11224,10 @@ async def tien_nga_confirm_shareholder_callback(client, callback_query):
         existing = db.query(Shareholder).filter(Shareholder.shareholder_code == shareholder_code).first()
 
         if is_existing and existing:
-            # Cộng dồn vốn góp
+            # Cộng dồn vốn góp và cập nhật ID Quỹ mới
             old_amount = existing.investment_amount or 0
             existing.investment_amount = old_amount + amount
+            existing.investment_id = investment.id
             if notes:
                 existing.notes = (existing.notes or "") + f"\n[Góp thêm] {notes}" if existing.notes else notes
             action_label = "GÓP VỐN THÊM"
@@ -11238,6 +11275,7 @@ async def tien_nga_confirm_shareholder_callback(client, callback_query):
             day=payment_day,
             notes=notes if notes else None,
             status="APPROVED",
+            transaction_code="K",
         )
         db.add(new_payment)
 
@@ -11495,15 +11533,15 @@ async def tien_nga_dividend_main_callback(client, callback_query):
         agg_total_income = sum((mf.total_income or 0) for mf in member_funds)
         agg_total_expense = sum((mf.total_expense or 0) for mf in member_funds)
         
-        # Aggregate all shareholders from all member funds
+        # Aggregate all shareholders from Quỹ Main itself AND all its member funds
         all_shareholders = []
         member_fund_ids = [mf.id for mf in member_funds]
         all_shareholders = db.query(Shareholder).filter(
-            Shareholder.investment_id.in_(member_fund_ids)
+            Shareholder.investment_id.in_([main_inv.id] + member_fund_ids)
         ).order_by(Shareholder.shareholder_code).all()
         
         if not all_shareholders:
-            await callback_query.answer("⚠️ Chưa có cổ đông nào trong các Quỹ Member.", show_alert=True)
+            await callback_query.answer("⚠️ Chưa có cổ đông nào trong Quỹ này hoặc các Quỹ Member.", show_alert=True)
             return
         
         total_shareholder_amount = sum(sh.investment_amount or 0 for sh in all_shareholders)
@@ -11791,6 +11829,7 @@ async def tien_nga_confirm_dividend_callback(client, callback_query):
                 day=today,
                 notes=f"Vốn góp: {fmt_vn(d['investment_amount'])} | Cổ phần: {d['share_pct']:.1f}%",
                 status="APPROVED",
+                transaction_code="K",
             )
             db.add(new_payment)
             total_dividend_paid += dividend_amount
@@ -11969,13 +12008,13 @@ async def tien_nga_payment_sh_main_callback(client, callback_query):
         agg_initial_capital = sum((mf.initial_capital or 0) for mf in member_funds)
         agg_profit = agg_total_income - agg_total_expense
         
-        # Aggregate shareholders
+        # Aggregate shareholders from Quỹ Main itself AND all its member funds
         all_shareholders = db.query(Shareholder).filter(
-            Shareholder.investment_id.in_(member_fund_ids)
+            Shareholder.investment_id.in_([main_inv.id] + member_fund_ids)
         ).order_by(Shareholder.shareholder_code).all()
         
         if not all_shareholders:
-            await callback_query.answer("⚠️ Chưa có cổ đông nào trong các Quỹ Member.", show_alert=True)
+            await callback_query.answer("⚠️ Chưa có cổ đông nào trong Quỹ này hoặc các Quỹ Member.", show_alert=True)
             return
         
         total_shareholder_amount = sum(sh.investment_amount or 0 for sh in all_shareholders)
@@ -12279,6 +12318,7 @@ async def tien_nga_confirm_payment_sh_callback(client, callback_query):
                 day=today,
                 notes=f"Vốn góp: {fmt_vn(d['investment_amount'])} | Cổ phần: {d['share_pct']:.1f}%",
                 status="APPROVED",
+                transaction_code="K",
             )
             db.add(new_payment)
             total_paid += pay_amount
@@ -12712,12 +12752,9 @@ async def tien_nga_check_history_transaction_handler(client, message: Message) -
     /tien_nga_check_history_transaction [mã cổ đông] [dd/mm/yyyy - dd/mm/yyyy]
     Lấy lịch sử giao dịch của cổ đông: góp vốn, rút vốn, nhận cổ tức, thanh toán quỹ cổ đông, ...
     """
-    args_text = (message.text or "").strip()
-    # Remove command prefix
-    for cmd in ["tien_nga_check_history_transaction", "tien_nga_lich_su_giao_dich_co_dong", "tien_nga_lich_su_gd"]:
-        args_text = re.sub(rf"^/?{cmd}\s*", "", args_text, flags=re.IGNORECASE).strip()
-    # Also handle @bot prefix
-    args_text = re.sub(r"^@\w+\s+/?(?:tien_nga_check_history_transaction|tien_nga_lich_su_giao_dich_co_dong|tien_nga_lich_su_gd)\s*", "", args_text, flags=re.IGNORECASE).strip()
+    args = await check_command_target(client, message.text, ["tien_nga_check_history_transaction", "tien_nga_lich_su_giao_dich_co_dong", "tien_nga_lich_su_gd"])
+    if args is None: return
+    args_text = " ".join(args[1:]).strip()
 
     if not args_text:
         await message.reply_text(
@@ -12767,11 +12804,21 @@ async def tien_nga_check_history_transaction_handler(client, message: Message) -
 
     db = SessionLocal()
     try:
-        # Find shareholder
+        # Find shareholder: try code, username, or fullname
         shareholder = db.query(Shareholder).filter(Shareholder.shareholder_code == shareholder_code).first()
         if not shareholder:
+            username_clean = shareholder_code.lstrip('@')
+            shareholder = db.query(Shareholder).filter(
+                or_(
+                    Shareholder.username == username_clean,
+                    Shareholder.username == shareholder_code,
+                    Shareholder.fullname.ilike(f"%{shareholder_code}%")
+                )
+            ).first()
+
+        if not shareholder:
             await message.reply_text(
-                f"⚠️ Không tìm thấy cổ đông với mã <b>{shareholder_code}</b>.",
+                f"⚠️ Không tìm thấy cổ đông với thông tin/mã <b>{shareholder_code}</b>.",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -12924,11 +12971,9 @@ async def tien_nga_check_history_transaction_handler(client, message: Message) -
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
 async def tien_nga_export_report_summary_handler(client, message: Message) -> None:
-    args_text = (message.text or "").strip()
-    # Remove command prefix
-    for cmd in ["tien_nga_export_report_summary", "tien_nga_xuat_bc_tong_hop"]:
-        args_text = re.sub(rf"^/?{cmd}\s*", "", args_text, flags=re.IGNORECASE).strip()
-    args_text = re.sub(r"^@\w+\s+/?(?:tien_nga_export_report_summary|tien_nga_xuat_bc_tong_hop)\s*", "", args_text, flags=re.IGNORECASE).strip()
+    args = await check_command_target(client, message.text, ["tien_nga_export_report_summary", "tien_nga_xuat_bc_tong_hop"])
+    if args is None: return
+    args_text = " ".join(args[1:]).strip()
 
     if not args_text:
         now = datetime.now()
@@ -19435,10 +19480,9 @@ async def tien_nga_balance_sheet_handler(client, message: Message) -> None:
     Xuất file Excel Bảng Cân Đối Kế Toán - Tài sản ngắn hạn: Tiền và tương đương tiền
     Dữ liệu từ bảng investments (status=ACTIVE, role=MEMBER)
     """
-    args_text = (message.text or "").strip()
-    for cmd in ["tien_nga_balance_sheet", "tien_nga_can_bang_ke_toan"]:
-        args_text = re.sub(rf"^/?{cmd}\s*", "", args_text, flags=re.IGNORECASE).strip()
-    args_text = re.sub(r"^@\w+\s+/?(?:tien_nga_balance_sheet|tien_nga_can_bang_ke_toan)\s*", "", args_text, flags=re.IGNORECASE).strip()
+    args = await check_command_target(client, message.text, ["tien_nga_balance_sheet", "tien_nga_can_bang_ke_toan"])
+    if args is None: return
+    args_text = " ".join(args[1:]).strip()
 
     if not args_text:
         now = datetime.now()
