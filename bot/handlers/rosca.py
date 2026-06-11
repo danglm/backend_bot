@@ -2449,7 +2449,7 @@ async def rosca_tinh_lai_gia_lap_handler(client, message: Message) -> None:
 
         # 4. Hiển thị kết quả
         result_text = f"""<b>TÍNH LÃI GIẢ LẬP DÂY HỤI: {rosca_code}</b>
-━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━
 - <b>Tổng số chân:</b> {total_parts} chân
 - <b>Tổng chân ngoài mình:</b> {total_parts_excluding_me} chân
 - <b>Số hụi chết (Kỳ đã qua):</b> {dead_rounds_count} kỳ
@@ -2458,7 +2458,7 @@ async def rosca_tinh_lai_gia_lap_handler(client, message: Message) -> None:
 - <b>Số tiền gốc 1 chân:</b> {fmt_vn(base_amount)}
 - <b>Số tiền bỏ sắp tới:</b> {fmt_vn(upcoming_bid)}
 - <b>Tiền thảo (Commission):</b> {fmt_vn(commission_fee)}
-━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━
 👉 <b>KẾT QUẢ GIẢ LẬP:</b>
 - <b>Tổng tiền hốt:</b> <b>{fmt_vn(total_withdrawn_amount)}</b>
 - <b>Tổng hụi chuẩn:</b> <b>{fmt_vn(total_standard_amount)}</b>
