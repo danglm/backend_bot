@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 import os
 from bot.core.config import settings
 from bot.utils.logger import LogInfo, LogError, LogType
@@ -59,6 +60,22 @@ async def lifespan(app: FastAPI):
         await bot.stop()
 
 app = FastAPI(lifespan=lifespan)
+
+# CORS - cho phép frontend Cloudflare Workers kết nối
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://hdggroup-frontend-2026.lmd16032002.workers.dev",
+        "https://unaffecting-christel-semijocularly.ngrok-free.dev",
+        "https://spore-unknown-crank.ngrok-free.dev",
+        "http://localhost:5173",   # dev local frontend
+        "http://localhost:3000",   # dev local frontend
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(hello.router)
 
 from app.api.v1 import telegram, auth, business, employee, salary, vehicle, credit, rental, tien_nga
