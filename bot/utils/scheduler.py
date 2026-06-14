@@ -2554,7 +2554,7 @@ async def rosca_payment_notification_worker():
 
                             members = db.query(RoscaMember).filter(
                                 RoscaMember.rosca_id == rosca.id,
-                                RoscaMember.status == "Playing"
+                                RoscaMember.status.in_(["Playing", "Dead"])
                             ).all()
                             LogInfo(f"[Rosca Worker] Found {len(members)} playing members in rosca {rosca.code} to notify.", LogType.SYSTEM_STATUS)
 
