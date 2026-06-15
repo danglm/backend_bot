@@ -1861,7 +1861,7 @@ async def rental_bad_debt_cancel_callback(client, callback_query: CallbackQuery)
 @bot.on_message(filters.command(["rental_tao_phieu_thu"]) | filters.regex(r"^@\w+\s+/rental_tao_phieu_thu\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Rental")
-@require_group_role("main")
+@require_group_role("main", "member")
 async def rental_tao_phieu_thu_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
