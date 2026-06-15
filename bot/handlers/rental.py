@@ -439,12 +439,19 @@ async def rental_check_contract_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về nhóm hợp lệ trong dự án hiện tại (Nhóm: {customer.group_name if customer else 'N/A'}).", parse_mode=ParseMode.HTML)
             return
 
+        # Get start date and determine months to display
+        import datetime
         from app.models.rental import RentalPayment
-        from sqlalchemy import func
-        total_paid = db.query(func.sum(RentalPayment.payment_amount)).filter(
+        
+        # Load all payments for this contract
+        payments = db.query(RentalPayment).filter(
             RentalPayment.contract_id == contract.contract_id
-        ).scalar() or 0.0
-
+        ).order_by(RentalPayment.payment_date.asc()).all()
+        
+        # Calculate total paid
+        total_paid = sum([p.payment_amount or 0.0 for p in payments])
+        
+        # Format helpers
         def fmt_num(val):
             if val is None: return 0
             return int(val) if val == int(val) else val
@@ -452,6 +459,39 @@ async def rental_check_contract_handler(client, message: Message) -> None:
         def fmt_dt(dt):
             if not dt: return "N/A"
             return dt.strftime('%d/%m/%Y')
+
+        # Group payments by month (year, month)
+        monthly_payments = {}
+        for p in payments:
+            if p.payment_date:
+                ym = (p.payment_date.year, p.payment_date.month)
+                monthly_payments.setdefault(ym, []).append(p)
+                
+        # Generate the list of lease months from start_rental's month up to:
+        # - end_rental's month (if end_rental is in the past)
+        # - current month (otherwise)
+        months_list = []
+        if contract.start_rental:
+            start_rental_date = contract.start_rental
+            end_limit_date = datetime.date.today()
+            if contract.end_rental and contract.end_rental <= datetime.date.today():
+                end_limit_date = contract.end_rental
+                
+            curr = datetime.date(start_rental_date.year, start_rental_date.month, 1)
+            end_limit = datetime.date(end_limit_date.year, end_limit_date.month, 1)
+            while curr <= end_limit:
+                months_list.append((curr.year, curr.month))
+                if curr.month == 12:
+                    curr = datetime.date(curr.year + 1, 1, 1)
+                else:
+                    curr = datetime.date(curr.year, curr.month + 1, 1)
+        else:
+            # Fallback to payments keys only
+            months_list = list(monthly_payments.keys())
+                    
+        # Ensure any month with an actual payment is included, even if outside of standard range
+        all_keys = set(months_list).union(monthly_payments.keys())
+        sorted_keys = sorted(list(all_keys), key=lambda x: (x[0], x[1]))
 
         if contract.status == RentalStatus.ACTIVE.value:
             status_label = "Đang thuê"
@@ -470,18 +510,137 @@ async def rental_check_contract_handler(client, message: Message) -> None:
             f"Loại hợp đồng: <b>{contract.type_contract or 'N/A'}</b>",
             f"Mã Khách Hàng: <b>{customer.customer_id or 'N/A'}</b>",
             f"Tên: <b>{customer.customer_name}</b>",
-            f"Liên hệ: <b>{customer.contact_info}</b>",
+            f"Liên hệ: <b>{customer.contact_info or 'N/A'}</b>",
             f"Số Điện Thoại: <b>{customer.number_phone or 'N/A'}</b>",
             f"Mã BĐS: <b>{contract.real_estate_id or 'N/A'}</b>",
             f"Tiền Cọc: <b>{fmt_num(contract.deposit):,} VNĐ</b>",
             f"Tiền Thuê / Tháng: <b>{fmt_num(contract.monthly_rental):,} VNĐ</b>",
             f"Tổng giá trị hợp đồng: <b>{fmt_num(total_paid):,} VNĐ</b>",
-            # f"Tổng tiền thanh toán HD: <b>{fmt_num(contract.rental_debt):,} VNĐ</b>",
             f"Ngày Bắt Đầu Thuê: <b>{fmt_dt(contract.start_rental)}</b>",
             f"Ngày Kết Thúc Thuê: <b>{fmt_dt(contract.end_rental)}</b>",
         ]
 
-        await message.reply_text("\n".join(reply_lines), parse_mode=ParseMode.HTML)
+        if len(sorted_keys) > 12:
+            import tempfile
+            import os
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Lịch sử thanh toán"
+
+            # Styles
+            header_font = Font(bold=True, color="FFFFFF", size=11)
+            header_fill = PatternFill("solid", fgColor="2F5496")
+            center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            money_align = Alignment(horizontal="right", vertical="center")
+            thin_border = Border(
+                left=Side(style="thin"), right=Side(style="thin"),
+                top=Side(style="thin"), bottom=Side(style="thin"),
+            )
+            alt_fill = PatternFill("solid", fgColor="D9E2F3")
+
+            headers = ["STT", "Tháng", "Số tiền đã đóng (VNĐ)", "Ngày đóng", "Trạng thái"]
+            
+            # Write headers
+            for col_idx, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+                cell.border = thin_border
+
+            monthly_rental = contract.monthly_rental or 0.0
+
+            for idx, ym in enumerate(sorted_keys, 1):
+                row = idx + 1
+                row_fill = alt_fill if idx % 2 == 0 else None
+                
+                month_str = f"{ym[1]:02d}/{ym[0]}"
+                
+                p_list = monthly_payments.get(ym, [])
+                total_amt = sum([p.payment_amount or 0 for p in p_list])
+                
+                if p_list:
+                    dates_str = ", ".join([p.payment_date.strftime('%d/%m/%Y') for p in p_list if p.payment_date])
+                    if total_amt >= monthly_rental:
+                        status_str = "Đã đóng đủ"
+                    else:
+                        status_str = "Đóng thiếu"
+                else:
+                    dates_str = "—"
+                    status_str = "Chưa đóng"
+
+                values = [
+                    idx,
+                    month_str,
+                    f"{int(total_amt):,}".replace(",", ".") if total_amt > 0 else "0",
+                    dates_str,
+                    status_str
+                ]
+
+                for col_idx, val in enumerate(values, 1):
+                    cell = ws.cell(row=row, column=col_idx, value=val)
+                    cell.border = thin_border
+                    
+                    if col_idx in [1, 2, 4]:
+                        cell.alignment = center_align
+                    elif col_idx == 3:
+                        cell.alignment = money_align
+                    else:
+                        cell.alignment = left_align
+                        
+                    if row_fill:
+                        cell.fill = row_fill
+
+            col_widths = [8, 15, 25, 25, 18]
+            for col_idx, width in enumerate(col_widths, 1):
+                col_letter = openpyxl.utils.get_column_letter(col_idx)
+                ws.column_dimensions[col_letter].width = width
+
+            ws.freeze_panes = "A2"
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                tmp_path = tmp.name
+            wb.save(tmp_path)
+
+            now = datetime.datetime.now()
+            file_name = f"rental_payments_{now.strftime('%Y_%m_%d_%H_%M_%S')}.xlsx"
+            
+            # Send contract info and note in text
+            reply_lines.append("")
+            reply_lines.append("<i>⚠️ Chi tiết đóng tiền từng tháng (>12 tháng) được xuất ra file Excel đính kèm dưới đây.</i>")
+            
+            await message.reply_document(
+                document=tmp_path,
+                file_name=file_name,
+                caption="\n".join(reply_lines),
+                parse_mode=ParseMode.HTML
+            )
+            
+            # Clean up temp file safely
+            try:
+                os.remove(tmp_path)
+            except Exception as clean_err:
+                LogError(f"Error cleaning up temp file {tmp_path}: {clean_err}", LogType.SYSTEM_STATUS)
+                
+        else:
+            # 12 months or fewer: append to reply message directly
+            reply_lines.append("")
+            reply_lines.append("<b>Chi tiết đóng tiền từng tháng:</b>")
+            for ym in sorted_keys:
+                month_str = f"{ym[1]:02d}/{ym[0]}"
+                p_list = monthly_payments.get(ym, [])
+                total_amt = sum([p.payment_amount or 0.0 for p in p_list])
+                if p_list:
+                    dates_str = ", ".join([p.payment_date.strftime('%d/%m/%Y') for p in p_list if p.payment_date])
+                    reply_lines.append(f"- Tháng {month_str}: Đã đóng <b>{fmt_num(total_amt):,} VNĐ</b> (ngày {dates_str})")
+                else:
+                    reply_lines.append(f"- Tháng {month_str}: <b>Chưa đóng</b>")
+                    
+            await message.reply_text("\n".join(reply_lines), parse_mode=ParseMode.HTML)
 
     except Exception as e:
         LogError(f"Error in rental_check_contract_handler: {e}", LogType.SYSTEM_STATUS)
