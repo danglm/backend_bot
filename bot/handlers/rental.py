@@ -635,8 +635,7 @@ async def rental_check_contract_handler(client, message: Message) -> None:
                 p_list = monthly_payments.get(ym, [])
                 total_amt = sum([p.payment_amount or 0.0 for p in p_list])
                 if p_list:
-                    dates_str = ", ".join([p.payment_date.strftime('%d/%m/%Y') for p in p_list if p.payment_date])
-                    reply_lines.append(f"- Tháng {month_str}: Đã đóng <b>{fmt_num(total_amt):,} VNĐ</b> (ngày {dates_str})")
+                    reply_lines.append(f"- Tháng {month_str}: Đã đóng <b>{fmt_num(total_amt):,} VNĐ</b>")
                 else:
                     reply_lines.append(f"- Tháng {month_str}: <b>Chưa đóng</b>")
                     
