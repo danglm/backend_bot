@@ -707,6 +707,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("rental_xem_cong_no", "Xem công nợ"),
                     BotCommand("rental_doanh_thu", "Doanh thu"),
                     BotCommand("rental_bao_cao_dong_tien", "Báo cáo dòng tiền"),
+                    BotCommand("rental_tao_phieu_thu", "Tạo phiếu thu hợp đồng"),
                 ]
             else:
                 label = "Rental (Member)"

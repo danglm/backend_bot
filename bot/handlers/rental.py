@@ -1855,3 +1855,121 @@ async def rental_bad_debt_confirm_callback(client, callback_query: CallbackQuery
 @bot.on_callback_query(filters.regex(r"^rbd_cancel$"))
 async def rental_bad_debt_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.edit_text("❌ Đã hủy thao tác đưa vào Blacklist.")
+
+
+# --- Rental: Tạo Phiếu Thu ---
+@bot.on_message(filters.command(["rental_tao_phieu_thu"]) | filters.regex(r"^@\w+\s+/rental_tao_phieu_thu\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Rental")
+@require_group_role("main")
+async def rental_tao_phieu_thu_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    # If single line -> send blank/prefilled form template
+    if len(lines) < 2:
+        args = message.text.split(maxsplit=1)
+        contract_code_prefill = ""
+        if len(args) > 1:
+            contract_code_prefill = args[1].strip()
+
+        today_str = datetime.date.today().strftime("%d/%m/%Y")
+        
+        form_template = f"""<b>FORM TẠO PHIẾU THU HỢP ĐỒNG</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/rental_tao_phieu_thu
+Mã hợp đồng: {contract_code_prefill}
+Ngày thanh toán: {today_str}
+Số tiền thanh toán: </pre>"""
+        await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        return
+
+    # If multi-line -> parse form
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip().lower()] = val.strip()
+
+    contract_id = data.get("mã hợp đồng", "").strip()
+    payment_date_str = data.get("ngày thanh toán", "").strip()
+    payment_amount_str = data.get("số tiền thanh toán", "").strip()
+
+    if not contract_id or not payment_date_str or not payment_amount_str:
+        await message.reply_text(
+            "⚠️ <b>Mã hợp đồng</b>, <b>Ngày thanh toán</b> và <b>Số tiền thanh toán</b> là bắt buộc.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Parse and validate amount
+    try:
+        paid_amount = _parse_float_rental(payment_amount_str)
+    except Exception:
+        paid_amount = 0.0
+
+    if paid_amount <= 0:
+        await message.reply_text("⚠️ <b>Số tiền thanh toán</b> không hợp lệ hoặc phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
+
+    # Parse and validate date
+    payment_date = None
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            payment_date = datetime.datetime.strptime(payment_date_str, fmt).date()
+            break
+        except ValueError:
+            continue
+
+    if not payment_date:
+        await message.reply_text("⚠️ Định dạng <b>Ngày thanh toán</b> không hợp lệ. Vui lòng dùng <code>dd/mm/yyyy</code>.", parse_mode=ParseMode.HTML)
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.rental import Rental, RentalPayment, RentalCustomer
+        import uuid as _uuid
+
+        # Verify contract exists
+        contract = db.query(Rental).filter(Rental.contract_id == contract_id).first()
+        if not contract:
+            await message.reply_text(f"❌ Không tìm thấy hợp đồng cho thuê nào có mã <b>{contract_id}</b> trong hệ thống.", parse_mode=ParseMode.HTML)
+            return
+
+        # Insert new RentalPayment record (DO NOT update rentals table)
+        new_payment = RentalPayment(
+            id=_uuid.uuid4(),
+            contract_id=contract.contract_id,
+            payment_date=payment_date,
+            payment_time=datetime.datetime.now(),
+            payment_amount=paid_amount
+        )
+        db.add(new_payment)
+        db.commit()
+
+        customer = db.query(RentalCustomer).filter(RentalCustomer.id == contract.customer_id).first()
+        cust_name = customer.customer_name if customer else "N/A"
+
+        def fmt_money_local(val):
+            if val is None: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        success_msg = (
+            f"✅ <b>TẠO PHIẾU THU THÀNH CÔNG</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"<b>Mã hợp đồng:</b> <code>{contract.contract_id}</code>\n"
+            f"<b>Khách hàng:</b> <b>{cust_name}</b>\n"
+            f"<b>Ngày thanh toán:</b> <code>{payment_date.strftime('%d/%m/%Y')}</code>\n"
+            f"<b>Số tiền thanh toán:</b> <code>{fmt_money_local(paid_amount)}</code>\n\n"
+            f"<i>Lưu ý: Đã tạo bản ghi thanh toán mới. Không thay đổi dư nợ trong bảng rentals.</i>"
+        )
+        await message.reply_text(success_msg, parse_mode=ParseMode.HTML)
+        LogInfo(f"[RentalTaoPhieuThu] Created payment of {paid_amount} for contract {contract.contract_id} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in rental_tao_phieu_thu_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra trong quá trình tạo phiếu thu.")
+    finally:
+        db.close()
+
