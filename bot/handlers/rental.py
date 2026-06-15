@@ -439,6 +439,12 @@ async def rental_check_contract_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về nhóm hợp lệ trong dự án hiện tại (Nhóm: {customer.group_name if customer else 'N/A'}).", parse_mode=ParseMode.HTML)
             return
 
+        from app.models.rental import RentalPayment
+        from sqlalchemy import func
+        total_paid = db.query(func.sum(RentalPayment.payment_amount)).filter(
+            RentalPayment.contract_id == contract.contract_id
+        ).scalar() or 0.0
+
         def fmt_num(val):
             if val is None: return 0
             return int(val) if val == int(val) else val
@@ -466,9 +472,10 @@ async def rental_check_contract_handler(client, message: Message) -> None:
             f"Tên: <b>{customer.customer_name}</b>",
             f"Liên hệ: <b>{customer.contact_info}</b>",
             f"Số Điện Thoại: <b>{customer.number_phone or 'N/A'}</b>",
-            f"Mã BĐS: <b>{contract.real_estate_id or 'N/A'}<b>",
+            f"Mã BĐS: <b>{contract.real_estate_id or 'N/A'}</b>",
             f"Tiền Cọc: <b>{fmt_num(contract.deposit):,} VNĐ</b>",
             f"Tiền Thuê / Tháng: <b>{fmt_num(contract.monthly_rental):,} VNĐ</b>",
+            f"Tổng giá trị hợp đồng: <b>{fmt_num(total_paid):,} VNĐ</b>",
             # f"Tổng tiền thanh toán HD: <b>{fmt_num(contract.rental_debt):,} VNĐ</b>",
             f"Ngày Bắt Đầu Thuê: <b>{fmt_dt(contract.start_rental)}</b>",
             f"Ngày Kết Thúc Thuê: <b>{fmt_dt(contract.end_rental)}</b>",
