@@ -825,7 +825,7 @@ async def tien_nga_create_customer_handler(client, message: Message) -> None:
             return
             
         new_customer = Customers(
-            id=str(uuid.uuid4()),
+            id=hoursehold_id,
             fullname=fullname,
             hoursehold_id=hoursehold_id,
             collection_point_id=cp_id,
