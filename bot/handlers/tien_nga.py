@@ -7697,6 +7697,50 @@ async def ttcn_action_callback(client, callback_query: CallbackQuery):
 
         # Update debt
         entity.total_debt = new_debt
+
+        # === Phân bổ thanh toán vào daily_purchases (chỉ khi trả công nợ cho customer/household) ===
+        dp_updated_details = []
+        dp_remaining = amount
+        if action == "tra" and target_type in ("customer"):
+            from app.models.business import DailyPurchases, Households as _Households
+
+            # Xác định hoursehold_id dùng trong daily_purchases
+            dp_hoursehold_id = None
+            if target_type == "customer":
+                dp_hoursehold_id = target_id  # Customers.hoursehold_id == DailyPurchases.hoursehold_id
+            elif target_type == "household":
+                _hh = db.query(_Households).filter(_Households.household_code == target_id).first()
+                if _hh and _hh.purchase_code:
+                    dp_hoursehold_id = _hh.purchase_code
+
+            if dp_hoursehold_id:
+                # Lấy tất cả records có saved_amount > 0, sắp xếp theo ngày cũ → mới (FIFO)
+                pending_records = db.query(DailyPurchases).filter(
+                    DailyPurchases.hoursehold_id == dp_hoursehold_id,
+                    DailyPurchases.saved_amount > 0
+                ).order_by(DailyPurchases.day.asc()).all()
+
+                dp_remaining = amount  # Số tiền còn cần phân bổ
+
+                for record in pending_records:
+                    if dp_remaining <= 0:
+                        break
+
+                    current_saved = record.saved_amount or 0
+                    if current_saved <= 0:
+                        continue
+
+                    allocated = min(dp_remaining, current_saved)
+                    record.paid_amount = (record.paid_amount or 0) + allocated
+                    record.saved_amount = current_saved - allocated
+                    dp_remaining -= allocated
+
+                    dp_updated_details.append({
+                        "day": record.day.strftime("%d/%m/%Y") if record.day else "N/A",
+                        "allocated": allocated,
+                        "new_saved": record.saved_amount
+                    })
+
         db.commit()
 
         success_msg = (
@@ -7714,6 +7758,18 @@ async def ttcn_action_callback(client, callback_query: CallbackQuery):
             success_msg += f"\n\n<i>Đã thanh toán hết công nợ!</i>"
         elif new_debt < 0:
             success_msg += f"\n\n<i>Công nợ âm <code>{fmt_vn(new_debt)}</code> (đối tượng đang nợ mình).</i>"
+
+        # Hiển thị chi tiết phân bổ daily_purchases (nếu có)
+        if dp_updated_details:
+            success_msg += f"\n\n📋 <b>CHI TIẾT PHÂN BỔ THANH TOÁN</b>\n"
+            for detail in dp_updated_details:
+                success_msg += (
+                    f"• {detail['day']}: "
+                    f"TT <code>{fmt_vn(detail['allocated'])}</code>, "
+                    f"Còn lưu sổ <code>{fmt_vn(detail['new_saved'])}</code>\n"
+                )
+            if dp_remaining > 0:
+                success_msg += f"\n<i>⚠️ Số tiền dư chưa phân bổ: <code>{fmt_vn(dp_remaining)}</code></i>"
 
         await callback_query.message.edit_text(success_msg, parse_mode=ParseMode.HTML)
 
@@ -7753,12 +7809,11 @@ async def ttcn_action_callback(client, callback_query: CallbackQuery):
                     TelegramProjectMember.role == "member",
                     TelegramProjectMember.group_name == entity.telegram_group
                 ).first()
-            elif target_type == "customer" and entity.username:
-                username_clean = entity.username.lstrip('@')
+            elif target_type == "customer" and entity.telegram_group:
                 member_chat = db.query(TelegramProjectMember).filter(
                     TelegramProjectMember.project_id == project.id,
                     TelegramProjectMember.role == "member",
-                    TelegramProjectMember.user_name == username_clean
+                    TelegramProjectMember.group_name == entity.telegram_group
                 ).first()
             elif target_type == "household" and entity.telegram_group:
                 member_chat = db.query(TelegramProjectMember).filter(
@@ -9200,7 +9255,7 @@ async def cpd_selinv_callback(client, callback_query: CallbackQuery):
 
     elif pending_type == "sup":
         cp_id = pending.get("cp_id", "")
-        from app.models.business import Customers, CollectionPoint
+        from app.models.business import Customers, CollectionPoint, DailyPurchases
         db = SessionLocal()
         try:
             inv = db.query(Investment).filter(Investment.id == inv_id_str).first()
@@ -9243,7 +9298,32 @@ async def cpd_selinv_callback(client, callback_query: CallbackQuery):
                     inv.profit = (inv.total_income or 0) - (inv.total_expense or 0)
                     _sync_parent_investment(db, inv)
                     cust.total_debt = 0
+
+                    # === Phân bổ thanh toán vào daily_purchases (FIFO) ===
+                    dp_alloc_details = []
+                    pending_dp = db.query(DailyPurchases).filter(
+                        DailyPurchases.hoursehold_id == cust.hoursehold_id,
+                        DailyPurchases.saved_amount > 0
+                    ).order_by(DailyPurchases.day.asc()).all()
+
+                    dp_remaining = old_debt
+                    for rec in pending_dp:
+                        if dp_remaining <= 0:
+                            break
+                        cur_saved = rec.saved_amount or 0
+                        if cur_saved <= 0:
+                            continue
+                        alloc = min(dp_remaining, cur_saved)
+                        rec.paid_amount = (rec.paid_amount or 0) + alloc
+                        rec.saved_amount = cur_saved - alloc
+                        dp_remaining -= alloc
+                        dp_alloc_details.append(
+                            f"   {rec.day.strftime('%d/%m') if rec.day else 'N/A'}: TT <code>{fmt_vn(alloc)}</code>, Còn <code>{fmt_vn(rec.saved_amount)}</code>"
+                        )
+
                     msg_line = f"• <b>{cust.hoursehold_id}</b> — {name}: <code>{fmt_vn(old_debt)}</code> → <code>0</code>"
+                    if dp_alloc_details:
+                        msg_line += "\n" + "\n".join(dp_alloc_details)
                     success_list.append(msg_line)
                     success_details.append({"msg": msg_line, "tg_group": cust.telegram_group})
                 else:
@@ -9279,7 +9359,7 @@ async def cpd_selinv_callback(client, callback_query: CallbackQuery):
                         for tg_group_name, msgs in group_msgs.items():
                             member_group = db.query(TelegramProjectMember).filter(
                                 TelegramProjectMember.project_id == project.id,
-                                TelegramProjectMember.chat_name == tg_group_name
+                                TelegramProjectMember.group_name == tg_group_name
                             ).first()
                             
                             if member_group:
