@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, time
 from uuid import UUID
 
@@ -13,6 +13,8 @@ class AttendanceBase(BaseModel):
     off_hours: Optional[time] = None
     check_in_time: Optional[datetime] = None
     check_out_time: Optional[datetime] = None
+    start_overtime: Optional[datetime] = None
+    end_overtime: Optional[datetime] = None
     break_time: Optional[float] = None
     working_time: Optional[float] = None
     late_time: Optional[float] = None
@@ -23,9 +25,18 @@ class AttendanceCreate(AttendanceBase):
     pass
 
 class AttendanceUpdate(BaseModel):
-    check_out_time: Optional[datetime] = None
+    id: Optional[UUID] = None
+    employee_id: str
+    year: int
+    month: int
+    day: int
+    date_str: Optional[str] = None
     work_hours: Optional[float] = None
     off_hours: Optional[time] = None
+    check_in_time: Optional[datetime] = None
+    check_out_time: Optional[datetime] = None
+    start_overtime: Optional[datetime] = None
+    end_overtime: Optional[datetime] = None
     break_time: Optional[float] = None
     working_time: Optional[float] = None
     late_time: Optional[float] = None
@@ -40,3 +51,10 @@ class AttendanceInDBBase(AttendanceBase):
 
 class Attendance(AttendanceInDBBase):
     pass
+
+class AttendanceResponse(BaseModel):
+    employee_id: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    attendance: List[Attendance]
+

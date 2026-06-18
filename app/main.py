@@ -78,16 +78,17 @@ app.add_middleware(
 
 app.include_router(hello.router)
 
-from app.api.v1 import telegram, auth, business, employee, salary, vehicle, credit, rental, tien_nga
+from app.api.v1 import telegram, auth, business, employee, salary, vehicle, credit, rental, tien_nga, attendance
 app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["telegram"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(business.router, prefix="/api/v1/business", tags=["business"])
 app.include_router(employee.router, prefix="/api/v1/employee", tags=["employee"])
-app.include_router(salary.router, prefix="/api/v1/salary", tags=["salary"])
+app.include_router(salary.router, prefix="/api/v1", tags=["salary"])
 app.include_router(vehicle.router, prefix="/api/v1/vehicle", tags=["vehicle"])
 app.include_router(credit.router, prefix="/api/v1/credit", tags=["credit"])
 app.include_router(rental.router, prefix="/api/v1/rental", tags=["rental"])
 app.include_router(tien_nga.router, prefix="/api/v1/tien-nga", tags=["tien-nga"])
+app.include_router(attendance.router, prefix="/api/v1", tags=["attendance"])
 
 
 @app.get("/")

@@ -4,6 +4,7 @@ from app.api.deps import get_db, get_current_user
 from app.schemas.customer import CustomerResponse, CustomerCreate, CustomerUpdate
 from app.schemas.collection_point import CollectionPointResponse
 from app.schemas import DailyPurchaseResponse, DailyPurchaseCreate, DailyPurchaseUpdate, MaterialPurchaseResponse, MaterialPurchaseCreate, InventoryResponse, InventoryCreate, PartnerResponse, PartnerCreate, PartnerUpdate, PartnerBusinessResponse, PartnerBusinessCreate, PartnerBusinessUpdate, InvestmentResponse, InvestmentCreate, InvestmentUpdate, DailyPaymentResponse, DailyPaymentCreate, InventoryExportResponse, InventoryExportCreate, ProductTransactionResponse, ProductTransactionCreate
+from app.schemas.process_debt import ProcessDebtRequest, ProcessDebtResponse, DailyPurchaseAllocation
 from app.crud.customer import (
     get_customers_with_collection_name,
     get_collection_points_by_ingredient,
@@ -56,15 +57,17 @@ router = APIRouter()
 def get_customers(
     ingredient: Optional[str] = None, 
     collection_point_id: Optional[str] = None,
+    hoursehold_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Credential = Depends(get_current_user)
 ):
-    LogInfo(f"[TienNga API] Received get-customers request. Raw ingredient: {ingredient}, collection_point_id: {collection_point_id}")
+    LogInfo(f"[TienNga API] Received get-customers request. Raw ingredient: {ingredient}, collection_point_id: {collection_point_id}, hoursehold_id: {hoursehold_id}")
     try:
         customers = get_customers_with_collection_name(
             db, 
             ingredient=ingredient, 
-            collection_point_id=collection_point_id
+            collection_point_id=collection_point_id,
+            hoursehold_id=hoursehold_id
         )
         LogInfo(f"[TienNga API] Found {len(customers)} customers.")
         return customers
@@ -1692,3 +1695,130 @@ def delete_product_transactions_api(
     except Exception as e:
         LogInfo(f"[TienNga API] Error in delete-product-transactions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/process-debt", response_model=ProcessDebtResponse)
+def process_debt(
+    request: ProcessDebtRequest,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    LogInfo(f"[TienNga API] Received process-debt request. hoursehold_id={request.hoursehold_id}, employee_id={request.employee_id}, partner_id={request.partner_id}, amount={request.amount}, type_transaction={request.type_transaction}")
+
+    try:
+        # Validate type_transaction
+        if request.type_transaction not in ("thu", "chi"):
+            raise HTTPException(
+                status_code=400,
+                detail="type_transaction phải là 'thu' hoặc 'chi'."
+            )
+
+        if request.amount <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="amount phải lớn hơn 0."
+            )
+
+        # --- Xử lý cho hoursehold_id (customer) ---
+        if request.hoursehold_id:
+            customer = db.query(Customers).filter(
+                Customers.hoursehold_id == request.hoursehold_id
+            ).first()
+
+            if not customer:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Không tìm thấy khách hàng với mã hộ '{request.hoursehold_id}'."
+                )
+
+            old_debt = customer.total_debt or 0
+
+            if request.type_transaction == "thu":
+                # Thu công nợ: debt tăng (cộng amount)
+                new_debt = old_debt + int(request.amount)
+                customer.total_debt = new_debt
+                db.commit()
+
+                return ProcessDebtResponse(
+                    success=True,
+                    message=f"Thu công nợ thành công cho khách hàng {customer.fullname or customer.hoursehold_id}.",
+                    target_id=customer.hoursehold_id,
+                    target_name=customer.fullname,
+                    type_transaction="thu",
+                    amount=request.amount,
+                    old_debt=old_debt,
+                    new_debt=new_debt,
+                )
+
+            else:
+                # Chi (trả) công nợ: debt giảm (trừ amount) + phân bổ FIFO vào daily_purchases
+                new_debt = old_debt - int(request.amount)
+                customer.total_debt = new_debt
+
+                # === Phân bổ FIFO vào daily_purchases ===
+                pending_records = db.query(DailyPurchases).filter(
+                    DailyPurchases.hoursehold_id == request.hoursehold_id,
+                    DailyPurchases.saved_amount > 0
+                ).order_by(DailyPurchases.day.asc()).all()
+
+                remaining = request.amount
+                allocations = []
+
+                for record in pending_records:
+                    if remaining <= 0:
+                        break
+
+                    current_saved = record.saved_amount or 0
+                    if current_saved <= 0:
+                        continue
+
+                    allocated = min(remaining, current_saved)
+                    record.paid_amount = (record.paid_amount or 0) + allocated
+                    record.saved_amount = current_saved - allocated
+                    remaining -= allocated
+
+                    allocations.append(DailyPurchaseAllocation(
+                        day=record.day,
+                        allocated=allocated,
+                        new_saved=record.saved_amount,
+                    ))
+
+                db.commit()
+
+                return ProcessDebtResponse(
+                    success=True,
+                    message=f"Trả công nợ thành công cho khách hàng {customer.fullname or customer.hoursehold_id}.",
+                    target_id=customer.hoursehold_id,
+                    target_name=customer.fullname,
+                    type_transaction="chi",
+                    amount=request.amount,
+                    old_debt=old_debt,
+                    new_debt=new_debt,
+                    allocations=allocations if allocations else None,
+                    unallocated_amount=remaining if remaining > 0 else None,
+                )
+
+        # --- employee_id, partner_id: logic sẽ được bổ sung sau ---
+        if request.employee_id:
+            raise HTTPException(
+                status_code=501,
+                detail="Xử lý công nợ cho employee chưa được triển khai."
+            )
+
+        if request.partner_id:
+            raise HTTPException(
+                status_code=501,
+                detail="Xử lý công nợ cho partner chưa được triển khai."
+            )
+
+        raise HTTPException(
+            status_code=400,
+            detail="Vui lòng cung cấp ít nhất một trong: hoursehold_id, employee_id, partner_id."
+        )
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in process-debt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

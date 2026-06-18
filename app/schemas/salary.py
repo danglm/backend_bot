@@ -34,3 +34,25 @@ class Salary(SalaryBase):
 
     class Config:
         from_attributes = True
+
+
+class GetSalaryResponse(BaseModel):
+    employee_id: str
+    employee_name: str
+    standard_workdays: int
+    actual_workdays: int
+    base_salary: float
+    overtime_salary: float
+    other_allowance: float
+    lunch_allowance: float
+    productivity_bonus: float
+    bonus: float
+    bhxh: float
+    penalty: float
+    received_salary: float
+    total_received: float
+    status: str
+
+    class Config:
+        from_attributes = True
+

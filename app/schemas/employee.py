@@ -23,6 +23,8 @@ class Credential(CredentialBase):
 class EmployeeBase(BaseModel):
     id: str
     username: Optional[str] = None
+    authority: Optional[str] = None
+    telegram_group: Optional[str] = None
     last_name: Optional[str] = None
     first_name: Optional[str] = None
     gender: Optional[str] = None
@@ -62,9 +64,13 @@ class EmployeeBase(BaseModel):
     hourly_salary: Optional[float] = None
     overtime_salary: Optional[float] = None
     rate_bhxh: Optional[float] = None
+    lunch_allowance: Optional[float] = None
+    productivity_bonus: Optional[float] = None
+    other_allowance: Optional[float] = None
     leave_balance: Optional[int] = None
     auto_attendance: Optional[bool] = None
     work_type: Optional[int] = None
+    total_debt: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     sat_start_time: Optional[datetime] = None
@@ -74,7 +80,10 @@ class EmployeeCreate(EmployeeBase):
     pass
 
 class EmployeeUpdate(BaseModel):
+    id: str
     username: Optional[str] = None
+    authority: Optional[str] = None
+    telegram_group: Optional[str] = None
     last_name: Optional[str] = None
     first_name: Optional[str] = None
     gender: Optional[str] = None
@@ -114,13 +123,18 @@ class EmployeeUpdate(BaseModel):
     hourly_salary: Optional[float] = None
     overtime_salary: Optional[float] = None
     rate_bhxh: Optional[float] = None
+    lunch_allowance: Optional[float] = None
+    productivity_bonus: Optional[float] = None
+    other_allowance: Optional[float] = None
     leave_balance: Optional[int] = None
     auto_attendance: Optional[bool] = None
     work_type: Optional[int] = None
+    total_debt: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     sat_start_time: Optional[datetime] = None
     sat_end_time: Optional[datetime] = None
+
 
 class EmployeeResponse(EmployeeBase):
     created_at: Optional[datetime] = None

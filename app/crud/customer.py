@@ -16,10 +16,11 @@ def get_customers_with_collection_name(
     db: Session,
     ingredient: Optional[str] = None,
     collection_point_id: Optional[str] = None,
+    hoursehold_id: Optional[str] = None,
 ) -> List[dict]:
     """
     Get all customers with their associated collection point name.
-    Optionally filter by ingredient or collection_point_id.
+    Optionally filter by ingredient, collection_point_id, or hoursehold_id.
     """
     query = db.query(Customers, CollectionPoint.collection_name).outerjoin(
         CollectionPoint, Customers.collection_point_id == CollectionPoint.id
@@ -39,6 +40,9 @@ def get_customers_with_collection_name(
         
     if collection_point_id is not None:
         query = query.filter(Customers.collection_point_id == collection_point_id)
+        
+    if hoursehold_id is not None:
+        query = query.filter(Customers.hoursehold_id == hoursehold_id)
         
     results = query.all()
     

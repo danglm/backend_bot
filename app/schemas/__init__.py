@@ -11,5 +11,6 @@ from .investment import InvestmentResponse, InvestmentCreate, InvestmentUpdate
 from .daily_payment import DailyPaymentResponse, DailyPaymentCreate
 from .inventory_export import InventoryExportResponse, InventoryExportCreate
 from .product_transaction import ProductTransactionResponse, ProductTransactionCreate
+from .payroll import PayrollResponse, PayrollCreate
 
 
