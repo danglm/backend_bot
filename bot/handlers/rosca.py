@@ -2475,3 +2475,267 @@ async def rosca_tinh_lai_gia_lap_handler(client, message: Message) -> None:
     finally:
         db.close()
 
+
+# --- Rosca: Báo Cáo Hụi Theo Năm ---
+# In-memory storage for report data (keyed by chat_id + message_id)
+_rosca_report_cache = {}
+
+@bot.on_message(filters.command(["hui_bao_cao_hui"]) | filters.regex(r"^@\w+\s+/hui_bao_cao_hui\b"))
+@require_group_role("main", "member")
+async def rosca_bao_cao_hui_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["hui_bao_cao_hui"])
+    if args is None: return
+
+    if len(args) < 3:
+        await message.reply_text(
+            "⚠️ <b>Cú pháp lệnh không hợp lệ.</b>\n"
+            "Vui lòng nhập: <code>/hui_bao_cao_hui [mã người chơi] [yyyy]</code>\n"
+            "Ví dụ: <code>/hui_bao_cao_hui NC01 2025</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    player_id = args[1].strip()
+    year_str = args[2].strip()
+
+    try:
+        year = int(year_str)
+    except ValueError:
+        await message.reply_text("⚠️ <b>Năm</b> không hợp lệ. Vui lòng nhập số nguyên (VD: 2025).", parse_mode=ParseMode.HTML)
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.rosca import UserRosca, RoscaMember, Rosca, RoscaContribution
+        from bot.utils.utils import fmt_vn
+        from sqlalchemy import extract, or_
+        import datetime
+
+        # 1. Find the user (người chơi)
+        user = db.query(UserRosca).filter(UserRosca.id == player_id).first()
+        if not user:
+            await message.reply_text(f"⚠️ Không tìm thấy người chơi có mã: <b>{player_id}</b>", parse_mode=ParseMode.HTML)
+            return
+
+        # 2. Get all RoscaMember (chân hụi) for this user
+        all_members = db.query(RoscaMember).filter(RoscaMember.user_id == user.id).all()
+        if not all_members:
+            await message.reply_text(f"⚠️ Người chơi <b>{user.full_name}</b> chưa có chân hụi nào.", parse_mode=ParseMode.HTML)
+            return
+
+        # 3. Get rosca_ids and filter roscas where year of start_date = yyyy OR year of end_date = yyyy
+        rosca_ids = list(set(m.rosca_id for m in all_members if m.rosca_id))
+        roscas = db.query(Rosca).filter(
+            Rosca.id.in_(rosca_ids),
+            or_(
+                extract('year', Rosca.start_date) == year,
+                extract('year', Rosca.end_date) == year,
+            )
+        ).all()
+
+        if not roscas:
+            await message.reply_text(
+                f"⚠️ Không tìm thấy Dây hụi nào liên quan đến năm <b>{year}</b> cho người chơi <b>{user.full_name}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        rosca_map = {r.id: r for r in roscas}
+        valid_rosca_ids = set(rosca_map.keys())
+
+        # Filter members to only those linked to valid roscas
+        members = [m for m in all_members if m.rosca_id in valid_rosca_ids]
+
+        # ========== Query contributions for the year (shared by all sections) ==========
+        member_ids = [m.id for m in members]
+
+        # Query contributions with actual_payment_date in the given year
+        contributions = db.query(RoscaContribution).filter(
+            RoscaContribution.member_id.in_(member_ids),
+            extract('year', RoscaContribution.actual_payment_date) == year,
+        ).all()
+
+        # ========== SECTION 1: TỔNG QUAN ==========
+        total_chan = len(members)
+        total_dang_choi = sum(1 for m in members if m.status == "Playing")
+
+        # Calculate profit per member from year-filtered contributions
+        member_profit_map = {}
+        for c in contributions:
+            if c.member_id not in member_profit_map:
+                member_profit_map[c.member_id] = 0.0
+            member_profit_map[c.member_id] += (c.amount or 0)
+
+        # Chân lời: status Dead + tổng amount trong năm > 0
+        total_loi = sum(1 for m in members if m.status == "Dead" and member_profit_map.get(m.id, 0) > 0)
+        # Chân lỗ: status Dead + tổng amount trong năm < 0
+        total_lo = sum(1 for m in members if m.status == "Dead" and member_profit_map.get(m.id, 0) < 0)
+
+        # ========== SECTION 2: TỔNG LỢI NHUẬN ==========
+        total_amount = sum(c.amount or 0 for c in contributions)
+        if total_amount > 0:
+            profit_label = "📈 Lời"
+        elif total_amount < 0:
+            profit_label = "📉 Lỗ"
+        else:
+            profit_label = "⚖️ Hòa vốn"
+
+        # ========== SECTION 3: CHI TIẾT THEO THÁNG ==========
+        monthly_data = {}
+        for c in contributions:
+            if c.actual_payment_date:
+                month_key = c.actual_payment_date.month
+                if month_key not in monthly_data:
+                    monthly_data[month_key] = 0.0
+                monthly_data[month_key] += (c.amount or 0)
+
+        # ========== SECTION 4: CHI TIẾT THEO MÃ DÂY HỤI ==========
+        rosca_detail_data = {}
+        for c in contributions:
+            if c.rosca_id and c.rosca_id in valid_rosca_ids:
+                rosca_code = rosca_map[c.rosca_id].code or c.rosca_id
+                if rosca_code not in rosca_detail_data:
+                    rosca_detail_data[rosca_code] = 0.0
+                rosca_detail_data[rosca_code] += (c.amount or 0)
+
+        # Build main report text (sections 1 & 2)
+        now = datetime.datetime.now()
+        report_text = (
+            f"<b>BÁO CÁO HỤI NĂM {year}</b>\n"
+            f"Cập nhật: {now.strftime('%d/%m/%Y %H:%M')}\n"
+            f"Người chơi: <b>{user.full_name}</b> ({user.id})\n"
+            f"{'━' * 10}\n\n"
+            f"<b>1. Tổng quan</b>\n"
+            f"  • Tổng số chân hụi: <b>{total_chan}</b>\n"
+            f"  • Tổng số chân lời: <b>{total_loi}</b>\n"
+            f"  • Tổng số chân lỗ: <b>{total_lo}</b>\n"
+            f"  • Tổng số chân đang chơi: <b>{total_dang_choi}</b>\n\n"
+            f"<b>2. Tổng lợi nhuận năm {year}</b>\n"
+            f"  • Tổng tiền: <b>{fmt_vn(total_amount)}</b>\n"
+            f"  • Đánh giá: {profit_label}\n"
+        )
+
+        # Send with 2 inline buttons for expandable sections
+        buttons = [
+            [InlineKeyboardButton("3. Chi tiết theo Tháng", callback_data="rbc_month_show")],
+            [InlineKeyboardButton("4. Chi tiết theo Mã Dây Hụi", callback_data="rbc_rosca_show")],
+        ]
+        keyboard = InlineKeyboardMarkup(buttons)
+
+        sent_msg = await message.reply_text(report_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+        # Cache report data for callbacks
+        cache_key = f"{sent_msg.chat.id}_{sent_msg.id}"
+        _rosca_report_cache[cache_key] = {
+            "base_text": report_text,
+            "monthly_data": monthly_data,
+            "rosca_detail_data": rosca_detail_data,
+            "year": year,
+            "player_name": user.full_name,
+            "month_expanded": False,
+            "rosca_expanded": False,
+        }
+
+        LogInfo(f"[RoscaReport] Generated yearly report for {player_id} year {year} by {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        LogError(f"Error in rosca_bao_cao_hui_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra trong quá trình tạo báo cáo hụi.")
+    finally:
+        db.close()
+
+
+def _build_rbc_report_text(cache):
+    """Build the full report text based on current expansion state."""
+    from bot.utils.utils import fmt_vn
+
+    text = cache["base_text"]
+    year = cache["year"]
+
+    # Section 3: Monthly detail
+    if cache["month_expanded"]:
+        text += f"\n<b>3. Chi tiết lợi nhuận theo tháng ({year})</b>\n"
+        monthly = cache["monthly_data"]
+        if monthly:
+            for month in sorted(monthly.keys()):
+                amount = monthly[month]
+                text += f"  Tháng {month:02d}: <b>{fmt_vn(amount)}</b>\n"
+        else:
+            text += "  <i>Không có dữ liệu.</i>\n"
+
+    # Section 4: Rosca detail
+    if cache["rosca_expanded"]:
+        text += f"\n<b>4. Chi tiết lợi nhuận theo Mã Dây Hụi ({year})</b>\n"
+        rosca_detail = cache["rosca_detail_data"]
+        if rosca_detail:
+            for code in sorted(rosca_detail.keys()):
+                amount = rosca_detail[code]
+                text += f"  {code}: <b>{fmt_vn(amount)}</b>\n"
+        else:
+            text += "  <i>Không có dữ liệu.</i>\n"
+
+    # Truncate if too long for Telegram
+    if len(text) > 3900:
+        text = text[:3850] + "\n\n<i>... (nội dung bị cắt do giới hạn hiển thị)</i>"
+
+    return text
+
+
+def _build_rbc_buttons(cache):
+    """Build inline buttons based on current expansion state."""
+    buttons = []
+    if cache["month_expanded"]:
+        buttons.append([InlineKeyboardButton("3. Thu gọn Chi tiết theo Tháng", callback_data="rbc_month_hide")])
+    else:
+        buttons.append([InlineKeyboardButton("3. Chi tiết theo Tháng", callback_data="rbc_month_show")])
+
+    if cache["rosca_expanded"]:
+        buttons.append([InlineKeyboardButton("4. Thu gọn Chi tiết theo Mã Dây Hụi", callback_data="rbc_rosca_hide")])
+    else:
+        buttons.append([InlineKeyboardButton("4. Chi tiết theo Mã Dây Hụi", callback_data="rbc_rosca_show")])
+
+    return InlineKeyboardMarkup(buttons)
+
+
+@bot.on_callback_query(filters.regex(r"^rbc_month_(show|hide)$"))
+async def rbc_month_toggle_callback(client, callback_query: CallbackQuery):
+    """Toggle monthly detail section in the ROSCA yearly report."""
+    action = callback_query.matches[0].group(1)
+    cache_key = f"{callback_query.message.chat.id}_{callback_query.message.id}"
+    cache = _rosca_report_cache.get(cache_key)
+
+    if not cache:
+        await callback_query.answer("⚠️ Báo cáo đã hết hạn. Vui lòng tạo lại.", show_alert=True)
+        return
+
+    cache["month_expanded"] = (action == "show")
+    text = _build_rbc_report_text(cache)
+    markup = _build_rbc_buttons(cache)
+
+    try:
+        await callback_query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+    await callback_query.answer()
+
+
+@bot.on_callback_query(filters.regex(r"^rbc_rosca_(show|hide)$"))
+async def rbc_rosca_toggle_callback(client, callback_query: CallbackQuery):
+    """Toggle per-rosca detail section in the ROSCA yearly report."""
+    action = callback_query.matches[0].group(1)
+    cache_key = f"{callback_query.message.chat.id}_{callback_query.message.id}"
+    cache = _rosca_report_cache.get(cache_key)
+
+    if not cache:
+        await callback_query.answer("⚠️ Báo cáo đã hết hạn. Vui lòng tạo lại.", show_alert=True)
+        return
+
+    cache["rosca_expanded"] = (action == "show")
+    text = _build_rbc_report_text(cache)
+    markup = _build_rbc_buttons(cache)
+
+    try:
+        await callback_query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+    await callback_query.answer()
