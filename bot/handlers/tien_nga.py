@@ -6731,7 +6731,7 @@ async def tien_nga_partner_warehouse_callback(client, callback_query):
             f"Mã Đối Tác: {partner_id}\n"
             f"Loại Giao Dịch: {txn_type}\n"
             f"Kho: {inventory.storage_name}\n"
-            f"Loại Sản Phẩm: Nguyên liệu\n"
+            f"Loại Sản Phẩm: Mủ thành phẩm\n"
             f"Ngày: {today_str}\n"
             f"Số Lượng (Kg): 0\n"
             f"Đơn Giá (VNĐ): 0\n"

@@ -1,6 +1,15 @@
 from pydantic import BaseModel, UUID4
 from datetime import date, datetime
 from typing import Optional
+import enum
+
+
+class RealEstateStatus(str, enum.Enum):
+    VACANT = "vacant"
+    OCCUPIED = "occupied"
+    SELLING = "selling"
+    SOLD = "sold"
+    MAINTENANCE = "maintenance"
 
 
 class RealEstateBase(BaseModel):
@@ -29,6 +38,8 @@ class RealEstateBase(BaseModel):
 class RealEstateCreate(RealEstateBase):
     pass
 
+class RealEstateUpdate(RealEstateBase):
+    id: UUID4
 
 class RealEstate(RealEstateBase):
     id: UUID4
@@ -47,6 +58,10 @@ class RentalCustomerBase(BaseModel):
 
 class RentalCustomerCreate(RentalCustomerBase):
     pass
+
+
+class RentalCustomerUpdate(RentalCustomerBase):
+    id: UUID4
 
 
 class RentalCustomer(RentalCustomerBase):
@@ -73,8 +88,34 @@ class RentalCreate(RentalBase):
     pass
 
 
+class RentalUpdate(RentalBase):
+    id: UUID4
+
+
 class Rental(RentalBase):
     id: UUID4
+
+    class Config:
+        from_attributes = True
+
+
+class RentalResponse(BaseModel):
+    id: UUID4
+    customer_id: Optional[UUID4] = None
+    customer_code: Optional[str] = None
+    customer_name: Optional[str] = None
+    group_name: Optional[str] = None
+    contact_info: Optional[str] = None
+    number_phone: Optional[str] = None
+    contract_id: Optional[str] = None
+    real_estate_id: Optional[str] = None
+    type_contract: Optional[str] = None
+    start_rental: Optional[date] = None
+    end_rental: Optional[date] = None
+    deposit: Optional[float] = None
+    monthly_rental: Optional[float] = None
+    rental_debt: Optional[float] = 0.0
+    status: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -91,8 +132,44 @@ class RentalPaymentCreate(RentalPaymentBase):
     pass
 
 
+class RentalPaymentUpdate(BaseModel):
+    id: UUID4
+    contract_id: Optional[str] = None
+    payment_date: Optional[date] = None
+    payment_time: Optional[datetime] = None
+    payment_amount: Optional[float] = None
+
+
 class RentalPayment(RentalPaymentBase):
     id: UUID4
+
+    class Config:
+        from_attributes = True
+
+
+class RentalPaymentResponse(BaseModel):
+    id: UUID4
+    contract_id: str
+    payment_date: Optional[date] = None
+    payment_time: Optional[datetime] = None
+    payment_amount: Optional[float] = None
+    
+    # Contract details
+    real_estate_id: Optional[str] = None
+    type_contract: Optional[str] = None
+    start_rental: Optional[date] = None
+    end_rental: Optional[date] = None
+    deposit: Optional[float] = None
+    monthly_rental: Optional[float] = None
+    rental_debt: Optional[float] = 0.0
+    status: Optional[str] = None
+    
+    # Customer details
+    customer_code: Optional[str] = None
+    customer_name: Optional[str] = None
+    group_name: Optional[str] = None
+    contact_info: Optional[str] = None
+    number_phone: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -9,6 +9,8 @@ class ProcessDebtRequest(BaseModel):
     partner_id: Optional[str] = None
     amount: float
     type_transaction: str  # "thu" hoặc "chi"
+    start_date: Optional[date] = None      # Ngày bắt đầu phân bổ FIFO
+    end_date: Optional[date] = None        # Ngày kết thúc phân bổ FIFO
 
 
 class DailyPurchaseAllocation(BaseModel):

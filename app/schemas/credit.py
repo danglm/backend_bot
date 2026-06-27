@@ -15,6 +15,9 @@ class CreditCustomerBase(BaseModel):
 class CreditCustomerCreate(CreditCustomerBase):
     pass
 
+class CreditCustomerUpdate(CreditCustomerBase):
+    id: UUID4
+
 class CreditCustomer(CreditCustomerBase):
     id: UUID4
 
@@ -43,11 +46,25 @@ class CreditBase(BaseModel):
 class CreditCreate(CreditBase):
     pass
 
+class CreditUpdate(CreditBase):
+    id: UUID4
+
 class Credit(CreditBase):
     id: UUID4
 
     class Config:
         from_attributes = True
+
+class CreditResponse(CreditBase):
+    id: UUID4
+    customer_code: Optional[str] = None
+    customer_name: Optional[str] = None
+    group_name: Optional[str] = None
+    contact_info: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 
 class CreditInterestBase(BaseModel):
     contract_id: str
@@ -60,6 +77,25 @@ class CreditInterestCreate(CreditInterestBase):
 
 class CreditInterest(CreditInterestBase):
     id: UUID4
+
+    class Config:
+        from_attributes = True
+
+class CreditInterestResponse(CreditInterestBase):
+    id: UUID4
+    # Contract info
+    loan_type: Optional[str] = None
+    initial_principal: Optional[float] = None
+    remaining_principal: Optional[float] = None
+    monthly_interest_rate: Optional[float] = None
+    credit_status: Optional[str] = None
+    start_date: Optional[date] = None
+    due_date: Optional[date] = None
+    # Customer info
+    customer_code: Optional[str] = None
+    customer_name: Optional[str] = None
+    group_name: Optional[str] = None
+    contact_info: Optional[str] = None
 
     class Config:
         from_attributes = True

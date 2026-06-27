@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user
 from app.schemas.customer import CustomerResponse, CustomerCreate, CustomerUpdate
 from app.schemas.collection_point import CollectionPointResponse
-from app.schemas import DailyPurchaseResponse, DailyPurchaseCreate, DailyPurchaseUpdate, MaterialPurchaseResponse, MaterialPurchaseCreate, InventoryResponse, InventoryCreate, PartnerResponse, PartnerCreate, PartnerUpdate, PartnerBusinessResponse, PartnerBusinessCreate, PartnerBusinessUpdate, InvestmentResponse, InvestmentCreate, InvestmentUpdate, DailyPaymentResponse, DailyPaymentCreate, InventoryExportResponse, InventoryExportCreate, ProductTransactionResponse, ProductTransactionCreate
+from app.schemas import DailyPurchaseResponse, DailyPurchaseCreate, DailyPurchaseUpdate, MaterialPurchaseResponse, MaterialPurchaseCreate, InventoryResponse, InventoryCreate, InventoryUpdate, PartnerResponse, PartnerCreate, PartnerUpdate, PartnerBusinessResponse, PartnerBusinessCreate, PartnerBusinessUpdate, InvestmentResponse, InvestmentCreate, InvestmentUpdate, DailyPaymentResponse, DailyPaymentCreate, InventoryExportResponse, InventoryExportCreate, ProductTransactionResponse, ProductTransactionCreate
 from app.schemas.process_debt import ProcessDebtRequest, ProcessDebtResponse, DailyPurchaseAllocation
+from app.schemas.loss_control import ProcessLossControlRequest, LossControlItem, ProcessLossControlResponse
 from app.crud.customer import (
     get_customers_with_collection_name,
     get_collection_points_by_ingredient,
@@ -21,6 +22,8 @@ from app.crud.customer import (
     get_inventories,
     get_inventories_by_material_name,
     create_inventory,
+    update_inventory,
+    delete_inventory,
     get_inventory_exports,
     get_product_transactions,
     create_product_transaction,
@@ -38,13 +41,14 @@ from app.crud.customer import (
     get_investments,
     create_investment,
     update_investment,
+    delete_investment,
     get_daily_payments,
     create_daily_payment,
     delete_daily_payment,
     update_investment_financials,
 )
 from app.models.employee import Credential
-from app.models.business import Customers, CollectionPoint, DailyPurchases, Partners, PartnerBusinesses, Investment, DailyPayment
+from app.models.business import Customers, CollectionPoint, DailyPurchases, Partners, PartnerBusinesses, Investment, DailyPayment, LossControls
 from app.models.inventory import Inventory, MaterialPurchase, InventoryExport, ProductTransaction
 from bot.utils.logger import LogInfo
 from typing import Optional, List
@@ -1196,6 +1200,46 @@ def update_investments(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/delete-investments", response_model=List[InvestmentResponse])
+def delete_investments(
+    investment_ids: List[UUID],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    LogInfo(f"[TienNga API] Received delete-investments request. Total investments to delete: {len(investment_ids)}")
+    try:
+        # Check for duplicates in input list itself
+        if len(investment_ids) != len(set(investment_ids)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate investment IDs found in the request input."
+            )
+            
+        # Check if all investment IDs exist in the database
+        existing_investments = db.query(Investment).filter(Investment.id.in_(investment_ids)).all()
+        existing_ids = {i.id for i in existing_investments}
+        
+        missing_ids = [iid for iid in investment_ids if iid not in existing_ids]
+        if missing_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Investments with IDs {missing_ids} not found in the database."
+            )
+            
+        deleted_investments = []
+        for inv in existing_investments:
+            deleted_investments.append(inv)
+            delete_investment(db, investment_uuid=inv.id)
+            
+        LogInfo(f"[TienNga API] Successfully deleted {len(deleted_investments)} investments.")
+        return deleted_investments
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in delete-investments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/get-daily-payments", response_model=List[DailyPaymentResponse])
 def get_daily_payments_api(
     investment_id: Optional[UUID] = None,
@@ -1703,7 +1747,7 @@ def process_debt(
     db: Session = Depends(get_db),
     current_user: Credential = Depends(get_current_user)
 ):
-    LogInfo(f"[TienNga API] Received process-debt request. hoursehold_id={request.hoursehold_id}, employee_id={request.employee_id}, partner_id={request.partner_id}, amount={request.amount}, type_transaction={request.type_transaction}")
+    LogInfo(f"[TienNga API] Received process-debt request. hoursehold_id={request.hoursehold_id}, employee_id={request.employee_id}, partner_id={request.partner_id}, amount={request.amount}, type_transaction={request.type_transaction}, start_date={request.start_date}, end_date={request.end_date}")
 
     try:
         # Validate type_transaction
@@ -1756,10 +1800,15 @@ def process_debt(
                 customer.total_debt = new_debt
 
                 # === Phân bổ FIFO vào daily_purchases ===
-                pending_records = db.query(DailyPurchases).filter(
+                pending_query = db.query(DailyPurchases).filter(
                     DailyPurchases.hoursehold_id == request.hoursehold_id,
                     DailyPurchases.saved_amount > 0
-                ).order_by(DailyPurchases.day.asc()).all()
+                )
+                if request.start_date:
+                    pending_query = pending_query.filter(DailyPurchases.day >= request.start_date)
+                if request.end_date:
+                    pending_query = pending_query.filter(DailyPurchases.day <= request.end_date)
+                pending_records = pending_query.order_by(DailyPurchases.day.asc()).all()
 
                 remaining = request.amount
                 allocations = []
@@ -1821,4 +1870,223 @@ def process_debt(
     except Exception as e:
         LogInfo(f"[TienNga API] Error in process-debt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/process-loss-control", response_model=ProcessLossControlResponse)
+def process_loss_control(
+    request: ProcessLossControlRequest,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    LogInfo(f"[TienNga API] Received process-loss-control request. collection_point_id={request.collection_point_id}, start_date={request.start_date}, end_date={request.end_date}")
+    try:
+        # 1. Validate date range
+        if request.start_date > request.end_date:
+            raise HTTPException(
+                status_code=400,
+                detail="start_date phải nhỏ hơn hoặc bằng end_date."
+            )
+
+        collection_name = None
+        code_prefix = None
+
+        # 2. Build LossControls query
+        lc_query = db.query(LossControls).filter(
+            LossControls.day >= request.start_date,
+            LossControls.day <= request.end_date
+        )
+
+        if request.collection_point_id:
+            # Validate UUID format
+            try:
+                uuid_val = UUID(str(request.collection_point_id))
+            except (ValueError, AttributeError):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"collection_point_id không đúng định dạng UUID: {request.collection_point_id}"
+                )
+
+            # Lấy CollectionPoint → code_prefix
+            collection_point = db.query(CollectionPoint).filter(
+                CollectionPoint.id == uuid_val
+            ).first()
+
+            if not collection_point:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Không tìm thấy điểm thu mua với ID: {request.collection_point_id}"
+                )
+
+            code_prefix = collection_point.code_prefix
+            collection_name = collection_point.collection_name
+
+            if not code_prefix:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Điểm thu mua '{collection_name}' chưa có code_prefix."
+                )
+
+            lc_query = lc_query.filter(
+                LossControls.product_code.like(f"{code_prefix}%")
+            )
+
+        # 3. Execute query
+        loss_controls = lc_query.order_by(LossControls.day.asc()).all()
+
+        # 4. Với mỗi LossControl → query ProductTransaction + tính % hao hụt
+        items = []
+        for lc in loss_controls:
+            total_import_quantity = 0.0
+
+            if lc.estimated_completion:
+                import_txns = db.query(ProductTransaction).filter(
+                    ProductTransaction.product_code == lc.product_code,
+                    ProductTransaction.transaction_date == lc.estimated_completion,
+                    ProductTransaction.transaction_type.in_(["Nhập", "nhập", "Import", "import"])
+                ).all()
+                total_import_quantity = sum(txn.quantity or 0 for txn in import_txns)
+
+            # Tính % hao hụt
+            total_dry_rubber = lc.total_dry_rubber or 0
+            if total_dry_rubber > 0:
+                loss_percentage = round((total_dry_rubber - total_import_quantity) / total_dry_rubber * 100, 2)
+            else:
+                loss_percentage = 0.0
+
+            items.append(LossControlItem(
+                product_code=lc.product_code,
+                day=lc.day,
+                estimated_completion=lc.estimated_completion,
+                total_dry_rubber=total_dry_rubber,
+                total_import_quantity=total_import_quantity,
+                loss_percentage=loss_percentage,
+                total_amount=lc.total_amount,
+                avg_unit_price=lc.avg_unit_price,
+                processing_type=lc.processing_type,
+                transaction_count=lc.transaction_count,
+            ))
+
+        log_suffix = f"prefix '{code_prefix}'" if code_prefix else "all collection points"
+        LogInfo(f"[TienNga API] process-loss-control: found {len(items)} loss control records for {log_suffix}.")
+
+        return ProcessLossControlResponse(
+            collection_point_id=request.collection_point_id,
+            collection_name=collection_name,
+            code_prefix=code_prefix,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            total_items=len(items),
+            items=items,
+        )
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in process-loss-control: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/add-inventories", response_model=List[InventoryResponse])
+def add_inventories(
+    inventories_in: List[InventoryCreate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    LogInfo(f"[TienNga API] Received add-inventories request. Total inventories to add: {len(inventories_in)}")
+    try:
+        created_inventories = []
+        for inv_in in inventories_in:
+            new_inv = create_inventory(db, obj_in=inv_in)
+            created_inventories.append(new_inv)
+            
+        LogInfo(f"[TienNga API] Successfully added {len(created_inventories)} inventories.")
+        return created_inventories
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in add-inventories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/update-inventories", response_model=List[InventoryResponse])
+def update_inventories(
+    inventories_in: List[InventoryUpdate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    LogInfo(f"[TienNga API] Received update-inventories request. Total inventories to update: {len(inventories_in)}")
+    try:
+        # Check for duplicate IDs in the input list itself
+        input_ids = [inv.id for inv in inventories_in]
+        if len(input_ids) != len(set(input_ids)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate inventory IDs found in the request input."
+            )
+            
+        # Check if all inventory IDs exist in the database
+        existing_inventories = db.query(Inventory).filter(Inventory.id.in_(input_ids)).all()
+        existing_ids = {inv.id for inv in existing_inventories}
+        
+        missing_ids = [iid for iid in input_ids if iid not in existing_ids]
+        if missing_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Inventories with IDs {missing_ids} not found in the database."
+            )
+            
+        # Update all inventories
+        updated_inventories = []
+        for inv_in in inventories_in:
+            updated_inv = update_inventory(db, inventory_id=inv_in.id, obj_in=inv_in)
+            if updated_inv:
+                updated_inventories.append(updated_inv)
+                
+        LogInfo(f"[TienNga API] Successfully updated {len(updated_inventories)} inventories.")
+        return updated_inventories
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in update-inventories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/delete-inventories", response_model=List[InventoryResponse])
+def delete_inventories(
+    inventory_ids: List[UUID],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    LogInfo(f"[TienNga API] Received delete-inventories request. Total inventories to delete: {len(inventory_ids)}")
+    try:
+        # Check for duplicates in input list itself
+        if len(inventory_ids) != len(set(inventory_ids)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate inventory IDs found in the request input."
+            )
+            
+        # Check if all inventory IDs exist in the database
+        existing_inventories = db.query(Inventory).filter(Inventory.id.in_(inventory_ids)).all()
+        existing_ids = {inv.id for inv in existing_inventories}
+        
+        missing_ids = [iid for iid in inventory_ids if iid not in existing_ids]
+        if missing_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Inventories with IDs {missing_ids} not found in the database."
+            )
+            
+        deleted_inventories = []
+        for inv in existing_inventories:
+            deleted_inventories.append(inv)
+            delete_inventory(db, inventory_id=inv.id)
+            
+        LogInfo(f"[TienNga API] Successfully deleted {len(deleted_inventories)} inventories.")
+        return deleted_inventories
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in delete-inventories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 

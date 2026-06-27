@@ -256,7 +256,10 @@ async def check_customer_handler(client, message: Message) -> None:
                 else:
                     status_emoji = "Đã huỷ hợp đồng"
                 
-                loan_label = "Thế chấp" if c.loan_type == "secured" else "Tín chấp"
+                is_sec = False
+                if c.loan_type:
+                    is_sec = c.loan_type.lower().strip() in ["secured", "thế chấp", "the chap", "collateral"]
+                loan_label = "Thế chấp" if is_sec else "Tín chấp"
                 reply_lines.append(
                     f"{idx}. {status_emoji} <b>{c.contract_id}</b> ({loan_label}) - Gốc: {fmt_num(c.initial_principal):,} - Còn nợ: {fmt_num(c.remaining_principal):,}"
                 )
@@ -336,7 +339,10 @@ async def check_contract_handler(client, message: Message) -> None:
             status_emoji = "Nợ xấu (Blacklist)"
         else:
             status_emoji = "Đã huỷ hợp đồng"
-        loan_type_label = "Thế chấp" if contract.loan_type == "secured" else "Tín chấp"
+        is_sec = False
+        if contract.loan_type:
+            is_sec = contract.loan_type.lower().strip() in ["secured", "thế chấp", "the chap", "collateral"]
+        loan_type_label = "Thế chấp" if is_sec else "Tín chấp"
 
         reply_lines = [
             f"<b>THÔNG TIN HỢP ĐỒNG: {contract.contract_id}</b>",
@@ -414,7 +420,10 @@ async def check_debt_handler(client, message: Message) -> None:
         contract_lines = []
         for idx, c in enumerate(active_credits, 1):
             status_label = "Nợ xấu" if c.credit_status == CreditStatus.BAD_DEBT.value else "Đang vay"
-            loan_label = "Thế chấp" if c.loan_type == "secured" else "Tín chấp"
+            is_sec = False
+            if c.loan_type:
+                is_sec = c.loan_type.lower().strip() in ["secured", "thế chấp", "the chap", "collateral"]
+            loan_label = "Thế chấp" if is_sec else "Tín chấp"
             contract_lines.append(
                 f"{idx}. <b>{c.contract_id}</b> ({loan_label}) - {status_label}\n"
                 f"   Nợ gốc còn: <b>{fmt_num(c.remaining_principal):,}</b>\n"
@@ -732,7 +741,10 @@ Nội Dung Tin Nhắn:
         limit_remaining = customer.remaining_credit_limit or 0.0
         
         # Validation for limits
-        if loan_type == "secured":
+        is_sec = False
+        if loan_type:
+            is_sec = loan_type.lower().strip() in ["secured", "thế chấp", "the chap", "collateral"]
+        if is_sec:
             if limit_remaining < amount:
                 await message.reply_text(f"⚠️ <b>Lỗi Hạn Mức:</b> Hợp đồng thế chấp (secured) yêu cầu số tiền vay ({amount:,.0f}) không được vượt quá Hạn mức còn lại ({limit_remaining:,.0f}).", parse_mode=ParseMode.HTML)
                 return
@@ -966,7 +978,10 @@ Nội Dung Tin Nhắn: {contract.message_content or ""}
             
             # Temporary refund old loan to available limit
             temp_limit = limit_remaining + old_initial_principal
-            if loan_type == "secured":
+            is_sec = False
+            if loan_type:
+                is_sec = loan_type.lower().strip() in ["secured", "thế chấp", "the chap", "collateral"]
+            if is_sec:
                 if temp_limit < new_initial_principal:
                     await message.reply_text(f"⚠️ <b>Lỗi Hạn Mức:</b> Hợp đồng thế chấp yêu cầu số tiền vay (<b>{new_initial_principal:,.0f}</b>) không được vượt quá Hạn mức còn lại (<b>{temp_limit:,.0f}</b>).", parse_mode=ParseMode.HTML)
                     return

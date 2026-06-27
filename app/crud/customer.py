@@ -7,6 +7,7 @@ from app.schemas.partner import PartnerCreate, PartnerUpdate
 from app.schemas.partner_business import PartnerBusinessCreate, PartnerBusinessUpdate
 from app.schemas.investment import InvestmentCreate, InvestmentUpdate
 from app.schemas.daily_payment import DailyPaymentCreate
+from app.schemas.inventory import InventoryUpdate
 from typing import Optional, List
 from datetime import date
 from uuid import UUID
@@ -414,6 +415,39 @@ def create_inventory(db: Session, obj_in) -> Inventory:
     return db_obj
 
 
+def update_inventory(db: Session, inventory_id: UUID, obj_in: InventoryUpdate) -> Optional[Inventory]:
+    """
+    Update an existing inventory record in the database.
+    """
+    db_obj = db.query(Inventory).filter(Inventory.id == inventory_id).first()
+    if not db_obj:
+        return None
+    
+    update_data = obj_in.dict(exclude_unset=True)
+    if "id" in update_data:
+        del update_data["id"]
+        
+    for field, value in update_data.items():
+        setattr(db_obj, field, value)
+        
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def delete_inventory(db: Session, inventory_id: UUID) -> Optional[Inventory]:
+    """
+    Delete an inventory record from the database.
+    """
+    db_obj = db.query(Inventory).filter(Inventory.id == inventory_id).first()
+    if not db_obj:
+        return None
+    db.delete(db_obj)
+    db.commit()
+    return db_obj
+
+
+
 def get_inventory_exports(
     db: Session,
     storage_name: Optional[str] = None,
@@ -769,6 +803,19 @@ def update_investment(db: Session, investment_uuid: UUID, obj_in: InvestmentUpda
     db.commit()
     db.refresh(db_obj)
     return db_obj
+
+
+def delete_investment(db: Session, investment_uuid: UUID) -> Optional[Investment]:
+    """
+    Delete an investment from the database.
+    """
+    db_obj = db.query(Investment).filter(Investment.id == investment_uuid).first()
+    if not db_obj:
+        return None
+    db.delete(db_obj)
+    db.commit()
+    return db_obj
+
 
 
 def get_daily_payments(
