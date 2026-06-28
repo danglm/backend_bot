@@ -29,8 +29,11 @@ def get_smartphone_by_imei(db: Session, imei: str):
     return db.query(Smartphone).filter(or_(Smartphone.imei_1 == imei, Smartphone.imei_2 == imei)).first()
 
 
-def get_smartphones(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(Smartphone).offset(skip).limit(limit).all()
+def get_smartphones(db: Session, classification: str = None, skip: int = 0, limit: int = 100):
+    query = db.query(Smartphone)
+    if classification:
+        query = query.filter(Smartphone.classification == classification)
+    return query.offset(skip).limit(limit).all()
 
 
 def get_smartphones_by_status(db: Session, status: str):
@@ -75,8 +78,11 @@ def get_laptop(db: Session, laptop_id: str):
     return db.query(Laptop).filter(Laptop.id == laptop_id).first()
 
 
-def get_laptops(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(Laptop).offset(skip).limit(limit).all()
+def get_laptops(db: Session, classification: str = None, skip: int = 0, limit: int = 100):
+    query = db.query(Laptop)
+    if classification:
+        query = query.filter(Laptop.classification == classification)
+    return query.offset(skip).limit(limit).all()
 
 
 def get_laptops_by_status(db: Session, status: str):
@@ -289,8 +295,11 @@ def get_screen(db: Session, screen_id: str):
     return db.query(Screen).filter(Screen.id == screen_id).first()
 
 
-def get_screens(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(Screen).offset(skip).limit(limit).all()
+def get_screens(db: Session, classification: str = None, skip: int = 0, limit: int = 100):
+    query = db.query(Screen)
+    if classification:
+        query = query.filter(Screen.classification == classification)
+    return query.offset(skip).limit(limit).all()
 
 
 def get_screens_by_status(db: Session, status: str):
@@ -331,8 +340,11 @@ def get_camera(db: Session, camera_id: str):
     return db.query(Camera).filter(Camera.id == camera_id).first()
 
 
-def get_cameras(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(Camera).offset(skip).limit(limit).all()
+def get_cameras(db: Session, classification: str = None, skip: int = 0, limit: int = 100):
+    query = db.query(Camera)
+    if classification:
+        query = query.filter(Camera.classification == classification)
+    return query.offset(skip).limit(limit).all()
 
 
 def get_cameras_by_status(db: Session, status: str):
@@ -373,8 +385,11 @@ def get_other_device(db: Session, device_id: str):
     return db.query(OtherDevice).filter(OtherDevice.id == device_id).first()
 
 
-def get_other_devices(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(OtherDevice).offset(skip).limit(limit).all()
+def get_other_devices(db: Session, classification: str = None, skip: int = 0, limit: int = 100):
+    query = db.query(OtherDevice)
+    if classification:
+        query = query.filter(OtherDevice.classification == classification)
+    return query.offset(skip).limit(limit).all()
 
 
 def get_other_devices_by_status(db: Session, status: str):

@@ -25,12 +25,16 @@ class SmartphoneBase(BaseModel):
 
 
 class SmartphoneCreate(SmartphoneBase):
-    pass
+    id: Optional[str] = None
 
 
 class SmartphoneUpdate(SmartphoneBase):
     model_name: Optional[str] = None
     imei_1: Optional[str] = None
+
+
+class SmartphoneBulkUpdate(SmartphoneUpdate):
+    id: str
 
 
 class Smartphone(SmartphoneBase):
@@ -55,11 +59,15 @@ class LaptopBase(BaseModel):
 
 
 class LaptopCreate(LaptopBase):
-    pass
+    id: Optional[str] = None
 
 
 class LaptopUpdate(LaptopBase):
     model_name: Optional[str] = None
+
+
+class LaptopBulkUpdate(LaptopUpdate):
+    id: str
 
 
 class Laptop(LaptopBase):
@@ -192,11 +200,15 @@ class ScreenBase(BaseModel):
 
 
 class ScreenCreate(ScreenBase):
-    pass
+    id: Optional[str] = None
 
 
 class ScreenUpdate(ScreenBase):
     model_name: Optional[str] = None
+
+
+class ScreenBulkUpdate(ScreenUpdate):
+    id: str
 
 
 class Screen(ScreenBase):
@@ -228,11 +240,15 @@ class CameraBase(BaseModel):
 
 
 class CameraCreate(CameraBase):
-    pass
+    id: Optional[str] = None
 
 
 class CameraUpdate(CameraBase):
     model_name: Optional[str] = None
+
+
+class CameraBulkUpdate(CameraUpdate):
+    id: str
 
 
 class Camera(CameraBase):
@@ -264,11 +280,15 @@ class OtherDeviceBase(BaseModel):
 
 
 class OtherDeviceCreate(OtherDeviceBase):
-    pass
+    id: Optional[str] = None
 
 
 class OtherDeviceUpdate(OtherDeviceBase):
     device_name: Optional[str] = None
+
+
+class OtherDeviceBulkUpdate(OtherDeviceUpdate):
+    id: str
 
 
 class OtherDevice(OtherDeviceBase):

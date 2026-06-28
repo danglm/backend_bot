@@ -18145,10 +18145,26 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
                 reason += f"Đã ứng trước đó: <b>{fmt_money(current_advance)}</b>\n"
                 reason += f"Còn lại có thể ứng: <b>{fmt_money(max_cash_advance - current_advance)}</b>"
 
+            # Query Owner's Telegram username or ID to mention
+            from app.models.telegram import TelegramProjectMember
+            owner_member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == str(message.chat.id),
+                TelegramProjectMember.member_status == "OWNER"
+            ).first()
+            
+            owner_mention = "Owner"
+            if owner_member:
+                if owner_member.user_name:
+                    owner_mention = f"@{owner_member.user_name}"
+                elif owner_member.user_id:
+                    owner_mention = f"<a href=\"tg://user?id={owner_member.user_id}\">Owner</a>"
+
             await message.reply_text(
                 f"⚠️ <b>SỐ TIỀN ỨNG VƯỢT QUÁ HẠN MỨC CHO PHÉP</b>\n\n"
-                f"Số tiền yêu cầu ứng: <b>{fmt_money(cash_advance_requested)}</b>\n\n"
-                f"{reason}",
+                f"<b>Mã Hộ:</b> {hoursehold_id}\n"
+                f"<b>Số tiền yêu cầu ứng:</b> {fmt_money(cash_advance_requested)}\n\n"
+                f"{reason}\n\n"
+                f"⚠️ <b>Yêu cầu phê duyệt từ Owner:</b> Để đồng ý cho phép ứng vượt ngưỡng, {owner_mention} vui lòng <b>reply tin nhắn này</b> và gõ lệnh <code>/confirmed</code> (hoặc <code>/denied</code> để từ chối).",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -18433,6 +18449,448 @@ async def kttu_cancel_callback(client, callback_query):
         "❌ Đã hủy khấu trừ tiền ứng.", parse_mode=ParseMode.HTML
     )
     await callback_query.answer("Đã hủy.")
+
+
+# ===================== DANH SÁCH ỨNG TIỀN (Cash Advance List) =====================
+
+@bot.on_message(filters.command(["tien_nga_danh_sach_ung_tien", "tien_nga_ds_ung_tien"]) | filters.regex(r"^@\w+\s+/(tien_nga_danh_sach_ung_tien|tien_nga_ds_ung_tien)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_danh_sach_ung_tien_handler(client, message: Message) -> None:
+    db = SessionLocal()
+    try:
+        from app.models.business import CollectionPoint
+        points = db.query(CollectionPoint).order_by(CollectionPoint.collection_name).all()
+        
+        buttons = []
+        # Nút "Tất cả" ở dòng đầu tiên
+        buttons.append([InlineKeyboardButton("Tất cả", callback_data="cb_dsut_all")])
+        
+        # Các nút điểm thu mua
+        for cp in points:
+            buttons.append([InlineKeyboardButton(cp.collection_name, callback_data=f"cb_dsut_cp_{cp.id}")])
+            
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="cb_dsut_cancel")])
+        keyboard = InlineKeyboardMarkup(buttons)
+        
+        await message.reply_text(
+            "<b>DANH SÁCH ỨNG TIỀN HỘ DÂN</b>\n\n"
+            "Vui lòng chọn Điểm thu mua hoặc Tất cả để xuất báo cáo Excel:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in tien_nga_danh_sach_ung_tien_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra khi lấy danh sách điểm thu mua.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_callback_query(filters.regex(r"^cb_dsut_(all|cp_.+|cancel)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
+    action = callback_query.matches[0].group(1)
+    
+    if action == "cancel":
+        await callback_query.message.delete()
+        await callback_query.answer("Đã hủy.")
+        return
+        
+    await callback_query.message.edit_text("⏳ <i>Đang truy xuất dữ liệu ứng tiền và tạo báo cáo Excel...</i>", parse_mode=ParseMode.HTML)
+    
+    db = SessionLocal()
+    try:
+        from app.models.business import Customers, CollectionPoint
+        import tempfile
+        import os
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from datetime import datetime
+        
+        # 1. Xác định bộ lọc theo điểm thu mua
+        target_cp_id = None
+        target_cp_name = "Tất cả"
+        if action.startswith("cp_"):
+            target_cp_id = action[3:]
+            cp_obj = db.query(CollectionPoint).filter(CollectionPoint.id == target_cp_id).first()
+            if cp_obj:
+                target_cp_name = cp_obj.collection_name
+                
+        # 2. Truy vấn khách hàng có cash_advance > 0
+        query = db.query(Customers, CollectionPoint.collection_name).outerjoin(
+            CollectionPoint, Customers.collection_point_id == CollectionPoint.id
+        ).filter(Customers.cash_advance > 0)
+        
+        if target_cp_id:
+            query = query.filter(Customers.collection_point_id == target_cp_id)
+            
+        customers = query.order_by(CollectionPoint.collection_name, Customers.id).all()
+        
+        if not customers:
+            await callback_query.message.edit_text(
+                f"⚠️ <b>Điểm thu mua:</b> {target_cp_name}\n\n"
+                f"Không có hộ dân nào có tiền ứng (`cash_advance > 0`) trong hệ thống.",
+                parse_mode=ParseMode.HTML
+            )
+            await callback_query.answer("Không có dữ liệu.", show_alert=True)
+            return
+            
+        # 3. Phân nhóm theo điểm thu mua
+        grouped = {}
+        for cust, cp_name in customers:
+            group_key = cp_name or "Chưa phân loại"
+            if group_key not in grouped:
+                grouped[group_key] = []
+            grouped[group_key].append(cust)
+            
+        # 4. Xây dựng File Excel tương tự định dạng của Tiến Nga
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active) # xóa sheet mặc định
+        
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill("solid", fgColor="2F5496")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        money_align = Alignment(horizontal="right", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin"),
+        )
+        alt_fill = PatternFill("solid", fgColor="D9E2F3")
+        total_font = Font(bold=True, size=11)
+        total_fill = PatternFill("solid", fgColor="FFC000")
+        
+        headers = [
+            "STT",
+            "Mã Hộ",
+            "Tên Khách Hàng",
+            "Trợ Giá",
+            "Số Điện Thoại",
+            "Địa Chỉ",
+            "Nguyên Liệu",
+            "Số Tiền Nợ",
+            "Ứng Tiền Cuối Mùa",
+            "Tổng Công Nợ",
+            "Username TG",
+            "Trạng Thái",
+        ]
+        
+        col_widths = [6, 10, 22, 10, 16, 25, 15, 18, 20, 18, 18, 12]
+        total_customers = 0
+        
+        for group_name, custs in grouped.items():
+            # Tên tab giới hạn tối đa 31 ký tự
+            sheet_name = group_name[:31]
+            ws = wb.create_sheet(title=sheet_name)
+            
+            # Ghi tiêu đề cột
+            for col_idx, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+                cell.border = thin_border
+                
+            # Hàm định dạng tiền tệ nội bộ
+            def fmt_money_excel(val):
+                if val is None or val == 0:
+                    return 0
+                return int(val)
+                
+            # Ghi dữ liệu khách hàng
+            for idx, cust in enumerate(custs, 1):
+                row = idx + 1
+                row_fill = alt_fill if idx % 2 == 0 else None
+                
+                values = [
+                    idx,
+                    cust.hoursehold_id or cust.id,
+                    cust.fullname,
+                    cust.is_subsidized or 0,
+                    cust.number_phone,
+                    cust.address,
+                    cust.ingredient,
+                    fmt_money_excel(cust.amount_of_debt),
+                    fmt_money_excel(cust.cash_advance),
+                    fmt_money_excel(cust.total_debt),
+                    cust.username,
+                    cust.status,
+                ]
+                
+                for col_idx, val in enumerate(values, 1):
+                    cell = ws.cell(row=row, column=col_idx, value=val)
+                    cell.border = thin_border
+                    if col_idx in (8, 9, 10):
+                        cell.alignment = money_align
+                        cell.number_format = '#,##0'
+                    elif col_idx == 1:
+                        cell.alignment = center_align
+                    else:
+                        cell.alignment = left_align
+                    if row_fill:
+                        cell.fill = row_fill
+                        
+            # Ghi dòng tổng cộng của tab này
+            total_debt_amount = sum(c.amount_of_debt or 0 for c in custs)
+            total_advance_amount = sum(c.cash_advance or 0 for c in custs)
+            total_net_debt = sum(c.total_debt or 0 for c in custs)
+            
+            total_row = len(custs) + 2
+            total_values = [
+                "",
+                "TỔNG CỘNG",
+                f"{len(custs)} KH",
+                "",
+                "",
+                "",
+                "",
+                total_debt_amount if total_debt_amount else 0,
+                total_advance_amount if total_advance_amount else 0,
+                total_net_debt if total_net_debt else 0,
+                "",
+                ""
+            ]
+            for col_idx, val in enumerate(total_values, 1):
+                cell = ws.cell(row=total_row, column=col_idx, value=val)
+                cell.font = total_font
+                cell.fill = total_fill
+                cell.border = thin_border
+                if col_idx in (8, 9, 10):
+                    cell.alignment = money_align
+                    cell.number_format = '#,##0'
+                elif col_idx in (1, 3):
+                    cell.alignment = center_align
+                else:
+                    cell.alignment = left_align
+                    
+            total_customers += len(custs)
+            
+            # Cấu hình độ rộng của cột
+            for col_idx, width in enumerate(col_widths, 1):
+                col_letter = openpyxl.utils.get_column_letter(col_idx)
+                ws.column_dimensions[col_letter].width = width
+                
+            ws.freeze_panes = "A2"
+            
+        # Lưu file tạm thời
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp_path = tmp.name
+        wb.save(tmp_path)
+        
+        now_str = datetime.now().strftime("%Y%m%d_%H%M")
+        summary_lines = "\n".join(
+            f"  • <b>{name}</b>: {len(c_list)} KH" for name, c_list in grouped.items()
+        )
+        
+        caption_text = (
+            f"<b>DANH SÁCH ỨNG TIỀN HỘ DÂN</b>\n"
+            f"<b>Bộ lọc:</b> {target_cp_name}\n\n"
+            f"Tổng số hộ đã ứng: <b>{total_customers}</b> KH\n"
+            f"Số Xưởng/Điểm: <b>{len(grouped)}</b>\n\n"
+            f"{summary_lines}\n\n"
+            f"<i>Xuất lúc: {datetime.now().strftime('%H:%M %d/%m/%Y')}</i>"
+        )
+        
+        # Gửi file excel
+        await callback_query.message.reply_document(
+            document=tmp_path,
+            file_name=f"danh_sach_ung_tien_{now_str}.xlsx",
+            caption=caption_text,
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Xóa tin nhắn lựa chọn và file tạm
+        await callback_query.message.delete()
+        os.remove(tmp_path)
+        
+        LogInfo(
+            f"[TienNga] Exported cash advance list ({target_cp_name}) with {total_customers} customers by @{callback_query.from_user.username or callback_query.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+        
+    except Exception as e:
+        LogError(f"Error in ds_ung_tien_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.message.edit_text(f"❌ Có lỗi xảy ra khi tạo báo cáo Excel: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# ===================== PHÊ DUYỆT ỨNG VƯỢT HẠN MỨC (Over Limit Cash Advance Approval) =====================
+
+@bot.on_message(filters.command(["confirmed"]) | filters.regex(r"^@\w+\s+/confirmed\b"))
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tien_nga_confirmed_handler(client, message: Message) -> None:
+    if not message.reply_to_message:
+        await message.reply_text("⚠️ Vui lòng reply (phản hồi) tin nhắn cảnh báo vượt hạn mức để thực hiện xác nhận.", parse_mode=ParseMode.HTML)
+        return
+
+    replied_message = message.reply_to_message
+    if "SỐ TIỀN ỨNG VƯỢT QUÁ HẠN MỨC CHO PHÉP" not in replied_message.text:
+        await message.reply_text("⚠️ Tin nhắn được reply không phải là tin nhắn cảnh báo vượt hạn mức ứng tiền.", parse_mode=ParseMode.HTML)
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        from app.models.business import Customers
+        
+        chat_id = str(message.chat.id)
+        user_id = str(message.from_user.id)
+        username = message.from_user.username
+        
+        member = None
+        if username:
+            member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == chat_id,
+                TelegramProjectMember.user_name == username
+            ).first()
+        if not member:
+            member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == chat_id,
+                TelegramProjectMember.user_id == user_id
+            ).first()
+            
+        if not member or member.member_status != "OWNER":
+            await message.reply_text("⚠️ Chỉ có <b>Owner</b> của nhóm mới có quyền phê duyệt vượt hạn mức.", parse_mode=ParseMode.HTML)
+            return
+
+        # Phân tích thông tin từ tin nhắn gốc
+        import re
+        txt = replied_message.text
+        m_id = re.search(r"Mã Hộ:\s*([^\n]+)", txt)
+        m_amt = re.search(r"Số tiền yêu cầu ứng:\s*([^\n]+)", txt)
+        
+        if not m_id or not m_amt:
+            await message.reply_text("❌ Không thể phân tích thông tin yêu cầu ứng tiền từ tin nhắn này.")
+            return
+            
+        hoursehold_id = m_id.group(1).strip()
+        amt_str = m_amt.group(1).replace("VNĐ", "").replace(".", "").replace(",", "").strip()
+        cash_advance_requested = float(amt_str)
+
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            await message.reply_text(f"⚠️ Không tìm thấy hộ dân có mã <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML)
+            return
+
+        current_advance = customer.cash_advance or 0
+        total_after_advance = current_advance + cash_advance_requested
+
+        # Cập nhật số tiền ứng
+        customer.cash_advance = total_after_advance
+        db.commit()
+
+        LogInfo(f"[TienNga] Owner {message.from_user.id} approved cash advance {cash_advance_requested} (OVER LIMIT) to household {hoursehold_id}", LogType.SYSTEM_STATUS)
+
+        await message.reply_text(
+            f"✅ <b>XÁC NHẬN PHÊ DUYỆT ỨNG VƯỢT HẠN MỨC THÀNH CÔNG</b>\n\n"
+            f"<b>Phê duyệt bởi Owner:</b> @{message.from_user.username or message.from_user.id}\n"
+            f"<b>Mã Hộ:</b> {customer.hoursehold_id}\n"
+            f"<b>Tên KH:</b> {customer.fullname}\n"
+            f"<b>Số tiền ứng thêm (Vượt ngưỡng):</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
+            f"<b>Tổng tiền đã ứng mới:</b> <code>{fmt_money(customer.cash_advance)}</code>\n\n"
+            f"<i>Gợi ý: Cần thực hiện thêm lệnh /tien_nga_yeu_cau_thu_chi để ghi nhận chi quỹ.</i>",
+            parse_mode=ParseMode.HTML
+        )
+
+        # Gửi thông báo xuống nhóm member của hộ dân
+        if customer.telegram_group:
+            try:
+                main_chat_id = str(message.chat.id)
+                members = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.group_name == customer.telegram_group,
+                    TelegramProjectMember.parent_id == main_chat_id
+                ).all()
+                chat_ids = list(set(m.chat_id for m in members if m.chat_id))
+
+                notify_text = (
+                    f"📢 <b>THÔNG BÁO ỨNG TIỀN VƯỢT HẠN MỨC (ĐÃ PHÊ DUYỆT)</b>\n\n"
+                    f"<b>Mã Hộ:</b> <code>{customer.hoursehold_id}</code>\n"
+                    f"<b>Tên KH:</b> {customer.fullname}\n"
+                    f"{'━' * 20}\n"
+                    f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
+                    f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(customer.cash_advance)}</code>\n"
+                    f"<b>Người phê duyệt:</b> Owner (@{message.from_user.username or message.from_user.id})"
+                )
+
+                for chat_id in chat_ids:
+                    try:
+                        c_id = int(chat_id)
+                    except ValueError:
+                        if chat_id.startswith('@'):
+                            c_id = chat_id
+                        else:
+                            continue
+                    try:
+                        await client.send_message(
+                            chat_id=c_id,
+                            text=notify_text,
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception as send_err:
+                        LogError(f"[TienNga] Failed to send over limit cash advance notification to {chat_id}: {send_err}", LogType.SYSTEM_STATUS)
+            except Exception as notify_err:
+                LogError(f"[TienNga] Error looking up member group for {hoursehold_id}: {notify_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        LogError(f"Error handling tien_nga_confirmed: {e}", LogType.SYSTEM_STATUS)
+        db.rollback()
+        await message.reply_text("❌ Có lỗi xảy ra khi thực hiện phê duyệt.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+@bot.on_message(filters.command(["denied"]) | filters.regex(r"^@\w+\s+/denied\b"))
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tien_nga_denied_handler(client, message: Message) -> None:
+    if not message.reply_to_message:
+        await message.reply_text("⚠️ Vui lòng reply (phản hồi) tin nhắn cảnh báo vượt hạn mức để từ chối.", parse_mode=ParseMode.HTML)
+        return
+
+    replied_message = message.reply_to_message
+    if "SỐ TIỀN ỨNG VƯỢT QUÁ HẠN MỨC CHO PHÉP" not in replied_message.text:
+        await message.reply_text("⚠️ Tin nhắn được reply không phải là tin nhắn cảnh báo vượt hạn mức ứng tiền.", parse_mode=ParseMode.HTML)
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        
+        chat_id = str(message.chat.id)
+        user_id = str(message.from_user.id)
+        username = message.from_user.username
+        
+        member = None
+        if username:
+            member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == chat_id,
+                TelegramProjectMember.user_name == username
+            ).first()
+        if not member:
+            member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == chat_id,
+                TelegramProjectMember.user_id == user_id
+            ).first()
+            
+        if not member or member.member_status != "OWNER":
+            await message.reply_text("⚠️ Chỉ có <b>Owner</b> của nhóm mới có quyền từ chối phê duyệt vượt hạn mức.", parse_mode=ParseMode.HTML)
+            return
+
+        await message.reply_text(
+            f"❌ <b>ĐÃ TỪ CHỐI DUYỆT ỨNG VƯỢT HẠN MỨC</b>\n\n"
+            f"Yêu cầu ứng tiền vượt hạn mức đã bị từ chối bởi Owner @{message.from_user.username or message.from_user.id}.",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error handling tien_nga_denied: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
 
 
 # ===================== THỐNG KÊ CÔNG NỢ (Total Debt) =====================

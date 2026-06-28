@@ -280,12 +280,14 @@ async def left_chat_member_handler(client, message: Message) -> None:
 async def approval_reply_handler(client, message: Message) -> None:
     """Handle approval/denial via group replies."""
     if not message.reply_to_message:
+        message.continue_propagation()
         return
 
     replied_msg = message.reply_to_message
     content = replied_msg.text or ""
     
     if "ĐƠN XIN NGHỈ PHÉP" not in content and "YÊU CẦU CẬP NHẬT CHẤM CÔNG" not in content and "YÊU CẦU ĐĂNG KÝ TĂNG CA" not in content:
+        message.continue_propagation()
         return
 
     # Extract designated approver from original message
@@ -775,7 +777,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     ## Ứng tiền
                     BotCommand("tien_nga_ung_tien", "Ứng tiền"),
                     BotCommand("tien_nga_khau_tru_tien_ung", "Khấu trừ tiền ứng"),
-
+                    BotCommand("tien_nga_danh_sach_ung_tien", "Danh sách ứng tiền Excel"),
                 ])
 
             if custom_title in ("super_main", "main_partner"):
