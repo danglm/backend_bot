@@ -2005,9 +2005,9 @@ async def generate_and_send_inventory_report(client, target_date: datetime.date 
             total_import = 0.0
             
             for txn in transactions:
-                if txn.transaction_type == "Xuất":
+                if txn.transaction_type in ("Xuất", "Export", "export"):
                     total_export += txn.quantity or 0.0
-                elif txn.transaction_type == "Nhập":
+                elif txn.transaction_type in ("Nhập", "Import", "import"):
                     total_import += txn.quantity or 0.0
             
             # Skip nếu không có giao dịch xuất/nhập trong ngày

@@ -1855,7 +1855,7 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
             # --- SẢN XUẤT MỦ KHÔ: so sánh thu mua vs nhập kho (logic cũ) ---
             import_txns = db.query(ProductTransaction).filter(
                 ProductTransaction.product_code == product_code,
-                ProductTransaction.transaction_type.ilike("Nhập")
+                ProductTransaction.transaction_type.in_(["Nhập", "Import", "import"])
             ).all()
             
             total_import_qty = sum(txn.quantity or 0 for txn in import_txns)
@@ -10876,7 +10876,13 @@ async def tien_nga_product_transaction_handler(client, message: Message) -> None
 
     storage_id = data.get("Mã Kho", "").strip()
     storage_name = data.get("Tên Kho", "").strip()
-    txn_type = data.get("Loại Giao Dịch", "").strip()
+    txn_type_raw = data.get("Loại Giao Dịch", "").strip()
+    if txn_type_raw.lower() in ["nhập", "import"]:
+        txn_type = "import"
+    elif txn_type_raw.lower() in ["xuất", "export"]:
+        txn_type = "export"
+    else:
+        txn_type = txn_type_raw
     material_name = data.get("Sản Phẩm", "").strip()
     product_code = data.get("Mã Hàng", "").strip()
     customer_id = data.get("Mã Khách Hàng", "").strip()
@@ -10891,17 +10897,17 @@ async def tien_nga_product_transaction_handler(client, message: Message) -> None
     total = qty * price if qty > 0 and price > 0 else 0
 
     if total > 0:
-        if txn_type.lower() == "xuất":
+        if txn_type.lower() == "export":
             debt = -total
-        elif txn_type.lower() == "nhập":
+        elif txn_type.lower() == "import":
             debt = total
         else:
             debt = 0
     else:
         debt = 0
 
-    if not storage_id or not txn_type.lower() in ['nhập', 'xuất']:
-        await message.reply_text("⚠️ <b>Mã Kho</b> và <b>Loại Giao Dịch</b> (Nhập/Xuất) là bắt buộc.", parse_mode=ParseMode.HTML)
+    if not storage_id or not txn_type.lower() in ['import', 'export']:
+        await message.reply_text("⚠️ <b>Mã Kho</b> và <b>Loại Giao Dịch</b> (Nhập/Xuất hoặc Import/Export) là bắt buộc.", parse_mode=ParseMode.HTML)
         return
         
     if qty <= 0:
@@ -10944,9 +10950,9 @@ async def tien_nga_product_transaction_handler(client, message: Message) -> None
             return
 
         # Check Inventory Capacity / Balance
-        if txn_type.lower() == "nhập":
+        if txn_type.lower() == "import":
             inv.quantity += qty
-        elif txn_type.lower() == "xuất":
+        elif txn_type.lower() == "export":
             if inv.quantity < qty:
                 await message.reply_text(f"⚠️ Trữ lượng trong kho (<b>{inv.quantity:,.0f}</b>) không đủ để xuất <b>{qty:,.0f}</b>.", parse_mode=ParseMode.HTML)
                 return
@@ -10957,7 +10963,7 @@ async def tien_nga_product_transaction_handler(client, message: Message) -> None
             product_code=product_code if product_code else None,
             transaction_date=txn_date,
             customer_id=customer_id if customer_id else None,
-            transaction_type=txn_type.capitalize(),
+            transaction_type=txn_type.lower(),
             material_type=material_name or inv.material_name,
             storage_id=inv.id,
             storage_name=storage_name or inv.storage_name,
@@ -10971,14 +10977,16 @@ async def tien_nga_product_transaction_handler(client, message: Message) -> None
         db.commit()
 
         # Reply Success
+        txn_type_vn = "NHẬP KHO" if txn_type.lower() == "import" else "XUẤT KHO"
+        txn_qty_label = "Nhập" if txn_type.lower() == "import" else "Xuất"
         await message.reply_text(
-            f"✅ <b>GIAO DỊCH {txn_type.upper()} THÀNH CÔNG</b>\n\n"
+            f"✅ <b>GIAO DỊCH {txn_type_vn} THÀNH CÔNG</b>\n\n"
             f"<b>Kho:</b> {inv.material_name} ({inv.storage_name})\n"
             f"<b>Sản Phẩm:</b> {new_txn.material_type}\n"
             f"<b>Mã Hàng:</b> {new_txn.product_code or '—'}\n"
             f"<b>Mã Khách Hàng:</b> {new_txn.customer_id or '—'}\n"
             f"<b>Ngày:</b> {txn_date.strftime('%d/%m/%Y')}\n"
-            f"<b>Số Lượng {txn_type.capitalize()}:</b> <code>{qty:,.0f} kg</code>\n"
+            f"<b>Số Lượng {txn_qty_label}:</b> <code>{qty:,.0f} kg</code>\n"
             f"<b>Đơn Giá:</b> <code>{price:,.0f} VNĐ</code>\n"
             f"<b>Thành Tiền:</b> <code>{total:,.0f} VNĐ</code>\n"
             f"<b>Công Nợ:</b> <code>{debt:,.0f} VNĐ</code>\n"
@@ -12606,6 +12614,7 @@ async def tien_nga_export_daily_product_callback(client, callback_query):
 async def _generate_daily_product_report(message, start_date, end_date):
     from app.db.session import SessionLocal
     from app.models.inventory import ProductTransaction, Inventory
+    from sqlalchemy import or_
     from datetime import datetime, timedelta
     import tempfile
     import os
@@ -12615,21 +12624,31 @@ async def _generate_daily_product_report(message, start_date, end_date):
     
     db = SessionLocal()
     try:
-        # Query transactions chỉ liên quan Mủ thành phẩm
+        # Query transactions chỉ liên quan Mủ, Cao su, RSS3 thành phẩm
         transactions = db.query(ProductTransaction).filter(
             ProductTransaction.transaction_date >= start_date,
             ProductTransaction.transaction_date <= end_date,
-            ProductTransaction.material_type.ilike("%Mủ%")
+            or_(
+                ProductTransaction.material_type.ilike("%Mủ%"),
+                ProductTransaction.material_type.ilike("%Cao su%"),
+                ProductTransaction.material_type.ilike("%RSS3%")
+            )
         ).order_by(ProductTransaction.transaction_date).all()
         
-        # Query current inventory - chỉ kho Mủ thành phẩm
-        inventories = db.query(Inventory).filter(Inventory.material_name.ilike("%Mủ%")).all()
+        # Query current inventory - chỉ kho Mủ, Cao su, RSS3 thành phẩm
+        inventories = db.query(Inventory).filter(
+            or_(
+                Inventory.material_name.ilike("%Mủ%"),
+                Inventory.material_name.ilike("%Cao su%"),
+                Inventory.material_name.ilike("%RSS3%")
+            )
+        ).all()
         inv_map = {str(inv.id): inv for inv in inventories}
         
         # Get unique storage names from filtered transactions
         storage_names = sorted(set(t.storage_name for t in transactions if t.storage_name))
         if not storage_names and not transactions:
-            await message.reply_text("⚠️ Không có dữ liệu giao dịch Mủ thành phẩm trong khoảng thời gian này.", parse_mode=ParseMode.HTML)
+            await message.reply_text("⚠️ Không có dữ liệu giao dịch Mủ, Cao su hoặc RSS3 trong khoảng thời gian này.", parse_mode=ParseMode.HTML)
             return
         
         # Also add storages from Mủ inventory that may not have transactions
@@ -12802,7 +12821,7 @@ async def _generate_daily_product_report(message, start_date, end_date):
             document=tmp_path,
             file_name=f"bao_cao_san_pham_{now_str}.xlsx",
             caption=(
-                f"<b>BÁO CÁO XUẤT NHẬP KHO MỦ THÀNH PHẨM</b>\n\n"
+                f"<b>BÁO CÁO XUẤT NHẬP KHO SẢN PHẨM (MỦ, CAO SU, RSS3)</b>\n\n"
                 f"<b>Khoảng thời gian:</b> {period_str}\n"
                 f"<b>Tổng giao dịch:</b> {len(transactions)}\n"
                 f"<b>Số kho:</b> {len(storage_names)}\n\n"
@@ -19467,7 +19486,7 @@ async def _generate_loss_statistics_excel(client, message, start_date, end_date)
                 # Lấy dữ liệu nhập kho
                 import_txns = db.query(ProductTransaction).filter(
                     ProductTransaction.product_code == lc.product_code,
-                    ProductTransaction.transaction_type.ilike("Nhập")
+                    ProductTransaction.transaction_type.in_(["Nhập", "Import", "import"])
                 ).all()
 
                 total_import_qty = sum(txn.quantity or 0 for txn in import_txns)

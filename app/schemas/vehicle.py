@@ -13,10 +13,20 @@ class VehicleBase(BaseModel):
     status: Optional[str] = None
 
 class VehicleCreate(VehicleBase):
-    pass
+    id: Optional[UUID] = None
 
 class VehicleUpdate(VehicleBase):
     license_plate: Optional[str] = None
+
+class VehicleBulkUpdate(BaseModel):
+    id: UUID
+    license_plate: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    color: Optional[str] = None
+    owner_name: Optional[str] = None
+    status: Optional[str] = None
 
 class VehicleInDBBase(VehicleBase):
     id: UUID

@@ -19,8 +19,13 @@ def get_vehicle(db: Session, vehicle_id: str):
 def get_vehicle_by_license_plate(db: Session, license_plate: str):
     return db.query(Vehicle).filter(Vehicle.license_plate == license_plate).first()
 
-def get_vehicles(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(Vehicle).offset(skip).limit(limit).all()
+def get_vehicles(db: Session, license_plate: str = None, status: str = None):
+    query = db.query(Vehicle)
+    if license_plate:
+        query = query.filter(Vehicle.license_plate == license_plate)
+    if status:
+        query = query.filter(Vehicle.status == status)
+    return query.all()
 
 def create_vehicle(db: Session, vehicle: VehicleCreate):
     db_vehicle = Vehicle(
