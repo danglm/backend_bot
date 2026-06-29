@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import date
+from uuid import UUID
 from app.api.deps import get_db, get_current_user
 from app.schemas import device as schemas_device
 from app.crud import device as crud_device
 from app.models.employee import Credential
-from app.models.device import Smartphone, Laptop, Screen, Camera, OtherDevice
+from app.models.device import Smartphone, Laptop, Screen, Camera, OtherDevice, DeviceAssignment
 
 router = APIRouter()
 
@@ -601,6 +603,114 @@ async def api_delete_other_devices(
         deleted_ids = []
         for item_id in ids:
             db_obj = db.query(OtherDevice).filter(OtherDevice.id == item_id).first()
+            if db_obj:
+                db.delete(db_obj)
+                deleted_ids.append(item_id)
+        db.commit()
+        return {"deleted_ids": deleted_ids}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===================== DEVICE ASSIGNMENT ENDPOINTS =====================
+@router.get("/get-device-assignments", response_model=List[schemas_device.DeviceAssignment])
+async def api_get_device_assignments(
+    username: Optional[str] = None,
+    device_id: Optional[str] = None,
+    assigned_at: Optional[date] = None,
+    returned_at: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    """
+    Get device assignments, optionally filtered by username, device_id, assigned_at, or returned_at.
+    """
+    try:
+        from sqlalchemy import Date, cast
+        query = db.query(DeviceAssignment)
+        if username:
+            query = query.filter(DeviceAssignment.username == username)
+        if device_id:
+            query = query.filter(DeviceAssignment.device_id == device_id)
+        if assigned_at:
+            query = query.filter(cast(DeviceAssignment.assigned_at, Date) == assigned_at)
+        if returned_at:
+            query = query.filter(cast(DeviceAssignment.returned_at, Date) == returned_at)
+        return query.all()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/add-device-assignments", response_model=List[schemas_device.DeviceAssignment])
+async def api_add_device_assignments(
+    assignments_in: List[schemas_device.DeviceAssignmentCreate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    """
+    Add a list of device assignments.
+    """
+    created_items = []
+    try:
+        for item_in in assignments_in:
+            db_obj = DeviceAssignment(**item_in.dict())
+            db.add(db_obj)
+            created_items.append(db_obj)
+        db.commit()
+        for item in created_items:
+            db.refresh(item)
+        return created_items
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/update-device-assignments", response_model=List[schemas_device.DeviceAssignment])
+async def api_update_device_assignments(
+    assignments_in: List[schemas_device.DeviceAssignmentBulkUpdate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    """
+    Update a list of device assignments.
+    """
+    updated_items = []
+    try:
+        for item_in in assignments_in:
+            db_obj = db.query(DeviceAssignment).filter(DeviceAssignment.id == item_in.id).first()
+            if not db_obj:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Không tìm thấy phân công thiết bị với ID '{item_in.id}'."
+                )
+            
+            update_data = item_in.dict(exclude_unset=True)
+            update_data.pop("id", None)
+            for field, value in update_data.items():
+                setattr(db_obj, field, value)
+            updated_items.append(db_obj)
+        db.commit()
+        for item in updated_items:
+            db.refresh(item)
+        return updated_items
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/delete-device-assignments")
+async def api_delete_device_assignments(
+    ids: List[UUID],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    """
+    Delete device assignments by ID.
+    """
+    try:
+        deleted_ids = []
+        for item_id in ids:
+            db_obj = db.query(DeviceAssignment).filter(DeviceAssignment.id == item_id).first()
             if db_obj:
                 db.delete(db_obj)
                 deleted_ids.append(item_id)

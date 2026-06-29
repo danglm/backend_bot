@@ -157,6 +157,10 @@ class DeviceAssignmentUpdate(DeviceAssignmentBase):
     device_id: Optional[str] = None
 
 
+class DeviceAssignmentBulkUpdate(DeviceAssignmentUpdate):
+    id: UUID
+
+
 class DeviceAssignment(DeviceAssignmentBase):
     id: UUID
     class Config:
