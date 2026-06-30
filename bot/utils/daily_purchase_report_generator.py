@@ -62,13 +62,11 @@ def build_daily_purchase_report_html(data: dict) -> str:
         thanh_toan_val = rec.get("thanh_toan", 0) or 0
 
         if luu_so_val > 0:
-            phanbo_label = "Lưu sổ"
             phanbo_class = "text-amber"
-            phanbo_val = fmt_money_vn(luu_so_val)
+            phanbo_val = f"{fmt_money_vn(luu_so_val)} (LS)"
         else:
-            phanbo_label = "Thanh toán"
             phanbo_class = "success"
-            phanbo_val = fmt_money_vn(thanh_toan_val)
+            phanbo_val = f"{fmt_money_vn(thanh_toan_val)} (ĐTT)"
 
         table_rows += f"""
         <tr class="{row_class}">
@@ -81,7 +79,7 @@ def build_daily_purchase_report_html(data: dict) -> str:
           <td class="right">{fmt_money_vn(rec.get('don_gia', 0))}</td>
           <td class="right">{fmt_money_vn(rec.get('gia_ht', 0))}</td>
           <td class="right success">{fmt_money_vn(rec.get('thanh_tien', 0))}</td>
-          <td class="right {phanbo_class}"><small>{phanbo_label}</small><br>{phanbo_val}</td>
+          <td class="right {phanbo_class}">{phanbo_val}</td>
         </tr>"""
 
     html = f"""<!DOCTYPE html>
