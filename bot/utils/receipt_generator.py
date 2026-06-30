@@ -13,14 +13,15 @@ def fmt_money_vn(val: float) -> str:
     if val is None:
         return "0"
     negative = val < 0
-    abs_val = abs(val)
+    abs_val = abs(float(val))
     
-    if abs_val != int(abs_val):
-        int_part = int(abs_val)
-        dec_part = str(round(abs_val, 2)).split('.')[1]
-        formatted = f"{int_part:,}".replace(",", ".") + f",{dec_part}"
-    else:
+    abs_val = round(abs_val, 2)
+    if abs_val == int(abs_val):
         formatted = f"{int(abs_val):,}".replace(",", ".")
+    else:
+        val_str = str(abs_val)
+        int_part, dec_part = val_str.split('.')
+        formatted = f"{int(int_part):,}".replace(",", ".") + f",{dec_part}"
     
     return f"-{formatted}" if negative else formatted
 

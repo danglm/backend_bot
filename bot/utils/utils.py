@@ -33,23 +33,24 @@ from pyrogram.enums import ParseMode
 def fmt_money(val):
     if val is None: return "0 VNĐ"
     try:
-        return f"{int(val):,} VNĐ".replace(",", ".")
+        return f"{int(round(float(val))):,} VNĐ".replace(",", ".")
     except:
         return str(val)
 
 def fmt_vn(val):
     if val is None: return "0 VNĐ"
     try:
-        return f"{int(val):,} VNĐ".replace(",", ".")
+        return f"{int(round(float(val))):,} VNĐ".replace(",", ".")
     except:
         return str(val)
 
 def fmt_num(val):
     if val is None: return "0"
     try:
-        if float(val) == int(val):
-            return f"{int(val):,}".replace(",", ".")
-        return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        val_rounded = round(float(val), 2)
+        if val_rounded == int(val_rounded):
+            return f"{int(val_rounded):,}".replace(",", ".")
+        return f"{val_rounded:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".").rstrip("0").rstrip(",")
     except:
         return str(val)
 

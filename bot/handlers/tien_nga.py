@@ -1626,7 +1626,7 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
         return
 
     # Auto-calculate
-    actual_weight = weight - tare_weight
+    actual_weight = round(weight - tare_weight, 2)
     subsidy_price = unit_price + is_subsidized
     dry_rubber = round(actual_weight * degree / 100, 2)
     total_amount = round(actual_weight * degree / 100 * subsidy_price, 0)
@@ -2468,6 +2468,7 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
             "tong_thanh_tien": tong_thanh_tien,
             "tong_luu_so": tong_luu_so,
             "tong_thanh_toan": tong_thanh_toan,
+            "tien_da_ung": customer.cash_advance or 0,
         }
 
         from bot.utils.daily_purchase_report_generator import generate_daily_purchase_report_image

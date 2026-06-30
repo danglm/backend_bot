@@ -136,7 +136,7 @@ def build_paid_report_html(
     font-weight: 600; text-transform: uppercase;
   }}
   .info-val {{
-    font-size: 15px; font-weight: 800;
+    font-size: 20px; font-weight: 800;
     color: #0f172a; margin-top: 4px;
   }}
   .val-green {{
@@ -145,14 +145,14 @@ def build_paid_report_html(
   table {{
     width: 100%;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 18px;
   }}
   thead th {{
     background: #166534;
     color: #ffffff;
     font-weight: 700;
-    font-size: 11px;
-    padding: 5px 8px;
+    font-size: 15px;
+    padding: 6px 8px;
     text-align: center;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -160,8 +160,8 @@ def build_paid_report_html(
   thead th:first-child {{ border-radius: 8px 0 0 0; }}
   thead th:last-child {{ border-radius: 0 8px 0 0; }}
   tbody td {{
-    padding: 5px 8px;
-    font-size: 11px;
+    padding: 6px 8px;
+    font-size: 18px;
     color: #334155;
     font-weight: 500;
     border-bottom: 1px solid #f1f5f9;

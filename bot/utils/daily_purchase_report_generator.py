@@ -13,12 +13,13 @@ def fmt_money_vn(val) -> str:
     negative = val < 0
     abs_val = abs(float(val))
 
-    if abs_val != int(abs_val):
-        int_part = int(abs_val)
-        dec_part = str(round(abs_val, 2)).split('.')[1]
-        formatted = f"{int_part:,}".replace(",", ".") + f",{dec_part}"
-    else:
+    abs_val = round(abs_val, 2)
+    if abs_val == int(abs_val):
         formatted = f"{int(abs_val):,}".replace(",", ".")
+    else:
+        val_str = str(abs_val)
+        int_part, dec_part = val_str.split('.')
+        formatted = f"{int(int_part):,}".replace(",", ".") + f",{dec_part}"
 
     return f"-{formatted}" if negative else formatted
 
@@ -27,14 +28,16 @@ def fmt_num_vn(val) -> str:
     """Format số thực kiểu VN: 1.234,5"""
     if val is None:
         return "0"
-    abs_val = abs(float(val))
     negative = val < 0
-    if abs_val != int(abs_val):
-        int_part = int(abs_val)
-        dec_part = str(round(abs_val, 2)).split('.')[1]
-        formatted = f"{int_part:,}".replace(",", ".") + f",{dec_part}"
-    else:
+    abs_val = abs(float(val))
+
+    abs_val = round(abs_val, 2)
+    if abs_val == int(abs_val):
         formatted = f"{int(abs_val):,}".replace(",", ".")
+    else:
+        val_str = str(abs_val)
+        int_part, dec_part = val_str.split('.')
+        formatted = f"{int(int_part):,}".replace(",", ".") + f",{dec_part}"
     return f"-{formatted}" if negative else formatted
 
 
@@ -70,8 +73,6 @@ def build_daily_purchase_report_html(data: dict) -> str:
         table_rows += f"""
         <tr class="{row_class}">
           <td class="center">{rec.get('ngay', '—')}</td>
-          <td class="center">{rec.get('tuan', '—')}</td>
-          <td class="right">{rec.get('tro_gia', 0)}</td>
           <td class="right text-blue">{fmt_num_vn(rec.get('kl', 0))}</td>
           <td class="right">{fmt_num_vn(rec.get('bi', 0))}</td>
           <td class="right">{fmt_num_vn(rec.get('kl_tt', 0))}</td>
@@ -197,7 +198,7 @@ def build_daily_purchase_report_html(data: dict) -> str:
     letter-spacing: 0.5px;
   }}
   .info-val {{
-    font-size: 15px; font-weight: 800;
+    font-size: 20px; font-weight: 800;
     color: #0f172a; margin-top: 4px;
   }}
   .val-green {{ color: #16a34a; }}
@@ -206,14 +207,14 @@ def build_daily_purchase_report_html(data: dict) -> str:
   table {{
     width: 100%;
     border-collapse: collapse;
-    font-size: 11px;
+    font-size: 18px;
   }}
   thead th {{
     background: #1a365d;
     color: #ffffff;
     font-weight: 700;
-    font-size: 10px;
-    padding: 2px 8px;
+    font-size: 15px;
+    padding: 4px 8px;
     text-align: center;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -222,8 +223,8 @@ def build_daily_purchase_report_html(data: dict) -> str:
   thead th:first-child {{ border-radius: 8px 0 0 0; }}
   thead th:last-child {{ border-radius: 0 8px 0 0; }}
   tbody td {{
-    padding: 2px 8px;
-    font-size: 11px;
+    padding: 4px 8px;
+    font-size: 18px;
     color: #334155;
     font-weight: 500;
     border-bottom: 1px solid #f1f5f9;
@@ -237,8 +238,8 @@ def build_daily_purchase_report_html(data: dict) -> str:
   .text-blue {{ color: #0284c7; font-weight: 700; }}
   .text-amber {{ color: #d97706; font-weight: 700; }}
   tfoot td {{
-    padding: 5px 8px;
-    font-size: 12px;
+    padding: 6px 8px;
+    font-size: 18px;
     font-weight: 800;
     border-top: 2px solid #1a365d;
     background: #f1f5f9;
@@ -288,23 +289,25 @@ def build_daily_purchase_report_html(data: dict) -> str:
         </div>
         <div class="info-block" style="text-align: right;">
           <span class="info-label">Tổng thành tiền</span>
-          <span class="info-val val-green">{fmt_money_vn(data.get('tong_thanh_tien', 0))} đ</span>
+          <span class="info-val val-green">{fmt_money_vn(data.get('tong_thanh_tien', 0))} VNĐ</span>
         </div>
         <div class="info-block" style="text-align: right;">
           <span class="info-label">Lưu sổ</span>
-          <span class="info-val val-amber">{fmt_money_vn(data.get('tong_luu_so', 0))} đ</span>
+          <span class="info-val val-amber">{fmt_money_vn(data.get('tong_luu_so', 0))} VNĐ</span>
         </div>
         <div class="info-block" style="text-align: right;">
           <span class="info-label">Thanh toán</span>
-          <span class="info-val val-green">{fmt_money_vn(data.get('tong_thanh_toan', 0))} đ</span>
+          <span class="info-val val-green">{fmt_money_vn(data.get('tong_thanh_toan', 0))} VNĐ</span>
+        </div>
+        <div class="info-block" style="text-align: right;">
+          <span class="info-label">Số tiền đã ứng</span>
+          <span class="info-val val-amber">{fmt_money_vn(data.get('tien_da_ung', 0))} VNĐ</span>
         </div>
       </div>
       <table>
         <thead>
           <tr>
             <th>Ngày</th>
-            <th>Tuần</th>
-            <th>Trợ giá</th>
             <th>KL (kg)</th>
             <th>Bì (kg)</th>
             <th>KL TT</th>
@@ -321,7 +324,7 @@ def build_daily_purchase_report_html(data: dict) -> str:
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="3" class="center"><b>TỔNG CỘNG</b></td>
+            <td class="center"><b>TỔNG CỘNG</b></td>
             <td class="right text-blue">{fmt_num_vn(data.get('tong_kl', 0))}</td>
             <td></td>
             <td class="right">{fmt_num_vn(data.get('tong_kl_tt', 0))}</td>
