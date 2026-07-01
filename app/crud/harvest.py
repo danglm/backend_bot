@@ -9,7 +9,8 @@ def get_agricultural_lands(
     db: Session,
     land_code: Optional[str] = None,
     status: Optional[str] = None,
-    affiliation: Optional[str] = None
+    affiliation: Optional[str] = None,
+    crop_type: Optional[str] = None
 ):
     query = db.query(AgriculturalLand)
     if land_code is not None:
@@ -18,6 +19,8 @@ def get_agricultural_lands(
         query = query.filter(AgriculturalLand.status == status)
     if affiliation is not None:
         query = query.filter(AgriculturalLand.affiliation == affiliation)
+    if crop_type is not None:
+        query = query.filter(AgriculturalLand.crop_type == crop_type)
     return query.all()
 
 def create_agricultural_land(db: Session, obj_in: AgriculturalLandCreate):
@@ -32,6 +35,7 @@ def create_agricultural_land(db: Session, obj_in: AgriculturalLandCreate):
         harvesting_trees=obj_in.harvesting_trees,
         planting_trees=obj_in.planting_trees,
         affiliation=obj_in.affiliation,
+        crop_type=obj_in.crop_type,
         status=obj_in.status
     )
     db.add(db_obj)

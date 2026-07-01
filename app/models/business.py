@@ -187,6 +187,7 @@ class AgriculturalLand(Base):
     harvesting_trees = Column(Integer, default=0)             # Số lượng cây đang thu hoạch
     planting_trees = Column(Integer, default=0)               # Số lượng cây đang trồng
     affiliation = Column(String, nullable=True)              # Trực thuộc (Vĩnh Hà / Tiến Nga / ...)
+    crop_type = Column(String, default="cao_su")             # Loại cây trồng: cao_su / sau_rieng
     status = Column(String, default="ACTIVE")                # Trạng thái
 
 class Households(Base):

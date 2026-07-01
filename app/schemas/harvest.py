@@ -13,6 +13,7 @@ class AgriculturalLandBase(BaseModel):
     harvesting_trees: Optional[int] = 0
     planting_trees: Optional[int] = 0
     affiliation: Optional[str] = None
+    crop_type: Optional[str] = "cao_su"
     status: Optional[str] = "ACTIVE"
 
 class AgriculturalLandCreate(AgriculturalLandBase):

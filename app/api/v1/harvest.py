@@ -17,19 +17,21 @@ async def api_get_agricultural_lands(
     land_code: Optional[str] = None,
     status: Optional[str] = None,
     affiliation: Optional[str] = None,
+    crop_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Credential = Depends(get_current_user)
 ):
     """
     Lấy danh sách đất trồng trọt (agricultural lands).
     """
-    LogInfo(f"[Harvest API] Received get-agricultural-lands request. land_code: {land_code}, status: {status}, affiliation: {affiliation}")
+    LogInfo(f"[Harvest API] Received get-agricultural-lands request. land_code: {land_code}, status: {status}, affiliation: {affiliation}, crop_type: {crop_type}")
     try:
         lands = crud_harvest.get_agricultural_lands(
             db,
             land_code=land_code,
             status=status,
-            affiliation=affiliation
+            affiliation=affiliation,
+            crop_type=crop_type
         )
         LogInfo(f"[Harvest API] Found {len(lands)} agricultural lands.")
         return lands

@@ -2510,6 +2510,197 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
     finally:
         db.close()
 
+
+@bot.on_message(filters.command(["tien_nga_export_saved_bill", "tien_nga_xuat_hoa_don_luu_so"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_saved_bill|tien_nga_xuat_hoa_don_luu_so)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tien_nga_export_saved_bill_handler(client, message: Message) -> None:
+    args = message.text.strip().split()
+
+    # Validate cú pháp
+    if len(args) < 3:
+        await message.reply_text(
+            "⚠️ <b>Cú pháp:</b>\n"
+            "<code>/tien_nga_xuat_hoa_don_luu_so [Mã Hộ] [dd/mm/yyyy]</code>\n"
+            "<code>/tien_nga_xuat_hoa_don_luu_so [Mã Hộ] [dd/mm/yyyy - dd/mm/yyyy]</code>\n\n"
+            "<i>Ví dụ:\n"
+            "<code>/tien_nga_xuat_hoa_don_luu_so X001 14/04/2026</code>\n"
+            "<code>/tien_nga_xuat_hoa_don_luu_so X001 01/04/2026 - 14/04/2026</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    hoursehold_id = args[1].upper()
+
+    # Parse date(s)
+    date_part = " ".join(args[2:])
+    try:
+        if "-" in date_part and len(args) >= 5:
+            # Range: dd/mm/yyyy - dd/mm/yyyy
+            parts = date_part.split("-")
+            start_date = datetime.strptime(parts[0].strip(), "%d/%m/%Y").date()
+            end_date = datetime.strptime(parts[1].strip(), "%d/%m/%Y").date()
+            timeframe = f"{start_date.strftime('%d/%m/%Y')} — {end_date.strftime('%d/%m/%Y')}"
+        else:
+            # Single date
+            start_date = datetime.strptime(args[2].strip(), "%d/%m/%Y").date()
+            end_date = start_date
+            timeframe = start_date.strftime("%d/%m/%Y")
+    except Exception:
+        await message.reply_text(
+            "⚠️ Định dạng ngày không hợp lệ. Vui lòng nhập <b>DD/MM/YYYY</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    loading_msg = await message.reply_text("⏳ Đang tạo hóa đơn lưu sổ, vui lòng chờ...", parse_mode=ParseMode.HTML)
+
+    from app.models.business import DailyPurchases, Customers, CollectionPoint
+
+    db = SessionLocal()
+    try:
+        # Verify customer
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            await loading_msg.delete()
+            await message.reply_text(
+                f"⚠️ Không tìm thấy Khách hàng với mã hộ <b>{hoursehold_id}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Lấy tên xưởng
+        cp_name = "—"
+        if customer.collection_point_id:
+            cp = db.query(CollectionPoint).filter(CollectionPoint.id == customer.collection_point_id).first()
+            if cp:
+                cp_name = cp.collection_name
+
+        # Query purchases with saved_amount > 0
+        purchases = (
+            db.query(DailyPurchases)
+            .filter(
+                DailyPurchases.hoursehold_id == hoursehold_id,
+                DailyPurchases.day >= start_date,
+                DailyPurchases.day <= end_date,
+                DailyPurchases.saved_amount > 0
+            )
+            .order_by(DailyPurchases.day)
+            .all()
+        )
+
+        if not purchases:
+            await loading_msg.delete()
+            await message.reply_text(
+                f"ℹ️ Không có dữ liệu lưu sổ cho <b>{customer.fullname}</b> ({hoursehold_id}) trong khoảng <b>{timeframe}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Build records
+        records = []
+        tong_kl = 0
+        tong_kl_tt = 0
+        tong_mu_kho = 0
+        tong_thanh_tien = 0
+        tong_thanh_tien_kht = 0
+        tong_luu_so = 0
+        tong_thanh_toan = 0
+
+        for p in purchases:
+            kl = p.weight or 0
+            bi = p.tare_weight or 0
+            kl_tt = p.actual_weight or 0
+            mu_kho = p.dry_rubber or 0
+            thanh_tien = p.total_amount or 0
+            don_gia = p.unit_price or 0
+            thanh_tien_kht = mu_kho * don_gia
+            luu_so = p.saved_amount or 0
+            thanh_toan = p.paid_amount or 0
+
+            tong_kl += kl
+            tong_kl_tt += kl_tt
+            tong_mu_kho += mu_kho
+            tong_thanh_tien += thanh_tien
+            tong_thanh_tien_kht += thanh_tien_kht
+            tong_luu_so += luu_so
+            tong_thanh_toan += thanh_toan
+
+            records.append({
+                "ngay": p.day.strftime("%d/%m") if p.day else "—",
+                "tuan": p.week or "—",
+                "tro_gia": p.is_subsidized or 0,
+                "kl": kl,
+                "bi": bi,
+                "kl_tt": kl_tt,
+                "so_do": p.degree or 0,
+                "mu_kho": mu_kho,
+                "don_gia": don_gia,
+                "gia_ht": p.subsidy_price or 0,
+                "thanh_tien": thanh_tien,
+                "thanh_tien_kht": thanh_tien_kht,
+                "luu_so": luu_so,
+                "thanh_toan": thanh_toan,
+            })
+
+        report_data = {
+            "ten_kh": customer.fullname,
+            "ma_ho": hoursehold_id,
+            "diem_thu_mua": cp_name,
+            "timeframe": timeframe,
+            "records": records,
+            "tong_kl": tong_kl,
+            "tong_kl_tt": tong_kl_tt,
+            "tong_mu_kho": tong_mu_kho,
+            "tong_thanh_tien": tong_thanh_tien,
+            "tong_thanh_tien_kht": tong_thanh_tien_kht,
+            "tong_luu_so": tong_luu_so,
+            "tong_thanh_toan": tong_thanh_toan,
+            "tien_da_ung": customer.cash_advance or 0,
+        }
+
+        from bot.utils.saved_bill_report_generator import generate_saved_bill_report_image
+        img_buf = await generate_saved_bill_report_image(report_data)
+
+        caption_text = (
+                f"<b>HÓA ĐƠN LƯU SỔ</b>\n"
+                f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
+                f"<b>Xưởng:</b> {cp_name}\n"
+                f"<b>Thời gian:</b> {timeframe}\n"
+                f"<b>Số lần mua:</b> {len(records)}"
+            )
+
+        try:
+            await message.reply_photo(
+                photo=img_buf,
+                caption=caption_text,
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            # Fallback: send as document if photo dimensions are rejected
+            img_buf.seek(0)
+            await message.reply_document(
+                document=img_buf,
+                file_name=f"hoa_don_luu_so_{hoursehold_id}.png",
+                caption=caption_text,
+                parse_mode=ParseMode.HTML,
+            )
+
+        await loading_msg.delete()
+        LogInfo(f"[TienNga] Exported saved bill report for '{hoursehold_id}' ({timeframe}) by user {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        LogError(f"Error exporting saved bill: {e}", LogType.SYSTEM_STATUS)
+        import traceback
+        traceback.print_exc()
+        await loading_msg.delete()
+        await message.reply_text("❌ Có lỗi xảy ra khi tạo hóa đơn lưu sổ.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
 @bot.on_message(filters.command(["tien_nga_export_info", "tien_nga_truy_xuat_thong_tin"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_info|tien_nga_truy_xuat_thong_tin)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -13356,6 +13547,7 @@ Mã Đất:
 Tên Đất: 
 Địa Chỉ: 
 Trực Thuộc: 
+Loại Cây Trồng: cao_su
 Diện Tích (ha): 0
 DT Đang Thu Hoạch (ha): 0
 DT Trống (ha): 0
@@ -13364,7 +13556,8 @@ SL Cây Thu Hoạch: 0
 SL Cây Đang Trồng: 0</pre>
 
 <i>Ghi chú: Mã đất nên viết liền không dấu (VD: DCS001).
-Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà, TN... thì là Tiến Nga.</i>"""
+Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà, TN... thì là Tiến Nga.
+Loại cây trồng mặc định: cao_su hoặc sau_rieng.</i>"""
         await message.reply_text(form, parse_mode=ParseMode.HTML)
         return
 
@@ -13378,6 +13571,7 @@ Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà
     land_name = data.get("Tên Đất", "").strip()
     address = data.get("Địa Chỉ", "").strip()
     affiliation = data.get("Trực Thuộc", "").strip()
+    crop_type = data.get("Loại Cây Trồng", "cao_su").strip()
     
     if not affiliation and land_code:
         if land_code.startswith("VH"):
@@ -13411,7 +13605,8 @@ Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà
             address=address or None, affiliation=affiliation or None,
             total_area=total_area, harvest_area=harvest_area,
             empty_area=empty_area, planting_area=planting_area,
-            harvesting_trees=harvesting_trees, planting_trees=planting_trees, status="ACTIVE"
+            harvesting_trees=harvesting_trees, planting_trees=planting_trees,
+            crop_type=crop_type, status="ACTIVE"
         )
         db.add(new_land)
         db.commit()
@@ -13422,6 +13617,7 @@ Bổ xung gợi ý: Nếu Mã đất là VH... thì Trực thuộc là Vĩnh Hà
             f"<b>Tên Đất:</b> {land_name or '—'}\n"
             f"<b>Địa Chỉ:</b> {address or '—'}\n"
             f"<b>Trực Thuộc:</b> {affiliation or '—'}\n"
+            f"<b>Loại Cây Trồng:</b> {crop_type}\n"
             f"<b>Diện Tích:</b> {total_area} ha\n"
             f"<b>DT Thu Hoạch:</b> {harvest_area} ha\n"
             f"<b>DT Trống:</b> {empty_area} ha\n"
@@ -13467,6 +13663,7 @@ Mã Đất: {land.land_code}
 Tên Đất: {land.land_name or ''}
 Địa Chỉ: {land.address or ''}
 Trực Thuộc: {land.affiliation or ''}
+Loại Cây Trồng: {land.crop_type or 'cao_su'}
 Diện Tích (ha): {land.total_area}
 DT Đang Thu Hoạch (ha): {land.harvest_area}
 DT Trống (ha): {land.empty_area}
@@ -13508,6 +13705,8 @@ SL Cây Đang Trồng: {land.planting_trees or 0}</pre>"""
                     new_affil = "Tiến Nga"
             land.affiliation = new_affil or None
 
+        if "Loại Cây Trồng" in data: land.crop_type = data["Loại Cây Trồng"].strip() or "cao_su"
+
         if "Diện Tích (ha)" in data: land.total_area = parse_float_vn(data["Diện Tích (ha)"])
         if "DT Đang Thu Hoạch (ha)" in data: land.harvest_area = parse_float_vn(data["DT Đang Thu Hoạch (ha)"])
         elif "DT Thu Hoạch (ha)" in data: land.harvest_area = parse_float_vn(data["DT Thu Hoạch (ha)"])
@@ -13524,6 +13723,7 @@ SL Cây Đang Trồng: {land.planting_trees or 0}</pre>"""
             f"<b>Tên Đất:</b> {land.land_name or '—'}\n"
             f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
             f"<b>Trực Thuộc:</b> {land.affiliation or '—'}\n"
+            f"<b>Loại Cây Trồng:</b> {land.crop_type or '—'}\n"
             f"<b>Diện Tích:</b> {land.total_area} ha\n"
             f"<b>DT Thu Hoạch:</b> {land.harvest_area} ha\n"
             f"<b>DT Trống:</b> {land.empty_area} ha\n"
@@ -13625,6 +13825,7 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
                     f"   Tên Đất: {l.land_name or '—'}\n"
                     f"   Địa Chỉ: {l.address or '—'}\n"
                     f"   Trực Thuộc: {l.affiliation or '—'}\n"
+                    f"   Loại Cây: {l.crop_type or '—'}\n"
                     f"   DT Tổng: {l.total_area} ha | Thu Hoạch: {l.harvest_area} ha\n"
                     f"   Trống: {l.empty_area} ha | Đang Trồng: {l.planting_area} ha\n"
                     f"   Cây Thu Hoạch: {l.harvesting_trees or 0} | Cây Đang Trồng: {l.planting_trees or 0}\n\n"
@@ -13636,7 +13837,7 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Đất Trồng Trọt"
-            headers = ["STT", "Mã Đất", "Tên Đất", "Địa Chỉ", "Trực Thuộc", "DT Tổng (ha)", "DT Cao Su (ha)", "DT Trống (ha)", "DT Đang Trồng (ha)", "Cây Thu Hoạch", "Cây Đang Trồng"]
+            headers = ["STT", "Mã Đất", "Tên Đất", "Địa Chỉ", "Trực Thuộc", "Loại Cây", "DT Tổng (ha)", "DT Thu Hoạch (ha)", "DT Trống (ha)", "DT Đang Trồng (ha)", "Cây Thu Hoạch", "Cây Đang Trồng"]
             hdr_font = Font(bold=True, color="FFFFFF")
             hdr_fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid")
             thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
@@ -13647,11 +13848,11 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
                 cell.border = thin_border
                 cell.alignment = Alignment(horizontal="center")
             for row_idx, l in enumerate(lands, 2):
-                vals = [row_idx - 1, l.land_code, l.land_name or "", l.address or "", l.affiliation or "", l.total_area, l.harvest_area, l.empty_area, l.planting_area, l.harvesting_trees or 0, l.planting_trees or 0]
+                vals = [row_idx - 1, l.land_code, l.land_name or "", l.address or "", l.affiliation or "", l.crop_type or "cao_su", l.total_area, l.harvest_area, l.empty_area, l.planting_area, l.harvesting_trees or 0, l.planting_trees or 0]
                 for col_idx, v in enumerate(vals, 1):
                     cell = ws.cell(row=row_idx, column=col_idx, value=v)
                     cell.border = thin_border
-            col_widths = [6, 12, 20, 30, 20, 15, 18, 15, 20, 15, 18]
+            col_widths = [6, 12, 20, 30, 20, 12, 15, 18, 15, 20, 15, 18]
             for i, w in enumerate(col_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -13699,8 +13900,9 @@ async def tien_nga_check_agricultural_land_handler(client, message: Message) -> 
             await message.reply_text(f"⚠️ Không tìm thấy đất với mã <b>{land_code}</b>.", parse_mode=ParseMode.HTML)
             return
 
-        # Lấy thống kê cây cao su
-        logs = db.query(CropTreeLog).filter(CropTreeLog.land_code == land_code, CropTreeLog.crop_type == "cao_su").all()
+        # Lấy thống kê cây
+        use_crop_type = land.crop_type or "cao_su"
+        logs = db.query(CropTreeLog).filter(CropTreeLog.land_code == land_code, CropTreeLog.crop_type == use_crop_type).all()
         total_planted = sum(log.quantity or 0 for log in logs if log.action_type == "PLANT")
         total_cut = sum(log.quantity or 0 for log in logs if log.action_type == "CUT")
         plant_count = len([log for log in logs if log.action_type == "PLANT"])
@@ -13715,6 +13917,7 @@ async def tien_nga_check_agricultural_land_handler(client, message: Message) -> 
             f"<b>Mã Đất:</b> <code>{land.land_code}</code>\n"
             f"<b>Tên Đất:</b> {land.land_name or '—'}\n"
             f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
+            f"<b>Loại Cây Trồng:</b> {land.crop_type or '—'}\n"
             f"━━━━━━━━━━━━━━━━━━\n\n"
             f"<b>DIỆN TÍCH</b>\n"
             f"  Tổng: <b>{land.total_area}</b> ha\n"
@@ -13725,7 +13928,7 @@ async def tien_nga_check_agricultural_land_handler(client, message: Message) -> 
             f"  Cây thu hoạch: <b>{land.harvesting_trees or 0}</b>\n"
             f"  Cây đang trồng: <b>{land.planting_trees or 0}</b>\n"
             f"  Tổng: <b>{(land.harvesting_trees or 0) + (land.planting_trees or 0)}</b>\n\n"
-            f"<b>LỊCH SỬ CÂY CAO SU</b>\n"
+            f"<b>LỊCH SỬ CÂY {use_crop_type.upper().replace('_', ' ')}</b>\n"
             f"  Tổng trồng mới: <b>{total_planted}</b> cây ({plant_count} lần)\n"
             f"  Tổng chặt bỏ: <b>{total_cut}</b> cây ({cut_count} lần)\n"
         )
