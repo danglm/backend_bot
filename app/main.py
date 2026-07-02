@@ -65,7 +65,7 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://hdggroup-frontend-2026.lmd16032002.workers.dev",
+        "https://hdg-group-2026.lmd16032002.workers.dev/",
         "https://unaffecting-christel-semijocularly.ngrok-free.dev",
         "https://spore-unknown-crank.ngrok-free.dev",
         "http://localhost:5173",   # dev local frontend
