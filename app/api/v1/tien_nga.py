@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user
 from app.schemas.customer import CustomerResponse, CustomerCreate, CustomerUpdate
@@ -2087,6 +2088,163 @@ def delete_inventories(
     except Exception as e:
         LogInfo(f"[TienNga API] Error in delete-inventories: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class ProcessAdvanceAmountRequest(BaseModel):
+    hoursehold_id: str
+    amount: float
+
+
+@router.post("/process-advance-amount")
+def process_advance_amount(
+    payloads: List[ProcessAdvanceAmountRequest],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user)
+):
+    import calendar
+    from datetime import date
+    from sqlalchemy import func
+    from app.core.config import settings
+    from bot.utils.utils import fmt_money
+
+    results = []
+
+    for payload in payloads:
+        hoursehold_id = payload.hoursehold_id.strip()
+        cash_advance_requested = payload.amount
+
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            results.append({
+                "hoursehold_id": hoursehold_id,
+                "success": False,
+                "message": f"Không tìm thấy hộ dân có mã {hoursehold_id}."
+            })
+            continue
+
+        current_date = date.today()
+        if current_date.month >= 5:
+            start_year = current_date.year - 1
+        else:
+            start_year = current_date.year - 2
+
+        start_date = date(start_year, 5, 1)
+        end_year = start_year + 1
+        end_month = 2
+        last_day = calendar.monthrange(end_year, end_month)[1]
+        end_date = date(end_year, end_month, last_day)
+
+        total_sales = db.query(func.sum(DailyPurchases.total_amount)).filter(
+            DailyPurchases.hoursehold_id == hoursehold_id,
+            DailyPurchases.day >= start_date,
+            DailyPurchases.day <= end_date
+        ).scalar() or 0.0
+
+        max_cash_advance_rate = settings.IMP_Config.MaxCashAdvance
+        max_cash_advance = total_sales * max_cash_advance_rate
+        current_advance = customer.cash_advance or 0
+        total_after_advance = current_advance + cash_advance_requested
+
+        if total_after_advance > max_cash_advance:
+            reason = (
+                f"Theo quy định, tổng số tiền ứng tối đa bằng {max_cash_advance_rate * 100:.0f}% tổng số tiền bán mủ mùa vụ trước.\n"
+                f"Mùa vụ trước (từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}):\n"
+                f"Tổng số tiền bán mủ: {fmt_money(total_sales)}\n"
+                f"Hạn mức ứng tối đa: {fmt_money(max_cash_advance)}\n"
+            )
+            if current_advance > 0:
+                reason += f"Đã ứng trước đó: {fmt_money(current_advance)}\n"
+                reason += f"Còn lại có thể ứng: {fmt_money(max_cash_advance - current_advance)}"
+            
+            results.append({
+                "hoursehold_id": hoursehold_id,
+                "success": False,
+                "exceeded": True,
+                "message": f"Số tiền ứng vượt quá hạn mức cho phép ({fmt_money(max_cash_advance)}).",
+                "reason": reason,
+                "max_cash_advance": max_cash_advance,
+                "current_advance": current_advance,
+                "allowed_remaining": max_cash_advance - current_advance if max_cash_advance > current_advance else 0
+            })
+            continue
+
+        customer.cash_advance = total_after_advance
+        db.commit()
+        db.refresh(customer)
+
+        LogInfo(f"[TienNga API] User {current_user.username} processed cash advance {cash_advance_requested} for household {hoursehold_id}")
+
+        results.append({
+            "hoursehold_id": hoursehold_id,
+            "success": True,
+            "message": "Ứng tiền thành công!",
+            "new_advance": total_after_advance
+        })
+
+    return results
+
+
+class BillRecord(BaseModel):
+    ngay: str
+    tuan: Optional[str] = "—"
+    tro_gia: Optional[float] = 0.0
+    kl: Optional[float] = 0.0
+    bi: Optional[float] = 0.0
+    kl_tt: Optional[float] = 0.0
+    so_do: Optional[float] = 0.0
+    mu_kho: Optional[float] = 0.0
+    don_gia: Optional[float] = 0.0
+    gia_ht: Optional[float] = 0.0
+    thanh_tien: Optional[float] = 0.0
+    thanh_toan: Optional[float] = 0.0
+    thanh_tien_kht: Optional[float] = 0.0
+    luu_so: Optional[float] = 0.0
+
+
+class BillReportRequest(BaseModel):
+    ten_kh: str
+    ma_ho: str
+    diem_thu_mua: str
+    timeframe: str
+    records: List[BillRecord]
+    tong_kl: Optional[float] = 0.0
+    tong_kl_tt: Optional[float] = 0.0
+    tong_thanh_tien: Optional[float] = 0.0
+    tong_thanh_toan: Optional[float] = 0.0
+    tong_thanh_tien_kht: Optional[float] = 0.0
+    tien_da_ung: Optional[float] = 0.0
+
+
+@router.post("/export-paid-bill")
+async def export_paid_bill(
+    payload: BillReportRequest,
+    current_user: Credential = Depends(get_current_user)
+):
+    from fastapi import Response
+    from bot.utils.paid_bill_report_generator import generate_paid_bill_report_image
+    try:
+        data = payload.dict()
+        img_buf = await generate_paid_bill_report_image(data)
+        return Response(content=img_buf.getvalue(), media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate paid bill report: {str(e)}")
+
+
+@router.post("/export-saved-bill")
+async def export_saved_bill(
+    payload: BillReportRequest,
+    current_user: Credential = Depends(get_current_user)
+):
+    from fastapi import Response
+    from bot.utils.saved_bill_report_generator import generate_saved_bill_report_image
+    try:
+        data = payload.dict()
+        img_buf = await generate_saved_bill_report_image(data)
+        return Response(content=img_buf.getvalue(), media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate saved bill report: {str(e)}")
+
+
 
 
 

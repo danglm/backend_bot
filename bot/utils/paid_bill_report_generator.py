@@ -1,6 +1,6 @@
 """
-Saved Bill Report Image Generator
-Render báo cáo hóa đơn lưu sổ theo khách hàng thành ảnh PNG bằng HTML/CSS + Playwright.
+Paid Bill Report Image Generator
+Render báo cáo hóa đơn đã thanh toán theo khách hàng thành ảnh PNG bằng HTML/CSS + Playwright.
 """
 import io
 import datetime
@@ -41,20 +41,20 @@ def fmt_num_vn(val) -> str:
     return f"-{formatted}" if negative else formatted
 
 
-def build_saved_bill_report_html(data: dict) -> str:
+def build_paid_bill_report_html(data: dict) -> str:
     """
-    Tạo HTML báo cáo hóa đơn lưu sổ cho 1 khách hàng.
+    Tạo HTML báo cáo hóa đơn đã thanh toán cho 1 khách hàng.
     
     data dict cần có:
         ten_kh, ma_ho, diem_thu_mua, timeframe,
         records: list of dict {ngay, tuan, tro_gia, kl, bi, kl_tt, so_do, mu_kho, don_gia, gia_ht, thanh_tien, luu_so, thanh_toan}
-        tong_kl, tong_thanh_tien, tong_luu_so, tong_thanh_toan
+        tong_kl, tong_thanh_tien, tong_thanh_toan, tien_da_ung
     """
     now_time = datetime.datetime.now().strftime("%H:%M %d/%m/%Y")
     records = data.get("records", [])
     num_records = len(records)
 
-    # Build table rows (No Dry Rubber/Mủ Khô column)
+    # Build table rows
     table_rows = ""
     for idx, rec in enumerate(records):
         row_class = "even" if idx % 2 == 0 else "odd"
@@ -66,8 +66,8 @@ def build_saved_bill_report_html(data: dict) -> str:
           <td class="right">{fmt_num_vn(rec.get('kl_tt', 0))}</td>
           <td class="right">{fmt_num_vn(rec.get('so_do', 0))}</td>
           <td class="right">{fmt_money_vn(rec.get('gia_ht', 0))}</td>
-          <td class="right success">{fmt_money_vn(rec.get('thanh_tien_kht', 0))}</td>
           <td class="right success">{fmt_money_vn(rec.get('thanh_tien', 0))}</td>
+          <td class="right success">{fmt_money_vn(rec.get('thanh_toan', 0))}</td>
         </tr>"""
 
     html = f"""<!DOCTYPE html>
@@ -91,7 +91,7 @@ def build_saved_bill_report_html(data: dict) -> str:
     box-shadow: 0 4px 24px rgba(0,0,0,0.08);
   }}
   .att-header {{
-    background: linear-gradient(135deg, #1a365d 0%, #2b4c7e 40%, #3b6fa0 100%);
+    background: linear-gradient(135deg, #10b981 0%, #059669 40%, #047857 100%);
     padding: 24px 28px 20px 28px;
     position: relative;
     overflow: hidden;
@@ -113,7 +113,7 @@ def build_saved_bill_report_html(data: dict) -> str:
   }}
   .brand-name {{
     font-size: 16px; font-weight: 800;
-    color: #bee3f8; letter-spacing: 1.5px;
+    color: #ecfdf5; letter-spacing: 1.5px;
     text-transform: uppercase;
   }}
   .brand-sub {{
@@ -187,7 +187,7 @@ def build_saved_bill_report_html(data: dict) -> str:
     font-size: 20px; font-weight: 800;
     color: #0f172a; margin-top: 4px;
   }}
-  .val-green {{ color: #16a34a; }}
+  .val-green {{ color: #10b981; }}
   .val-blue {{ color: #0284c7; }}
   .val-amber {{ color: #d97706; }}
   table {{
@@ -196,7 +196,7 @@ def build_saved_bill_report_html(data: dict) -> str:
     font-size: 18px;
   }}
   thead th {{
-    background: #1a365d;
+    background: #047857;
     color: #ffffff;
     font-weight: 700;
     font-size: 15px;
@@ -220,14 +220,14 @@ def build_saved_bill_report_html(data: dict) -> str:
   .right {{ text-align: right; }}
   tr.even {{ background: #f8fafc; }}
   tr.odd {{ background: #ffffff; }}
-  .success {{ color: #16a34a; font-weight: 700; }}
+  .success {{ color: #10b981; font-weight: 700; }}
   .text-blue {{ color: #0284c7; font-weight: 700; }}
   .text-amber {{ color: #d97706; font-weight: 700; }}
   tfoot td {{
     padding: 6px 8px;
     font-size: 18px;
     font-weight: 800;
-    border-top: 2px solid #1a365d;
+    border-top: 2px solid #047857;
     background: #f1f5f9;
   }}
   .att-footer {{
@@ -252,7 +252,7 @@ def build_saved_bill_report_html(data: dict) -> str:
     <div class="att-header">
       <div class="header-top">
         <div>
-          <div class="brand-name">HÓA ĐƠN LƯU SỔ</div>
+          <div class="brand-name">HÓA ĐƠN ĐÃ THANH TOÁN</div>
           <div class="brand-sub">Điểm thu mua: {data.get('diem_thu_mua', '—')}</div>
         </div>
         <div class="header-badge">{data.get('timeframe', '')}</div>
@@ -278,8 +278,8 @@ def build_saved_bill_report_html(data: dict) -> str:
           <span class="info-val val-green">{fmt_money_vn(data.get('tong_thanh_tien', 0))} VNĐ</span>
         </div>
         <div class="info-block" style="text-align: right;">
-          <span class="info-label">Tổng Thành Tiền (KHT)</span>
-          <span class="info-val val-amber">{fmt_money_vn(data.get('tong_thanh_tien_kht', 0))} VNĐ</span>
+          <span class="info-label">Tổng Đã Thanh Toán</span>
+          <span class="info-val val-green">{fmt_money_vn(data.get('tong_thanh_toan', 0))} VNĐ</span>
         </div>
         <div class="info-block" style="text-align: right;">
           <span class="info-label">Số tiền đã ứng</span>
@@ -295,8 +295,8 @@ def build_saved_bill_report_html(data: dict) -> str:
             <th>KL TT</th>
             <th>Số độ</th>
             <th>Giá HT</th>
-            <th>Thành Tiền (KHT)</th>
             <th>Thành tiền</th>
+            <th>Đã thanh toán</th>
           </tr>
         </thead>
         <tbody>
@@ -310,8 +310,8 @@ def build_saved_bill_report_html(data: dict) -> str:
             <td class="right">{fmt_num_vn(data.get('tong_kl_tt', 0))}</td>
             <td></td>
             <td></td>
-            <td class="right success">{fmt_money_vn(data.get('tong_thanh_tien_kht', 0))}</td>
             <td class="right success">{fmt_money_vn(data.get('tong_thanh_tien', 0))}</td>
+            <td class="right success">{fmt_money_vn(data.get('tong_thanh_toan', 0))}</td>
           </tr>
         </tfoot>
       </table>
@@ -363,11 +363,11 @@ async def render_to_png(html_content: str) -> bytes:
     return await asyncio.to_thread(_render_to_png_sync, html_content)
 
 
-async def generate_saved_bill_report_image(data: dict) -> io.BytesIO:
-    """Tạo ảnh báo cáo hóa đơn lưu sổ từ data dict. Returns io.BytesIO PNG buffer."""
-    html = build_saved_bill_report_html(data)
+async def generate_paid_bill_report_image(data: dict) -> io.BytesIO:
+    """Tạo ảnh báo cáo hóa đơn đã thanh toán từ data dict. Returns io.BytesIO PNG buffer."""
+    html = build_paid_bill_report_html(data)
     png_bytes = await render_to_png(html)
 
     buf = io.BytesIO(png_bytes)
-    buf.name = f"saved_bill_{data.get('ma_ho', 'report')}.png"
+    buf.name = f"paid_bill_{data.get('ma_ho', 'report')}.png"
     return buf

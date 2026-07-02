@@ -2423,6 +2423,7 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
         tong_thanh_tien = 0
         tong_luu_so = 0
         tong_thanh_toan = 0
+        tong_ung_tien = 0
 
         for p in purchases:
             kl = p.weight or 0
@@ -2432,6 +2433,7 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
             thanh_tien = p.total_amount or 0
             luu_so = p.saved_amount or 0
             thanh_toan = p.paid_amount or 0
+            ung_tien = p.advance_amount or 0
 
             tong_kl += kl
             tong_kl_tt += kl_tt
@@ -2439,6 +2441,7 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
             tong_thanh_tien += thanh_tien
             tong_luu_so += luu_so
             tong_thanh_toan += thanh_toan
+            tong_ung_tien += ung_tien
 
             records.append({
                 "ngay": p.day.strftime("%d/%m") if p.day else "—",
@@ -2454,6 +2457,7 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
                 "thanh_tien": thanh_tien,
                 "luu_so": luu_so,
                 "thanh_toan": thanh_toan,
+                "ung_tien": ung_tien,
             })
 
         report_data = {
@@ -2468,6 +2472,7 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
             "tong_thanh_tien": tong_thanh_tien,
             "tong_luu_so": tong_luu_so,
             "tong_thanh_toan": tong_thanh_toan,
+            "tong_ung_tien": tong_ung_tien,
             "tien_da_ung": customer.cash_advance or 0,
         }
 
@@ -2697,6 +2702,184 @@ async def tien_nga_export_saved_bill_handler(client, message: Message) -> None:
         traceback.print_exc()
         await loading_msg.delete()
         await message.reply_text("❌ Có lỗi xảy ra khi tạo hóa đơn lưu sổ.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+@bot.on_message(filters.command(["tien_nga_export_paid_bill", "tien_nga_xuat_hoa_don_da_tt"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_paid_bill|tien_nga_xuat_hoa_don_da_tt)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tien_nga_export_paid_bill_handler(client, message: Message) -> None:
+    args = message.text.strip().split()
+
+    # Validate cú pháp
+    if len(args) < 3:
+        await message.reply_text(
+            "⚠️ <b>Cú pháp:</b>\n"
+            "<code>/tien_nga_xuat_hoa_don_da_tt [Mã Hộ] [dd/mm/yyyy]</code>\n"
+            "<code>/tien_nga_xuat_hoa_don_da_tt [Mã Hộ] [dd/mm/yyyy - dd/mm/yyyy]</code>\n\n"
+            "<i>Ví dụ:\n"
+            "<code>/tien_nga_xuat_hoa_don_da_tt X001 14/04/2026</code>\n"
+            "<code>/tien_nga_xuat_hoa_don_da_tt X001 01/04/2026 - 14/04/2026</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    hoursehold_id = args[1].upper()
+
+    # Parse date(s)
+    date_part = " ".join(args[2:])
+    try:
+        if "-" in date_part and len(args) >= 5:
+            # Range: dd/mm/yyyy - dd/mm/yyyy
+            parts = date_part.split("-")
+            start_date = datetime.strptime(parts[0].strip(), "%d/%m/%Y").date()
+            end_date = datetime.strptime(parts[1].strip(), "%d/%m/%Y").date()
+            timeframe = f"{start_date.strftime('%d/%m/%Y')} — {end_date.strftime('%d/%m/%Y')}"
+        else:
+            # Single date
+            start_date = datetime.strptime(args[2].strip(), "%d/%m/%Y").date()
+            end_date = start_date
+            timeframe = start_date.strftime("%d/%m/%Y")
+    except Exception:
+        await message.reply_text(
+            "⚠️ Định dạng ngày không hợp lệ. Vui lòng nhập <b>DD/MM/YYYY</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    loading_msg = await message.reply_text("⏳ Đang tạo hóa đơn đã thanh toán, vui lòng chờ...", parse_mode=ParseMode.HTML)
+
+    from app.models.business import DailyPurchases, Customers, CollectionPoint
+
+    db = SessionLocal()
+    try:
+        # Verify customer
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            await loading_msg.delete()
+            await message.reply_text(
+                f"⚠️ Không tìm thấy Khách hàng với mã hộ <b>{hoursehold_id}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Lấy tên xưởng
+        cp_name = "—"
+        if customer.collection_point_id:
+            cp = db.query(CollectionPoint).filter(CollectionPoint.id == customer.collection_point_id).first()
+            if cp:
+                cp_name = cp.collection_name
+
+        # Query purchases with paid_amount > 0
+        purchases = (
+            db.query(DailyPurchases)
+            .filter(
+                DailyPurchases.hoursehold_id == hoursehold_id,
+                DailyPurchases.day >= start_date,
+                DailyPurchases.day <= end_date,
+                DailyPurchases.paid_amount > 0
+            )
+            .order_by(DailyPurchases.day)
+            .all()
+        )
+
+        if not purchases:
+            await loading_msg.delete()
+            await message.reply_text(
+                f"ℹ️ Không có dữ liệu đã thanh toán cho <b>{customer.fullname}</b> ({hoursehold_id}) trong khoảng <b>{timeframe}</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Build records
+        records = []
+        tong_kl = 0
+        tong_kl_tt = 0
+        tong_mu_kho = 0
+        tong_thanh_tien = 0
+        tong_thanh_toan = 0
+
+        for p in purchases:
+            kl = p.weight or 0
+            bi = p.tare_weight or 0
+            kl_tt = p.actual_weight or 0
+            mu_kho = p.dry_rubber or 0
+            thanh_tien = p.total_amount or 0
+            thanh_toan = p.paid_amount or 0
+
+            tong_kl += kl
+            tong_kl_tt += kl_tt
+            tong_mu_kho += mu_kho
+            tong_thanh_tien += thanh_tien
+            tong_thanh_toan += thanh_toan
+
+            records.append({
+                "ngay": p.day.strftime("%d/%m") if p.day else "—",
+                "tuan": p.week or "—",
+                "tro_gia": p.is_subsidized or 0,
+                "kl": kl,
+                "bi": bi,
+                "kl_tt": kl_tt,
+                "so_do": p.degree or 0,
+                "mu_kho": mu_kho,
+                "don_gia": p.unit_price or 0,
+                "gia_ht": p.subsidy_price or 0,
+                "thanh_tien": thanh_tien,
+                "thanh_toan": thanh_toan,
+            })
+
+        report_data = {
+            "ten_kh": customer.fullname,
+            "ma_ho": hoursehold_id,
+            "diem_thu_mua": cp_name,
+            "timeframe": timeframe,
+            "records": records,
+            "tong_kl": tong_kl,
+            "tong_kl_tt": tong_kl_tt,
+            "tong_thanh_tien": tong_thanh_tien,
+            "tong_thanh_toan": tong_thanh_toan,
+            "tien_da_ung": customer.cash_advance or 0,
+        }
+
+        from bot.utils.paid_bill_report_generator import generate_paid_bill_report_image
+        img_buf = await generate_paid_bill_report_image(report_data)
+
+        caption_text = (
+            f"<b>HÓA ĐƠN ĐÃ THANH TOÁN</b>\n"
+            f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
+            f"<b>Xưởng:</b> {cp_name}\n"
+            f"<b>Thời gian:</b> {timeframe}\n"
+            f"<b>Số lần mua:</b> {len(records)}"
+        )
+
+        try:
+            await message.reply_photo(
+                photo=img_buf,
+                caption=caption_text,
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            # Fallback: send as document if photo dimensions are rejected
+            img_buf.seek(0)
+            await message.reply_document(
+                document=img_buf,
+                file_name=f"hoa_don_da_thanh_toan_{hoursehold_id}.png",
+                caption=caption_text,
+                parse_mode=ParseMode.HTML,
+            )
+
+        await loading_msg.delete()
+        LogInfo(f"[TienNga] Exported paid bill report for '{hoursehold_id}' ({timeframe}) by user {message.from_user.id}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        LogError(f"Error exporting paid bill: {e}", LogType.SYSTEM_STATUS)
+        import traceback
+        traceback.print_exc()
+        await loading_msg.delete()
+        await message.reply_text("❌ Có lỗi xảy ra khi tạo hóa đơn đã thanh toán.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 

@@ -765,6 +765,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_thong_ke_hao_hut", "Thống kê hao hụt Excel"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_mua", "Xuất báo cáo mua mủ KH"),
                     BotCommand("tien_nga_xuat_hoa_don_luu_so", "Xuất hóa đơn lưu sổ KH"),
+                    BotCommand("tien_nga_xuat_hoa_don_da_tt", "Xuất hóa đơn đã thanh toán KH"),
                     ## Báo cáo
                     BotCommand("tien_nga_truy_xuat_tt_thu_mua", "Truy xuất TT thu mua"),
                     BotCommand("tien_nga_bieu_do_thu_mua", "Biểu đồ thu mua mủ"),
@@ -899,7 +900,8 @@ async def register_bot_command_handler(client, message: Message) -> None:
                 commands_to_set.extend([
                     BotCommand("tien_nga_kiem_tra_khach_hang", "Kiểm tra thông tin khách hàng"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_mua", "Xuất báo cáo thu mua"),
-                    BotCommand("tien_nga_xuat_hoa_don_luu_so", "Xuất hóa đơn lưu sổ")
+                    BotCommand("tien_nga_xuat_hoa_don_luu_so", "Xuất hóa đơn lưu sổ"),
+                    BotCommand("tien_nga_xuat_hoa_don_da_tt", "Xuất hóa đơn đã thanh toán")
                 ])
 
         # ===================== THU HOẠCH =====================

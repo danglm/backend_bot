@@ -12,3 +12,9 @@ class Project(ProjectBase):
 
     class Config:
         from_attributes = True
+
+
+class ProjectUpdate(BaseModel):
+    id: UUID4
+    project_name: str
+
