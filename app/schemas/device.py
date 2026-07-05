@@ -43,6 +43,45 @@ class Smartphone(SmartphoneBase):
         orm_mode = True
 
 
+# ===================== TABLET =====================
+
+class TabletBase(BaseModel):
+    model_name: str
+    brand: Optional[str] = None
+    imei_1: Optional[str] = None
+    imei_2: Optional[str] = None
+    serial_number: Optional[str] = None
+    os_version: Optional[str] = None
+    storage_capacity: Optional[str] = None
+    battery_health: Optional[int] = None
+    purchase_date: Optional[date] = None
+    status: Optional[str] = "available"
+    notes: Optional[str] = None
+    accessories: Optional[str] = None
+    account: Optional[str] = None
+    account_password: Optional[str] = None
+    classification: Optional[str] = None
+
+
+class TabletCreate(TabletBase):
+    id: Optional[str] = None
+
+
+class TabletUpdate(TabletBase):
+    model_name: Optional[str] = None
+    imei_1: Optional[str] = None
+
+
+class TabletBulkUpdate(TabletUpdate):
+    id: str
+
+
+class Tablet(TabletBase):
+    id: str
+    class Config:
+        orm_mode = True
+
+
 # ===================== LAPTOP =====================
 
 class LaptopBase(BaseModel):

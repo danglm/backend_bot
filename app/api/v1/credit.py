@@ -607,3 +607,20 @@ async def api_delete_credit_interests(
         LogInfo(f"[Credit API] Error in delete-credit-interests: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/get-classifications", response_model=list[str])
+async def api_get_credit_classifications(
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("credit"))
+):
+    """
+    Lấy danh sách các phân loại tín dụng duy nhất hiện có trong cơ sở dữ liệu.
+    """
+    LogInfo("[Credit API] Received get-classifications request.")
+    try:
+        classifications = crud_credit.get_distinct_classifications(db)
+        return classifications
+    except Exception as e:
+        LogInfo(f"[Credit API] Error in get-classifications: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

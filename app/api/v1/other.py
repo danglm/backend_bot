@@ -7,7 +7,7 @@ from app.api.deps import get_db, require_permission
 from app.schemas import device as schemas_device
 from app.crud import device as crud_device
 from app.models.employee import Credential
-from app.models.device import Smartphone, Laptop, Screen, Camera, OtherDevice, DeviceAssignment
+from app.models.device import Smartphone, Tablet, Laptop, Screen, Camera, OtherDevice, DeviceAssignment
 
 router = APIRouter()
 
@@ -175,6 +175,174 @@ async def api_delete_smartphones(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def generate_next_tablet_id(db: Session) -> str:
+    count = db.query(Tablet).count()
+    while True:
+        candidate = f"TAB{str(count + 1).zfill(4)}"
+        if not db.query(Tablet).filter(Tablet.id == candidate).first():
+            return candidate
+        count += 1
+
+# ===================== TABLET ENDPOINTS =====================
+@router.get("/get-tablets", response_model=List[schemas_device.Tablet])
+async def api_get_tablets(
+    classification: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("other"))
+):
+    """
+    Get all tablets, optionally filtered by classification.
+    """
+    try:
+        return crud_device.get_tablets(db, classification=classification)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/add-tablets", response_model=List[schemas_device.Tablet])
+async def api_add_tablets(
+    tablets_in: List[schemas_device.TabletCreate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("other"))
+):
+    """
+    Add a list of new tablets.
+    """
+    created_tablets = []
+    try:
+        for tablet_in in tablets_in:
+            # 1. If ID is provided, check if it already exists in the database
+            if tablet_in.id:
+                existing_id = db.query(Tablet).filter(Tablet.id == tablet_in.id).first()
+                if existing_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Máy tính bảng với mã '{tablet_in.id}' đã tồn tại trong hệ thống."
+                    )
+                new_id = tablet_in.id
+            else:
+                # Generate unique ID if not provided
+                new_id = generate_next_tablet_id(db)
+
+            # 2. Check duplicate IMEI 1
+            if tablet_in.imei_1:
+                existing_imei1 = crud_device.get_tablet_by_imei(db, tablet_in.imei_1)
+                if existing_imei1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"IMEI 1 '{tablet_in.imei_1}' đã tồn tại trong hệ thống (Model: {existing_imei1.model_name})."
+                    )
+
+            # 3. Check duplicate IMEI 2
+            if tablet_in.imei_2:
+                existing_imei2 = crud_device.get_tablet_by_imei(db, tablet_in.imei_2)
+                if existing_imei2:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"IMEI 2 '{tablet_in.imei_2}' đã tồn tại trong hệ thống (Model: {existing_imei2.model_name})."
+                    )
+
+            # Create tablet db object
+            tablet_data = tablet_in.dict()
+            tablet_data.pop("id", None)
+            db_obj = Tablet(
+                id=new_id,
+                **tablet_data
+            )
+            db.add(db_obj)
+            created_tablets.append(db_obj)
+
+        db.commit()
+        for t in created_tablets:
+            db.refresh(t)
+        return created_tablets
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/update-tablets", response_model=List[schemas_device.Tablet])
+async def api_update_tablets(
+    tablets_in: List[schemas_device.TabletBulkUpdate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("other"))
+):
+    """
+    Update a list of tablets.
+    """
+    updated_tablets = []
+    try:
+        for tablet_in in tablets_in:
+            # 1. Find the tablet by ID
+            db_obj = db.query(Tablet).filter(Tablet.id == tablet_in.id).first()
+            if not db_obj:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Không tìm thấy máy tính bảng với mã '{tablet_in.id}'."
+                )
+
+            # 2. Check duplicate IMEI 1 (excluding itself)
+            if tablet_in.imei_1 and tablet_in.imei_1 != db_obj.imei_1:
+                existing_imei1 = crud_device.get_tablet_by_imei(db, tablet_in.imei_1)
+                if existing_imei1 and existing_imei1.id != db_obj.id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"IMEI 1 '{tablet_in.imei_1}' đã tồn tại ở thiết bị khác."
+                    )
+
+            # 3. Check duplicate IMEI 2 (excluding itself)
+            if tablet_in.imei_2 and tablet_in.imei_2 != db_obj.imei_2:
+                existing_imei2 = crud_device.get_tablet_by_imei(db, tablet_in.imei_2)
+                if existing_imei2 and existing_imei2.id != db_obj.id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"IMEI 2 '{tablet_in.imei_2}' đã tồn tại ở thiết bị khác."
+                    )
+
+            # Update fields
+            update_data = tablet_in.dict(exclude_unset=True)
+            update_data.pop("id", None)
+            for field, value in update_data.items():
+                setattr(db_obj, field, value)
+            
+            updated_tablets.append(db_obj)
+
+        db.commit()
+        for t in updated_tablets:
+            db.refresh(t)
+        return updated_tablets
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/delete-tablets")
+async def api_delete_tablets(
+    ids: List[str],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("other"))
+):
+    """
+    Delete a list of tablets by ID.
+    """
+    try:
+        deleted_ids = []
+        for tablet_id in ids:
+            db_obj = db.query(Tablet).filter(Tablet.id == tablet_id).first()
+            if db_obj:
+                db.delete(db_obj)
+                deleted_ids.append(tablet_id)
+        db.commit()
+        return {"deleted_ids": deleted_ids}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 def generate_next_laptop_id(db: Session) -> str:
     count = db.query(Laptop).count()

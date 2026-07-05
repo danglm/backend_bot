@@ -8,9 +8,9 @@ from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
 from bot.utils.states import form_tracker
-from app.models.device import Smartphone, SmartphoneStatus, Laptop, LaptopStatus, SimCard, SimCardStatus, DeviceAssignment, Application, AppCategory, AppBillingCycle, AppStatus, InstalledApp, Screen, ScreenStatus, Camera, CameraStatus, OtherDevice, OtherDeviceStatus, DeviceCategory
+from app.models.device import Smartphone, SmartphoneStatus, Tablet, TabletStatus, Laptop, LaptopStatus, SimCard, SimCardStatus, DeviceAssignment, Application, AppCategory, AppBillingCycle, AppStatus, InstalledApp, Screen, ScreenStatus, Camera, CameraStatus, OtherDevice, OtherDeviceStatus, DeviceCategory
 from app.models.vehicle import Vehicle, VehicleActivityLog
-from app.crud.device import get_smartphone_by_imei, create_smartphone, get_sim_card_by_phone
+from app.crud.device import get_smartphone_by_imei, create_smartphone, get_sim_card_by_phone, get_tablet_by_imei
 from app.crud.vehicle import get_vehicle_by_license_plate, create_vehicle_activity_log
 from app.schemas.device import SmartphoneCreate
 import datetime
@@ -208,6 +208,199 @@ Tài Khoản: iCloud hoặc Google Account</i>"""
         db.rollback()
         LogError(f"Error in create_smartphone_handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text(f"❌ Có lỗi xảy ra trong quá trình tạo điện thoại: {str(e)}")
+    finally:
+        db.close()
+
+
+# ===================== TẠO MÁY TÍNH BẢNG =====================
+
+@bot.on_message(filters.command(["other_create_tablet", "other_tao_may_tinh_bang"]) | filters.regex(r"^@\w+\s+/(other_create_tablet|other_tao_may_tinh_bang)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Other")
+@require_group_role("main")
+@require_custom_title(CustomTitle.MAIN_DEVICE)
+async def create_tablet_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["other_create_tablet", "other_tao_may_tinh_bang"])
+    if args is None: return
+
+    lines = message.text.strip().split("\n")
+
+    # Nếu chỉ gõ lệnh không có form → hiển thị form gợi ý
+    if len(lines) < 3:
+        form_template = """<b>FORM TẠO MÁY TÍNH BẢNG MỚI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/other_create_tablet
+Mã Định Danh: 
+Tên Model: 
+Thương Hiệu: 
+IMEI 1: 
+IMEI 2: 
+Số Serial: 
+Phiên Bản OS: 
+Dung Lượng: 
+Tình Trạng Pin (%): 
+Ngày Mua (dd/mm/yyyy): 
+Trạng Thái: available
+Phụ Kiện: 
+Ghi Chú: 
+Tài Khoản: 
+Mật Khẩu TK: 
+Phân Loại: công việc
+</pre>
+
+<i>Trạng thái gồm: available, assigned, maintenance, broken
+Phân loại gồm: Cá nhân, công việc
+Mã Định Danh: mã nội bộ do bạn tự đặt (VD: TAB001, TAB-001...)
+IMEI 1 là bắt buộc và không được trùng
+Tài Khoản: iCloud hoặc Google Account</i>"""
+        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(message.chat.id, "other_create_tablet", "create", form_msg.id)
+        return
+
+    # Parse form data
+    data = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+
+    # Validate required fields
+    device_id = data.get("Mã Định Danh", "").strip()
+    model_name = data.get("Tên Model", "").strip()
+    brand = data.get("Thương Hiệu", "").strip()
+    imei_1 = data.get("IMEI 1", "").strip()
+    imei_2 = data.get("IMEI 2", "").strip()
+    serial_number = data.get("Số Serial", "").strip()
+    os_version = data.get("Phiên Bản OS", "").strip()
+    storage_capacity = data.get("Dung Lượng", "").strip()
+    battery_health_str = data.get("Tình Trạng Pin (%)", "").strip()
+    purchase_date_str = data.get("Ngày Mua (dd/mm/yyyy)", "").strip()
+    status = data.get("Trạng Thái", "available").strip().lower()
+    accessories = data.get("Phụ Kiện", "").strip()
+    notes = data.get("Ghi Chú", "").strip()
+    account = data.get("Tài Khoản", "").strip()
+    account_password = data.get("Mật Khẩu TK", "").strip()
+    classification = data.get("Phân Loại", "công việc").strip()
+
+    if not model_name:
+        await message.reply_text("⚠️ <b>Tên Model</b> là bắt buộc.", parse_mode=ParseMode.HTML)
+        return
+
+    # Validate status
+    valid_statuses = [s.value for s in TabletStatus]
+    if status not in valid_statuses:
+        await message.reply_text(
+            f"⚠️ Trạng thái <b>{status}</b> không hợp lệ. Các trạng thái hợp lệ: {', '.join(valid_statuses)}",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Parse battery health
+    battery_health = None
+    if battery_health_str:
+        try:
+            battery_health = int(battery_health_str)
+            if battery_health < 0 or battery_health > 100:
+                await message.reply_text("⚠️ <b>Tình trạng pin</b> phải từ 0 đến 100.", parse_mode=ParseMode.HTML)
+                return
+        except ValueError:
+            await message.reply_text("⚠️ <b>Tình trạng pin</b> phải là số nguyên.", parse_mode=ParseMode.HTML)
+            return
+
+    # Parse purchase date
+    purchase_date = None
+    if purchase_date_str:
+        try:
+            purchase_date = datetime.datetime.strptime(purchase_date_str, "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text("⚠️ <b>Ngày mua</b> không đúng định dạng dd/mm/yyyy.", parse_mode=ParseMode.HTML)
+            return
+
+    db = SessionLocal()
+    try:
+        if imei_1 and imei_2 and imei_1 == imei_2:
+            await message.reply_text(
+                "⚠️ <b>IMEI 1</b> và <b>IMEI 2</b> không được trùng nhau.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # Check IMEI duplicate
+        if imei_1:
+            existing = get_tablet_by_imei(db, imei_1)
+            if existing:
+                await message.reply_text(
+                    f"⚠️ IMEI 1 <b>{imei_1}</b> đã tồn tại trong hệ thống (Model: {existing.model_name}).",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        if imei_2:
+            existing_imei2 = get_tablet_by_imei(db, imei_2)
+            if existing_imei2:
+                await message.reply_text(
+                    f"⚠️ IMEI 2 <b>{imei_2}</b> đã tồn tại trong hệ thống (Model: {existing_imei2.model_name}).",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        # Check device_id duplicate
+        if device_id:
+            existing_id = db.query(Tablet).filter(Tablet.id == device_id).first()
+            if existing_id:
+                await message.reply_text(
+                    f"⚠️ Mã định danh <b>{device_id}</b> đã tồn tại trong hệ thống.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        # Create tablet
+        new_tablet = Tablet(
+            id=device_id if device_id else None,
+            model_name=model_name,
+            brand=brand or None,
+            imei_1=imei_1 or None,
+            imei_2=imei_2 or None,
+            serial_number=serial_number or None,
+            os_version=os_version or None,
+            storage_capacity=storage_capacity or None,
+            battery_health=battery_health,
+            purchase_date=purchase_date,
+            status=status,
+            accessories=accessories or None,
+            notes=notes or None,
+            account=account or None,
+            account_password=account_password or None,
+            classification=classification or None,
+        )
+        db.add(new_tablet)
+        db.commit()
+        db.refresh(new_tablet)
+
+        result_text = (
+            f"✅ <b>Đã tạo máy tính bảng thành công!</b>\n\n"
+            f"<b>{model_name}</b> ({brand})\n"
+            f"Mã: <code>{new_tablet.id}</code>\n"
+            f"IMEI 1: <code>{new_tablet.imei_1 or 'N/A'}</code>\n"
+            f"Phân loại: <b>{new_tablet.classification or 'N/A'}</b>\n"
+            f"Trạng thái: <b>{status}</b>"
+        )
+        await message.reply_text(result_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[CreateTablet] Created {model_name} (IMEI: {new_tablet.imei_1 or 'N/A'}) by @{message.from_user.username or message.from_user.id}", LogType.SYSTEM_STATUS)
+
+        # Delete the form template message after successful creation
+        form_msg_id = form_tracker.pop(message.chat.id, "other_create_tablet", "create")
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete create tablet form: {del_err}", LogType.SYSTEM_STATUS)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in create_tablet_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra trong quá trình tạo máy tính bảng: {str(e)}")
     finally:
         db.close()
 
@@ -2673,7 +2866,7 @@ Tài Khoản: iCloud hoặc Google Account</i>""",
         "tablet": """<b>FORM TẠO MÁY TÍNH BẢNG MỚI</b>
 Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 
-<pre>/other_create_smartphone
+<pre>/other_create_tablet
 Mã Định Danh: 
 Tên Model: 
 Thương Hiệu: 
@@ -2695,7 +2888,6 @@ Phân Loại: công việc
 <i>Trạng thái gồm: available, assigned, maintenance, broken
 Phân loại gồm: Cá nhân, công việc
 IMEI 1 là bắt buộc và không được trùng
-Máy tính bảng dùng chung bảng Điện thoại
 Tài Khoản: iCloud hoặc Google Account</i>""",
 
         "laptop": """<b>FORM TẠO LAPTOP MỚI</b>
@@ -2811,7 +3003,7 @@ Danh mục: printer, router, projector, ups, scanner, speaker, other</i>""",
     # Map device_type to command prefix for form tracker
     cmd_map = {
         "smartphone": "other_create_smartphone",
-        "tablet": "other_create_smartphone",
+        "tablet": "other_create_tablet",
         "laptop": "other_create_laptop",
         "screen": "other_create_screen",
         "camera": "other_create_camera",

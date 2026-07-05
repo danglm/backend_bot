@@ -16,7 +16,7 @@ from bot.utils.logger import LogInfo
 def get_customers_with_collection_name(
     db: Session,
     ingredient: Optional[str] = None,
-    collection_point_id: Optional[str] = None,
+    collection_point_id: Optional[List[str]] = None,
     hoursehold_id: Optional[str] = None,
 ) -> List[dict]:
     """
@@ -40,7 +40,10 @@ def get_customers_with_collection_name(
             query = query.filter(Customers.ingredient.ilike(cleaned_ingredient))
         
     if collection_point_id is not None:
-        query = query.filter(Customers.collection_point_id == collection_point_id)
+        if isinstance(collection_point_id, list):
+            query = query.filter(Customers.collection_point_id.in_(collection_point_id))
+        else:
+            query = query.filter(Customers.collection_point_id == collection_point_id)
         
     if hoursehold_id is not None:
         query = query.filter(Customers.hoursehold_id == hoursehold_id)
@@ -132,7 +135,7 @@ def get_daily_purchases_detailed(
     end_date: Optional[date] = None,
     hoursehold_id: Optional[str] = None,
     product_code: Optional[str] = None,
-    collection_point_id: Optional[str] = None,
+    collection_point_id: Optional[List[str]] = None,
 ) -> List[dict]:
     """
     Get detailed daily purchases joined with Customers and CollectionPoints.
@@ -157,7 +160,10 @@ def get_daily_purchases_detailed(
     if product_code:
         query = query.filter(DailyPurchases.product_code.ilike(f"%{product_code.strip()}%"))
     if collection_point_id:
-        query = query.filter(DailyPurchases.collection_point_id == collection_point_id)
+        if isinstance(collection_point_id, list):
+            query = query.filter(DailyPurchases.collection_point_id.in_(collection_point_id))
+        else:
+            query = query.filter(DailyPurchases.collection_point_id == collection_point_id)
 
     results = query.all()
 

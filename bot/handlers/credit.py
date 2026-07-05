@@ -68,9 +68,11 @@ Liên Hệ Khách Hàng:
 Tổng Hạn Mức Tín Dụng: 
 Hạn Mức Còn Lại: 
 Tổng Nợ Gốc Hiện Tại: 0
+Phân Loại: KCredit
 </pre>
 
-<i>Mã Khách Hàng là mã duy nhất để định danh khách hàng (ví dụ: KH001)</i>"""
+<i>Mã Khách Hàng là mã duy nhất để định danh khách hàng (ví dụ: KH001)
+Phân loại gồm: KCredit, PQCredit, QCredit, ...</i>"""
         form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         form_tracker.track(message.chat.id, "credit_create_customer", "create", form_msg.id)
         return
@@ -89,6 +91,7 @@ Tổng Nợ Gốc Hiện Tại: 0
     total_credit_str = data.get("Tổng Hạn Mức Tín Dụng", "0")
     remain_credit_str = data.get("Hạn Mức Còn Lại", "")
     total_principal_str = data.get("Tổng Nợ Gốc Hiện Tại", "0")
+    classification = data.get("Phân Loại", "").strip()
 
     if not customer_id_str:
         await message.reply_text("⚠️ <b>Mã Khách Hàng</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -153,7 +156,8 @@ Tổng Nợ Gốc Hiện Tại: 0
             contact_info=contact_info,
             total_credit_limit=total_credit,
             remaining_credit_limit=remain_credit,
-            total_principal_outstanding=total_principal
+            total_principal_outstanding=total_principal,
+            classification=classification
         )
         
         create_credit_customer(db, obj_in=new_customer)
@@ -229,6 +233,7 @@ async def check_customer_handler(client, message: Message) -> None:
         reply_lines = [
             f"<b>THÔNG TIN KHÁCH HÀNG</b>",
             f"Mã Khách Hàng: <b>{customer.customer_id or 'N/A'}</b>",
+            f"Phân Loại: <b>{customer.classification or 'N/A'}</b>",
             f"Tên Nhóm: <b>{customer.group_name or 'N/A'}</b>",
             f"Tên Khách Hàng: <b>{customer.customer_name}</b>",
             f"Liên Hệ: <b>{customer.contact_info}</b>",
@@ -348,6 +353,7 @@ async def check_contract_handler(client, message: Message) -> None:
             f"<b>THÔNG TIN HỢP ĐỒNG: {contract.contract_id}</b>",
             f"Trạng thái: <b>{status_emoji}</b>",
             f"Loại hợp đồng: <b>{loan_type_label}</b>",
+            f"Phân loại: <b>{contract.classification or 'N/A'}</b>",
             f"Mã Khách Hàng: <b>{customer.customer_id or 'N/A'}</b>",
             f"Tên: <b>{customer.customer_name}</b>",
             f"Liên hệ: <b>{customer.contact_info}</b>",
@@ -493,6 +499,7 @@ Liên Hệ Khách Hàng: {customer.contact_info or ""}
 Tổng Hạn Mức Tín Dụng: {fmt_num(customer.total_credit_limit)}
 Hạn Mức Còn Lại: {fmt_num(customer.remaining_credit_limit)}
 Tổng Nợ Gốc Hiện Tại: {fmt_num(customer.total_principal_outstanding)}
+Phân Loại: {customer.classification or ""}
 </pre>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "credit_update_customer", lookup_key, form_msg.id)
@@ -525,6 +532,7 @@ Tổng Nợ Gốc Hiện Tại: {fmt_num(customer.total_principal_outstanding)}
         total_credit_str = data.get("Tổng Hạn Mức Tín Dụng", "0")
         remain_credit_str = data.get("Hạn Mức Còn Lại", "")
         total_principal_str = data.get("Tổng Nợ Gốc Hiện Tại", "0")
+        classification = data.get("Phân Loại", customer.classification or "").strip()
 
         if not customer_name:
             await message.reply_text("⚠️ <b>Tên Khách Hàng</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -577,6 +585,7 @@ Tổng Nợ Gốc Hiện Tại: {fmt_num(customer.total_principal_outstanding)}
         customer.total_credit_limit = total_credit
         customer.remaining_credit_limit = remain_credit
         customer.total_principal_outstanding = total_principal
+        customer.classification = classification
         
         db.commit()
         await message.reply_text(f"✅ Đã cập nhật thông tin khách hàng <b>{customer_name}</b> (Mã: {new_customer_id}) thành công!", parse_mode=ParseMode.HTML)
@@ -657,9 +666,10 @@ Tiền Nợ Gốc Còn Lại:
 Ghi Chú: 
 Gửi Tin Nhắn Phát Sinh (Có/Không): Có
 Nội Dung Tin Nhắn: 
+Phân Loại: KCredit
 </pre>
 
-<i>Ví dụ mã hợp đồng: HD220101. Loại hợp đồng gồm (Thế chấp [secured], Tín chấp [unsecured])</i>"""
+<i>Ví dụ mã hợp đồng: HD220101. Loại hợp đồng gồm (Thế chấp [secured], Tín chấp [unsecured]). Phân loại gồm: KCredit, PQCredit, QCredit, ...</i>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "credit_create_contract", customer.customer_id, form_msg.id)
             return
@@ -719,6 +729,7 @@ Nội Dung Tin Nhắn:
         
         monthly_interest_rate = parse_float(data.get("Lãi Suất / Tháng (%)", "0"))
         monthly_interest_amount = parse_float(data.get("Số Tiền Lãi / Tháng", "0"))
+        classification = data.get("Phân Loại", customer.classification or "").strip()
         
         if monthly_interest_amount == 0 and monthly_interest_rate > 0:
             monthly_interest_amount = (initial_principal * monthly_interest_rate) / 100
@@ -772,7 +783,8 @@ Nội Dung Tin Nhắn:
             send_message_arise=send_msg,
             message_content=msg_content,
             interest_debt=0.0,
-            credit_status=CreditStatus.ACTIVE
+            credit_status=CreditStatus.ACTIVE,
+            classification=classification
         )
         
         create_credit(db, obj_in=new_contract)
@@ -842,25 +854,25 @@ async def update_contract_handler(client, message: Message) -> None:
             return
 
         if contract.credit_status == CreditStatus.CANCELLED.value:
-            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> đã bị hủy, không thể cập nhật.", parse_mode=ParseMode.HTML)
+            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> đã bị hủy.", parse_mode=ParseMode.HTML)
             return
 
-        # Handle form requests (just /update_contract HD123) vs form submissions (multiple lines)
         lines = message.text.strip().split("\n")
         if len(lines) < 3:
-            start_date_str = contract.start_date.strftime("%d/%m/%Y") if contract.start_date else ""
-            due_date_str = contract.due_date.strftime("%d/%m/%Y") if contract.due_date else ""
-            interest_start_date_str = contract.interest_start_date.strftime("%d/%m/%Y") if contract.interest_start_date else ""
-            
-            # Format numbers properly
             def fmt_num(val):
-                if val is None:
-                    return 0
+                if val is None: return 0
                 return int(val) if val == int(val) else val
+            
+            def fmt_dt(dt):
+                return dt.strftime('%d/%m/%Y') if dt else ""
 
-            total_limit = fmt_num(contract.customer.total_credit_limit if contract.customer else 0)
-            remain_limit = fmt_num(contract.customer.remaining_credit_limit if contract.customer else 0)
-            total_principal = fmt_num(contract.customer.total_principal_outstanding if contract.customer else 0)
+            total_limit = fmt_num(contract.customer.total_credit_limit) if contract.customer else 0
+            remain_limit = fmt_num(contract.customer.remaining_credit_limit) if contract.customer else 0
+            total_principal = fmt_num(contract.customer.total_principal_outstanding) if contract.customer else 0
+            
+            start_date_str = fmt_dt(contract.start_date)
+            due_date_str = fmt_dt(contract.due_date)
+            interest_start_date_str = fmt_dt(contract.interest_start_date)
             initial_principal = fmt_num(contract.initial_principal)
             interest_rate = fmt_num(contract.monthly_interest_rate)
             monthly_amount = fmt_num(contract.monthly_interest_amount)
@@ -894,6 +906,7 @@ Tổng Nợ Lãi: {current_interest_debt}
 Ghi Chú: {contract.notes or ""}
 Gửi Tin Nhắn Phát Sinh (Có/Không): {send_msg}
 Nội Dung Tin Nhắn: {contract.message_content or ""}
+Phân Loại: {contract.classification or ""}
 </pre>"""
             form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "credit_update_contract", contract_code, form_msg.id)
@@ -968,6 +981,7 @@ Nội Dung Tin Nhắn: {contract.message_content or ""}
         send_msg_str = data.get("Gửi Tin Nhắn Phát Sinh (Có/Không)", "").lower()
         send_msg = True if "có" in send_msg_str else False
         msg_content = data.get("Nội Dung Tin Nhắn", "")
+        classification = data.get("Phân Loại", contract.classification or "").strip()
 
         # Re-evaluate limits if loan_type or principal changed
         old_initial_principal = contract.initial_principal or 0.0
@@ -1003,6 +1017,7 @@ Nội Dung Tin Nhắn: {contract.message_content or ""}
         contract.send_message_arise = send_msg
         contract.message_content = msg_content
         contract.interest_debt = interest_debt_val
+        contract.classification = classification
         
         db.commit()
         await message.reply_text(f"✅ Đã cập nhật hợp đồng <b>{new_contract_id}</b> thành công!", parse_mode=ParseMode.HTML)

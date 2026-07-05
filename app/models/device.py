@@ -14,6 +14,13 @@ class SmartphoneStatus(str, enum.Enum):
     BROKEN = "broken"              # Hỏng, không sử dụng được
 
 
+class TabletStatus(str, enum.Enum):
+    AVAILABLE = "available"        # Sẵn sàng sử dụng
+    ASSIGNED = "assigned"          # Đã giao cho nhân viên
+    MAINTENANCE = "maintenance"    # Đang bảo trì/sửa chữa
+    BROKEN = "broken"              # Hỏng, không sử dụng được
+
+
 class LaptopStatus(str, enum.Enum):
     AVAILABLE = "available"        # Sẵn sàng sử dụng
     ASSIGNED = "assigned"          # Đã giao cho nhân viên
@@ -234,3 +241,25 @@ class OtherDevice(Base):
     accessories = Column(String)         # Phụ kiện kèm theo
     notes = Column(Text)                 # Ghi chú thêm
     classification = Column(String)      # Phân loại (Cá nhân, công việc)
+
+
+class Tablet(Base):
+    __tablename__ = "tablets"
+
+    id = Column(String, primary_key=True)
+    model_name = Column(String)          # Tên model (iPad Pro, Galaxy Tab...)
+    brand = Column(String)               # Thương hiệu (Apple, Samsung...)
+    imei_1 = Column(String, unique=True) # Mã IMEI 1 (Định danh vật lý)
+    imei_2 = Column(String)              # Mã IMEI 2
+    serial_number = Column(String)       # Số Serial của nhà sản xuất
+    os_version = Column(String)          # Phiên bản hệ điều hành (iOS 17.4, Android 14)
+    storage_capacity = Column(String)    # Dung lượng bộ nhớ (128GB, 256GB...)
+    battery_health = Column(Integer)     # Tình trạng pin hiện tại (%)
+    purchase_date = Column(Date)         # Ngày mua thiết bị
+    status = Column(String, default=TabletStatus.AVAILABLE.value)  # Trạng thái
+    notes = Column(Text)                 # Ghi chú thêm (máy trầy xước, mất hộp...)
+    accessories = Column(String)         # Phụ kiện kèm theo (sạc, tai nghe, bao da...)
+    account = Column(String)             # Tài khoản iCloud/Google
+    account_password = Column(String)    # Mật khẩu tài khoản
+    classification = Column(String)      # Phân loại (Cá nhân, công việc)
+

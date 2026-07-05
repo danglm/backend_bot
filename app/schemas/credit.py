@@ -11,6 +11,7 @@ class CreditCustomerBase(BaseModel):
     total_credit_limit: Optional[float] = None
     remaining_credit_limit: Optional[float] = None
     total_principal_outstanding: Optional[float] = None
+    classification: Optional[str] = None
 
 class CreditCustomerCreate(CreditCustomerBase):
     pass
@@ -42,6 +43,7 @@ class CreditBase(BaseModel):
     interest_debt: Optional[float] = 0.0
     last_interest_charged_date: Optional[date] = None
     credit_status: Optional[CreditStatus] = CreditStatus.ACTIVE
+    classification: Optional[str] = None
 
 class CreditCreate(CreditBase):
     pass

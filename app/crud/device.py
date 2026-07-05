@@ -1,11 +1,12 @@
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.models.device import (
-    Smartphone, Laptop, SimCard, Application, DeviceAssignment, InstalledApp,
+    Smartphone, Tablet, Laptop, SimCard, Application, DeviceAssignment, InstalledApp,
     Screen, Camera, OtherDevice
 )
 from app.schemas.device import (
     SmartphoneCreate, SmartphoneUpdate,
+    TabletCreate, TabletUpdate,
     LaptopCreate, LaptopUpdate,
     SimCardCreate, SimCardUpdate,
     ApplicationCreate, ApplicationUpdate,
@@ -65,6 +66,61 @@ def update_smartphone(db: Session, smartphone_id: str, smartphone: SmartphoneUpd
 
 def remove_smartphone(db: Session, smartphone_id: str):
     db_obj = get_smartphone(db, smartphone_id)
+    if not db_obj:
+        return None
+    db.delete(db_obj)
+    db.commit()
+    return db_obj
+
+
+# ===================== TABLET CRUD =====================
+
+def get_tablet(db: Session, tablet_id: str):
+    return db.query(Tablet).filter(Tablet.id == tablet_id).first()
+
+
+def get_tablet_by_imei(db: Session, imei: str):
+    if not imei or not imei.strip():
+        return None
+    return db.query(Tablet).filter(or_(Tablet.imei_1 == imei, Tablet.imei_2 == imei)).first()
+
+
+def get_tablets(db: Session, classification: str = None, skip: int = 0, limit: int = 100):
+    query = db.query(Tablet)
+    if classification:
+        query = query.filter(Tablet.classification == classification)
+    return query.offset(skip).limit(limit).all()
+
+
+def get_tablets_by_status(db: Session, status: str):
+    return db.query(Tablet).filter(Tablet.status == status).all()
+
+
+def get_tablets_by_brand(db: Session, brand: str):
+    return db.query(Tablet).filter(Tablet.brand == brand).all()
+
+
+def create_tablet(db: Session, tablet: TabletCreate):
+    db_obj = Tablet(**tablet.dict())
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def update_tablet(db: Session, tablet_id: str, tablet: TabletUpdate):
+    db_obj = get_tablet(db, tablet_id)
+    if not db_obj:
+        return None
+    for field, value in tablet.dict(exclude_unset=True).items():
+        setattr(db_obj, field, value)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
+def remove_tablet(db: Session, tablet_id: str):
+    db_obj = get_tablet(db, tablet_id)
     if not db_obj:
         return None
     db.delete(db_obj)

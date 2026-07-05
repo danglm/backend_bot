@@ -22,6 +22,7 @@ class CreditCustomer(Base):
     total_credit_limit = Column(Float)
     remaining_credit_limit = Column(Float)
     total_principal_outstanding = Column(Float)
+    classification = Column(String, nullable=True)
 
     credits = relationship("Credit", back_populates="customer")
 
@@ -47,6 +48,7 @@ class Credit(Base):
     credit_status = Column(String)
     interest_debt = Column(Float, default=0.0)
     last_interest_charged_date = Column(Date, nullable=True)
+    classification = Column(String, nullable=True)
 
     customer = relationship("CreditCustomer", back_populates="credits")
 

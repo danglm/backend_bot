@@ -49,9 +49,11 @@ from app.crud.customer import (
     update_investment_financials,
 )
 from app.models.employee import Credential
-from app.models.business import Customers, CollectionPoint, DailyPurchases, Partners, PartnerBusinesses, Investment, DailyPayment, LossControls
+from app.models.business import Customers, CollectionPoint, DailyPurchases, Partners, PartnerBusinesses, Investment, DailyPayment, LossControls, Shareholder
 from app.models.inventory import Inventory, MaterialPurchase, InventoryExport, ProductTransaction
 from bot.utils.logger import LogInfo
+from app.schemas.shareholder import ShareholderCreate, ShareholderUpdate, ShareholderResponse
+import app.crud.shareholder as crud_shareholder
 from typing import Optional, List
 from datetime import date
 from uuid import UUID
@@ -68,10 +70,14 @@ def get_customers(
 ):
     LogInfo(f"[TienNga API] Received get-customers request. Raw ingredient: {ingredient}, collection_point_id: {collection_point_id}, hoursehold_id: {hoursehold_id}")
     try:
+        cp_ids = None
+        if collection_point_id:
+            cp_ids = [cp.strip() for cp in collection_point_id.split(",") if cp.strip()]
+
         customers = get_customers_with_collection_name(
             db, 
             ingredient=ingredient, 
-            collection_point_id=collection_point_id,
+            collection_point_id=cp_ids,
             hoursehold_id=hoursehold_id
         )
         LogInfo(f"[TienNga API] Found {len(customers)} customers.")
@@ -296,6 +302,203 @@ def delete_customers(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/get-shareholders", response_model=List[ShareholderResponse])
+def get_shareholders(
+    investment_id: Optional[UUID] = None,
+    shareholder_code: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    LogInfo(f"[TienNga API] Received get-shareholders request. investment_id: {investment_id}, shareholder_code: {shareholder_code}")
+    try:
+        shareholders = crud_shareholder.get_shareholders_with_investment_name(
+            db,
+            investment_id=investment_id,
+            shareholder_code=shareholder_code
+        )
+        LogInfo(f"[TienNga API] Found {len(shareholders)} shareholders.")
+        return shareholders
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in get-shareholders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/add-shareholders", response_model=List[ShareholderResponse])
+def add_shareholders(
+    shareholders_in: List[ShareholderCreate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    LogInfo(f"[TienNga API] Received add-shareholders request. Total shareholders to add: {len(shareholders_in)}")
+    try:
+        # Check for duplicates in the input list itself
+        input_codes = [s.shareholder_code for s in shareholders_in]
+        if len(input_codes) != len(set(input_codes)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate shareholder codes found in the request input."
+            )
+            
+        # Check if any shareholder code already exists in the database
+        existing_shareholders = db.query(Shareholder).filter(Shareholder.shareholder_code.in_(input_codes)).all()
+        if existing_shareholders:
+            existing_codes = [s.shareholder_code for s in existing_shareholders]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Shareholders with codes {existing_codes} already exist in the database."
+            )
+        
+        # Add all shareholders
+        created_shareholders = []
+        for sh_in in shareholders_in:
+            new_sh = crud_shareholder.create_shareholder(db, obj_in=sh_in)
+            
+            # Fetch investment name if investment_id is provided
+            inv_name = None
+            if new_sh.investment_id:
+                inv = db.query(Investment).filter(Investment.id == new_sh.investment_id).first()
+                if inv:
+                    inv_name = inv.name
+                    
+            created_shareholders.append({
+                "id": new_sh.id,
+                "shareholder_code": new_sh.shareholder_code,
+                "fullname": new_sh.fullname,
+                "investment_id": new_sh.investment_id,
+                "investment_amount": new_sh.investment_amount,
+                "start_date": new_sh.start_date,
+                "username": new_sh.username,
+                "telegram_group": new_sh.telegram_group,
+                "notes": new_sh.notes,
+                "created_at": new_sh.created_at,
+                "investment_name": inv_name
+            })
+            
+        LogInfo(f"[TienNga API] Successfully added {len(created_shareholders)} shareholders.")
+        return created_shareholders
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in add-shareholders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/update-shareholders", response_model=List[ShareholderResponse])
+def update_shareholders(
+    shareholders_in: List[ShareholderUpdate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    LogInfo(f"[TienNga API] Received update-shareholders request. Total shareholders to update: {len(shareholders_in)}")
+    try:
+        # Check for duplicates in the input list itself
+        input_ids = [s.id for s in shareholders_in]
+        if len(input_ids) != len(set(input_ids)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate shareholder IDs found in the request input."
+            )
+            
+        # Check if all shareholder IDs exist in the database
+        existing_shareholders = db.query(Shareholder).filter(Shareholder.id.in_(input_ids)).all()
+        existing_ids = {s.id for s in existing_shareholders}
+        
+        missing_ids = [sid for sid in input_ids if sid not in existing_ids]
+        if missing_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Shareholders with IDs {missing_ids} not found in the database."
+            )
+        
+        # Update all shareholders
+        updated_shareholders = []
+        for sh_in in shareholders_in:
+            updated_sh = crud_shareholder.update_shareholder(db, shareholder_id=sh_in.id, obj_in=sh_in)
+            
+            inv_name = None
+            if updated_sh.investment_id:
+                inv = db.query(Investment).filter(Investment.id == updated_sh.investment_id).first()
+                if inv:
+                    inv_name = inv.name
+                    
+            updated_shareholders.append({
+                "id": updated_sh.id,
+                "shareholder_code": updated_sh.shareholder_code,
+                "fullname": updated_sh.fullname,
+                "investment_id": updated_sh.investment_id,
+                "investment_amount": updated_sh.investment_amount,
+                "start_date": updated_sh.start_date,
+                "username": updated_sh.username,
+                "telegram_group": updated_sh.telegram_group,
+                "notes": updated_sh.notes,
+                "created_at": updated_sh.created_at,
+                "investment_name": inv_name
+            })
+            
+        LogInfo(f"[TienNga API] Successfully updated {len(updated_shareholders)} shareholders.")
+        return updated_shareholders
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in update-shareholders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/delete-shareholders", response_model=List[ShareholderResponse])
+def delete_shareholders(
+    shareholder_ids: List[UUID],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    LogInfo(f"[TienNga API] Received delete-shareholders request. Total shareholders to delete: {len(shareholder_ids)}")
+    try:
+        # Check for duplicates in the input list itself
+        if len(shareholder_ids) != len(set(shareholder_ids)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate shareholder IDs found in the request input."
+            )
+            
+        # Check if all shareholder IDs exist in the database
+        existing_shareholders = db.query(Shareholder).filter(Shareholder.id.in_(shareholder_ids)).all()
+        existing_ids = {s.id for s in existing_shareholders}
+        
+        missing_ids = [sid for sid in shareholder_ids if sid not in existing_ids]
+        if missing_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Shareholders with IDs {missing_ids} not found in the database."
+            )
+            
+        deleted_shareholders = []
+        for sh in existing_shareholders:
+            inv_name = None
+            if sh.investment_id:
+                inv = db.query(Investment).filter(Investment.id == sh.investment_id).first()
+                if inv:
+                    inv_name = inv.name
+                    
+            deleted_shareholders.append({
+                "id": sh.id,
+                "shareholder_code": sh.shareholder_code,
+                "fullname": sh.fullname,
+                "investment_id": sh.investment_id,
+                "investment_amount": sh.investment_amount,
+                "start_date": sh.start_date,
+                "username": sh.username,
+                "telegram_group": sh.telegram_group,
+                "notes": sh.notes,
+                "created_at": sh.created_at,
+                "investment_name": inv_name
+            })
+            crud_shareholder.delete_shareholder(db, shareholder_id=sh.id)
+            
+        LogInfo(f"[TienNga API] Successfully deleted {len(deleted_shareholders)} shareholders.")
+        return deleted_shareholders
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in delete-shareholders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/get-daily-purchases", response_model=List[DailyPurchaseResponse])
 def get_daily_purchases(
     start_date: Optional[date] = None,
@@ -308,13 +511,17 @@ def get_daily_purchases(
 ):
     LogInfo(f"[TienNga API] Received get-daily-purchases request. Filters: start_date={start_date}, end_date={end_date}, hoursehold_id={hoursehold_id}, product_code={product_code}, collection_point_id={collection_point_id}")
     try:
+        cp_ids = None
+        if collection_point_id:
+            cp_ids = [cp.strip() for cp in collection_point_id.split(",") if cp.strip()]
+
         results = get_daily_purchases_detailed(
             db,
             start_date=start_date,
             end_date=end_date,
             hoursehold_id=hoursehold_id,
             product_code=product_code,
-            collection_point_id=collection_point_id,
+            collection_point_id=cp_ids,
         )
         LogInfo(f"[TienNga API] Found {len(results)} daily purchase records.")
         return results

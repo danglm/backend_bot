@@ -13,7 +13,8 @@ def create_credit_customer(db: Session, obj_in: CreditCustomerCreate):
         contact_info=obj_in.contact_info,
         total_credit_limit=obj_in.total_credit_limit,
         remaining_credit_limit=obj_in.remaining_credit_limit,
-        total_principal_outstanding=obj_in.total_principal_outstanding
+        total_principal_outstanding=obj_in.total_principal_outstanding,
+        classification=obj_in.classification
     )
     db.add(db_obj)
     db.commit()
@@ -38,7 +39,8 @@ def create_credit(db: Session, obj_in: CreditCreate):
         message_content=obj_in.message_content,
         credit_status=obj_in.credit_status,
         interest_debt=obj_in.interest_debt,
-        last_interest_charged_date=obj_in.last_interest_charged_date
+        last_interest_charged_date=obj_in.last_interest_charged_date,
+        classification=obj_in.classification
     )
     db.add(db_obj)
     db.commit()
@@ -176,7 +178,8 @@ def get_credits_detailed(
             "message_content": c.message_content,
             "credit_status": c.credit_status,
             "interest_debt": c.interest_debt,
-            "last_interest_charged_date": c.last_interest_charged_date
+            "last_interest_charged_date": c.last_interest_charged_date,
+            "classification": c.classification
         })
     return data
 
@@ -250,4 +253,19 @@ def delete_credit_interest(db: Session, interest_uuid: UUID) -> Optional[CreditI
     db.delete(db_obj)
     db.commit()
     return db_obj
+
+
+def get_distinct_classifications(db: Session) -> list[str]:
+    cust_classifications = db.query(CreditCustomer.classification).distinct().all()
+    credit_classifications = db.query(Credit.classification).distinct().all()
+
+    merged = set()
+    for row in cust_classifications:
+        if row[0]:
+            merged.add(row[0])
+    for row in credit_classifications:
+        if row[0]:
+            merged.add(row[0])
+
+    return sorted(list(merged))
 

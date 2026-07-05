@@ -29,6 +29,7 @@ def register(obj_in: UserRegister, db: Session = Depends(get_db)):
             user.username, expires_delta=access_token_expires
         ),
         "token_type": "bearer",
+        "employee_id": user.employee_id,
     }
 
 
@@ -79,6 +80,7 @@ async def login(request: Request, db: Session = Depends(get_db)):
             user.username, expires_delta=access_token_expires
         ),
         "token_type": "bearer",
+        "employee_id": user.employee_id,
     }
 
 
@@ -145,7 +147,7 @@ def update_permissions(
     
     allowed_permissions = {
         "admin", "tien-nga", "ggomoosin", "rental", "credit", 
-        "harvest", "project", "vehicle", "document", "attendance", "other"
+        "harvest", "project", "vehicle", "document", "attendance", "other", "rosca"
     }
     
     invalid_perms = [p for p in payload.permissions if p not in allowed_permissions]
@@ -170,5 +172,78 @@ def get_all_credentials(
     Chỉ admin mới được lấy danh sách.
     """
     return db.query(DBCredential).all()
+
+
+from typing import Optional
+from app.core.security import get_password_hash
+
+class CredentialUpdatePayload(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+@router.put("/update-credential/{employee_id}", response_model=SchemaCredential)
+def update_credential(
+    employee_id: str,
+    payload: CredentialUpdatePayload,
+    db: Session = Depends(get_db),
+    current_user: DBCredential = Depends(require_permission("admin"))
+):
+    """
+    Cập nhật thông tin credential của nhân viên.
+    Chỉ admin mới có quyền thực hiện.
+    """
+    user = db.query(DBCredential).filter(DBCredential.employee_id == employee_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy credential cho nhân viên này."
+        )
+    
+    if payload.username is not None:
+        existing = db.query(DBCredential).filter(
+            DBCredential.username == payload.username,
+            DBCredential.employee_id != employee_id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Tên đăng nhập đã tồn tại."
+            )
+        user.username = payload.username
+        
+    if payload.password:
+        user.hashed_password = get_password_hash(payload.password)
+        
+    if payload.role is not None:
+        user.role = payload.role
+        
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+        
+    db.commit()
+    db.refresh(user)
+    return user
+
+@router.delete("/delete-credential/{employee_id}")
+def delete_credential_api(
+    employee_id: str,
+    db: Session = Depends(get_db),
+    current_user: DBCredential = Depends(require_permission("admin"))
+):
+    """
+    Xóa credential của nhân viên theo employee_id.
+    Chỉ admin mới có quyền thực hiện.
+    """
+    user = db.query(DBCredential).filter(DBCredential.employee_id == employee_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy credential cho nhân viên này."
+        )
+    db.delete(user)
+    db.commit()
+    return {"message": "Xóa tài khoản thành công"}
 
 
