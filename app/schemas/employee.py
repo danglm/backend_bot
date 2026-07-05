@@ -7,6 +7,7 @@ from uuid import UUID
 class CredentialBase(BaseModel):
     username: str
     role: Optional[str] = "employee"
+    permissions: Optional[List[str]] = []
     is_active: Optional[bool] = True
 
 class CredentialCreate(CredentialBase):

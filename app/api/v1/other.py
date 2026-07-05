@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import date
 from uuid import UUID
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, require_permission
 from app.schemas import device as schemas_device
 from app.crud import device as crud_device
 from app.models.employee import Credential
@@ -23,7 +23,7 @@ def generate_next_smartphone_id(db: Session) -> str:
 async def api_get_smartphones(
     classification: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     """
     Get all smartphones, optionally filtered by classification.
@@ -37,7 +37,7 @@ async def api_get_smartphones(
 async def api_add_smartphones(
     smartphones_in: List[schemas_device.SmartphoneCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     """
     Add a list of new smartphones.
@@ -101,7 +101,7 @@ async def api_add_smartphones(
 async def api_update_smartphones(
     smartphones_in: List[schemas_device.SmartphoneBulkUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     """
     Update a list of smartphones.
@@ -158,7 +158,7 @@ async def api_update_smartphones(
 async def api_delete_smartphones(
     ids: List[str],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     """
     Delete a list of smartphones by ID.
@@ -213,7 +213,7 @@ def generate_next_other_device_id(db: Session) -> str:
 async def api_get_laptops(
     classification: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     try:
         return crud_device.get_laptops(db, classification=classification)
@@ -224,7 +224,7 @@ async def api_get_laptops(
 async def api_add_laptops(
     laptops_in: List[schemas_device.LaptopCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     created_items = []
     try:
@@ -261,7 +261,7 @@ async def api_add_laptops(
 async def api_update_laptops(
     laptops_in: List[schemas_device.LaptopBulkUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     updated_items = []
     try:
@@ -294,7 +294,7 @@ async def api_update_laptops(
 async def api_delete_laptops(
     ids: List[str],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     try:
         deleted_ids = []
@@ -314,7 +314,7 @@ async def api_delete_laptops(
 async def api_get_screens(
     classification: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     try:
         return crud_device.get_screens(db, classification=classification)
@@ -325,7 +325,7 @@ async def api_get_screens(
 async def api_add_screens(
     screens_in: List[schemas_device.ScreenCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     created_items = []
     try:
@@ -362,7 +362,7 @@ async def api_add_screens(
 async def api_update_screens(
     screens_in: List[schemas_device.ScreenBulkUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     updated_items = []
     try:
@@ -395,7 +395,7 @@ async def api_update_screens(
 async def api_delete_screens(
     ids: List[str],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     try:
         deleted_ids = []
@@ -415,7 +415,7 @@ async def api_delete_screens(
 async def api_get_cameras(
     classification: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     try:
         return crud_device.get_cameras(db, classification=classification)
@@ -426,7 +426,7 @@ async def api_get_cameras(
 async def api_add_cameras(
     cameras_in: List[schemas_device.CameraCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     created_items = []
     try:
@@ -463,7 +463,7 @@ async def api_add_cameras(
 async def api_update_cameras(
     cameras_in: List[schemas_device.CameraBulkUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     updated_items = []
     try:
@@ -496,7 +496,7 @@ async def api_update_cameras(
 async def api_delete_cameras(
     ids: List[str],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     try:
         deleted_ids = []
@@ -516,7 +516,7 @@ async def api_delete_cameras(
 async def api_get_other_devices(
     classification: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     try:
         return crud_device.get_other_devices(db, classification=classification)
@@ -527,7 +527,7 @@ async def api_get_other_devices(
 async def api_add_other_devices(
     devices_in: List[schemas_device.OtherDeviceCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     created_items = []
     try:
@@ -564,7 +564,7 @@ async def api_add_other_devices(
 async def api_update_other_devices(
     devices_in: List[schemas_device.OtherDeviceBulkUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     updated_items = []
     try:
@@ -597,7 +597,7 @@ async def api_update_other_devices(
 async def api_delete_other_devices(
     ids: List[str],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     try:
         deleted_ids = []
@@ -620,7 +620,7 @@ async def api_get_device_assignments(
     assigned_at: Optional[date] = None,
     returned_at: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     """
     Get device assignments, optionally filtered by username, device_id, assigned_at, or returned_at.
@@ -644,7 +644,7 @@ async def api_get_device_assignments(
 async def api_add_device_assignments(
     assignments_in: List[schemas_device.DeviceAssignmentCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     """
     Add a list of device assignments.
@@ -667,7 +667,7 @@ async def api_add_device_assignments(
 async def api_update_device_assignments(
     assignments_in: List[schemas_device.DeviceAssignmentBulkUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     """
     Update a list of device assignments.
@@ -702,7 +702,7 @@ async def api_update_device_assignments(
 async def api_delete_device_assignments(
     ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("other"))
 ):
     """
     Delete device assignments by ID.

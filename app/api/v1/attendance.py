@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.orm import Session
 from app.api import deps
+from app.api.deps import require_permission
 from app.models.employee import Employee, Credential
 from app.crud import attendance as crud_attendance
 from app.models.finance import Attendance, Payroll
@@ -22,7 +23,7 @@ def get_attendance(
     db: Session = Depends(deps.get_db),
     employee_id: str = Query(..., description="ID of the employee"),
     date: str = Query(..., description="Date in mm/yyyy format"),
-    current_user: Credential = Depends(deps.get_current_user)
+    current_user: Credential = Depends(require_permission("attendance"))
 ):
     """
     Get all attendance information for a specific employee in a given month.
@@ -72,7 +73,7 @@ def add_attendance(
     *,
     db: Session = Depends(deps.get_db),
     attendance_in: AttendanceCreate,
-    current_user: Credential = Depends(deps.get_current_user)
+    current_user: Credential = Depends(require_permission("attendance"))
 ):
     """
     Create a new attendance record.
@@ -111,7 +112,7 @@ def update_attendance(
     *,
     db: Session = Depends(deps.get_db),
     attendance_in: AttendanceUpdate,
-    current_user: Credential = Depends(deps.get_current_user)
+    current_user: Credential = Depends(require_permission("attendance"))
 ):
     """
     Update an existing attendance record.
@@ -156,7 +157,7 @@ def delete_attendance(
     *,
     db: Session = Depends(deps.get_db),
     attendance_ids: List[UUID] = Body(..., description="List of attendance IDs to delete"),
-    current_user: Credential = Depends(deps.get_current_user)
+    current_user: Credential = Depends(require_permission("attendance"))
 ):
     """
     Delete attendance records by list of IDs.
@@ -201,7 +202,7 @@ def get_payrolls(
     db: Session = Depends(deps.get_db),
     date: Optional[str] = Query(None, description="Date in mm/yyyy format. If not provided, fetch all dates."),
     employee_id: Optional[str] = Query(None, description="ID of the employee. If not provided, fetch all."),
-    current_user: Credential = Depends(deps.get_current_user)
+    current_user: Credential = Depends(require_permission("attendance"))
 ):
     """
     Get payroll records for a specific employee or all employees in a given month.
@@ -286,7 +287,7 @@ def add_payrolls(
     *,
     db: Session = Depends(deps.get_db),
     payrolls_in: List[PayrollCreate],
-    current_user: Credential = Depends(deps.get_current_user)
+    current_user: Credential = Depends(require_permission("attendance"))
 ):
     """
     Create bulk new payroll records.
@@ -385,7 +386,7 @@ def delete_payrolls(
     *,
     db: Session = Depends(deps.get_db),
     payroll_ids: List[UUID] = Body(..., description="List of payroll IDs to delete"),
-    current_user: Credential = Depends(deps.get_current_user)
+    current_user: Credential = Depends(require_permission("attendance"))
 ):
     """
     Delete payroll records by list of IDs and revert employee debt values.

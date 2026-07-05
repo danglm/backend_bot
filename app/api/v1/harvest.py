@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, require_permission
 from app.schemas import harvest as schemas_harvest
 from app.crud import harvest as crud_harvest
 from app.models.employee import Credential
@@ -19,7 +19,7 @@ async def api_get_agricultural_lands(
     affiliation: Optional[str] = None,
     crop_type: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Lấy danh sách đất trồng trọt (agricultural lands).
@@ -43,7 +43,7 @@ async def api_get_agricultural_lands(
 async def api_add_agricultural_lands(
     lands_in: list[schemas_harvest.AgriculturalLandCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Thêm mới danh sách đất trồng trọt (bulk).
@@ -84,7 +84,7 @@ async def api_add_agricultural_lands(
 async def api_update_agricultural_lands(
     lands_in: list[schemas_harvest.AgriculturalLandUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Cập nhật danh sách đất trồng trọt (bulk).
@@ -128,7 +128,7 @@ async def api_update_agricultural_lands(
 async def api_delete_agricultural_lands(
     land_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Xóa danh sách đất trồng trọt (bulk).
@@ -174,7 +174,7 @@ async def api_get_households(
     status: Optional[str] = None,
     has_purchase_code: Optional[bool] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Lấy danh sách hộ dân (households).
@@ -198,7 +198,7 @@ async def api_get_households(
 async def api_add_households(
     households_in: list[schemas_harvest.HouseholdCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Thêm mới danh sách hộ dân (bulk).
@@ -255,7 +255,7 @@ async def api_add_households(
 async def api_update_households(
     households_in: list[schemas_harvest.HouseholdUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Cập nhật danh sách hộ dân (bulk).
@@ -299,7 +299,7 @@ async def api_update_households(
 async def api_delete_households(
     household_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Xóa danh sách hộ dân (bulk).
@@ -346,7 +346,7 @@ async def api_get_daily_harvests(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Lấy danh sách lịch sử thu hoạch (daily harvests) kèm tên khách hàng.
@@ -398,7 +398,7 @@ async def api_get_daily_harvests(
 async def api_add_daily_harvests(
     harvests_in: list[schemas_harvest.DailyHarvestCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Thêm mới danh sách lịch sử thu hoạch (bulk).
@@ -450,7 +450,7 @@ async def api_add_daily_harvests(
 async def api_update_daily_harvests(
     harvests_in: list[schemas_harvest.DailyHarvestUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Cập nhật danh sách lịch sử thu hoạch (bulk).
@@ -522,7 +522,7 @@ async def api_update_daily_harvests(
 async def api_delete_daily_harvests(
     harvest_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Xóa danh sách lịch sử thu hoạch (bulk).
@@ -570,7 +570,7 @@ async def api_get_supplies_expenses(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Lấy danh sách chi phí vật tư (supplies expenses).
@@ -622,7 +622,7 @@ async def api_get_supplies_expenses(
 async def api_add_supplies_expenses(
     expenses_in: list[schemas_harvest.SuppliesExpenseCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Thêm mới danh sách chi phí vật tư (bulk).
@@ -659,7 +659,7 @@ async def api_add_supplies_expenses(
 async def api_update_supplies_expenses(
     expenses_in: list[schemas_harvest.SuppliesExpenseUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Cập nhật danh sách chi phí vật tư (bulk).
@@ -716,7 +716,7 @@ async def api_update_supplies_expenses(
 async def api_delete_supplies_expenses(
     expense_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("harvest"))
 ):
     """
     Xóa danh sách chi phí vật tư (bulk).

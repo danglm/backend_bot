@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, require_permission
 from app.schemas.project import Project, ProjectCreate, ProjectUpdate
 from app.crud.project import create_project, get_projects, update_project, delete_project
 from app.models.employee import Credential
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/get-projects", response_model=List[Project])
 def get_projects_api(
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("project"))
 ):
     LogInfo("[Projects API] Received get-projects request.")
     try:
@@ -30,7 +30,7 @@ def get_projects_api(
 def add_projects_api(
     projects_in: List[ProjectCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("project"))
 ):
     LogInfo(f"[Projects API] Received add-projects request. Total projects to add: {len(projects_in)}")
     try:
@@ -50,7 +50,7 @@ def add_projects_api(
 def update_projects_api(
     projects_in: List[ProjectUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("project"))
 ):
     LogInfo(f"[Projects API] Received update-projects request. Total projects to update: {len(projects_in)}")
     try:
@@ -91,7 +91,7 @@ def update_projects_api(
 def delete_projects_api(
     project_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("project"))
 ):
     LogInfo(f"[Projects API] Received delete-projects request. Total projects to delete: {len(project_ids)}")
     try:
@@ -139,7 +139,7 @@ def get_telegram_groups_api(
     role: str,
     parent_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("project"))
 ):
     LogInfo(f"[Projects API] get-telegram-groups. project_id={project_id}, role={role}, parent_id={parent_id}")
     try:
@@ -171,7 +171,7 @@ def get_telegram_project_members_api(
     username: Optional[str] = None,
     role: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("project"))
 ):
     LogInfo(f"[Projects API] get-telegram-project-members. project_id={project_id}, chat_id={chat_id}, username={username}, role={role}")
     try:
@@ -189,7 +189,7 @@ def get_telegram_project_members_api(
 def add_telegram_project_members_api(
     members_in: List[TelegramProjectMemberCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("project"))
 ):
     LogInfo(f"[Projects API] add-telegram-project-members. Count: {len(members_in)}")
     try:
@@ -209,7 +209,7 @@ def add_telegram_project_members_api(
 def update_telegram_project_members_api(
     members_in: List[TelegramProjectMemberUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("project"))
 ):
     LogInfo(f"[Projects API] update-telegram-project-members. Count: {len(members_in)}")
     try:
@@ -250,7 +250,7 @@ def update_telegram_project_members_api(
 def delete_telegram_project_members_api(
     member_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("project"))
 ):
     LogInfo(f"[Projects API] delete-telegram-project-members. Count: {len(member_ids)}")
     try:

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, require_permission
 from app.schemas.customer import CustomerResponse, CustomerCreate, CustomerUpdate
 from app.schemas.collection_point import CollectionPointResponse
 from app.schemas import DailyPurchaseResponse, DailyPurchaseCreate, DailyPurchaseUpdate, MaterialPurchaseResponse, MaterialPurchaseCreate, InventoryResponse, InventoryCreate, InventoryUpdate, PartnerResponse, PartnerCreate, PartnerUpdate, PartnerBusinessResponse, PartnerBusinessCreate, PartnerBusinessUpdate, InvestmentResponse, InvestmentCreate, InvestmentUpdate, DailyPaymentResponse, DailyPaymentCreate, InventoryExportResponse, InventoryExportCreate, ProductTransactionResponse, ProductTransactionCreate
@@ -64,7 +64,7 @@ def get_customers(
     collection_point_id: Optional[str] = None,
     hoursehold_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-customers request. Raw ingredient: {ingredient}, collection_point_id: {collection_point_id}, hoursehold_id: {hoursehold_id}")
     try:
@@ -83,7 +83,7 @@ def get_customers(
 def get_collection_points(
     ingredient: Optional[str] = None, 
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-collection-points request. Raw ingredient: {ingredient}")
     try:
@@ -98,7 +98,7 @@ def get_collection_points(
 def add_customers(
     customers_in: List[CustomerCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-customers request. Total customers to add: {len(customers_in)}")
     try:
@@ -165,7 +165,7 @@ def add_customers(
 def update_customers(
     customers_in: List[CustomerUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received update-customers request. Total customers to update: {len(customers_in)}")
     try:
@@ -234,7 +234,7 @@ def update_customers(
 def delete_customers(
     customer_ids: List[str],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-customers request. Total customers to delete: {len(customer_ids)}")
     try:
@@ -304,7 +304,7 @@ def get_daily_purchases(
     product_code: Optional[str] = None,
     collection_point_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-daily-purchases request. Filters: start_date={start_date}, end_date={end_date}, hoursehold_id={hoursehold_id}, product_code={product_code}, collection_point_id={collection_point_id}")
     try:
@@ -327,7 +327,7 @@ def get_daily_purchases(
 def add_daily_purchases(
     purchases_in: List[DailyPurchaseCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-daily-purchases request. Total purchases: {len(purchases_in)}")
     try:
@@ -384,7 +384,7 @@ def add_daily_purchases(
 def update_daily_purchases(
     purchases_in: List[DailyPurchaseUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received update-daily-purchases request. Total purchases to update: {len(purchases_in)}")
     try:
@@ -471,7 +471,7 @@ def update_daily_purchases(
 def delete_daily_purchases(
     purchase_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-daily-purchases request. Total purchases to delete: {len(purchase_ids)}")
     try:
@@ -546,7 +546,7 @@ def get_material_purchases(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-material-purchases request. Filters: material_type={material_type}, storage_name={storage_name}, start_date={start_date}, end_date={end_date}")
     try:
@@ -568,7 +568,7 @@ def get_material_purchases(
 def add_material_purchases(
     purchases_in: List[MaterialPurchaseCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-material-purchases request. Total purchases: {len(purchases_in)}")
     try:
@@ -606,6 +606,16 @@ def add_material_purchases(
             else:
                 LogInfo(f"[TienNga API] No matching inventory found for storage_name='{new_mp.storage_name}', material_type='{new_mp.material_type}'")
 
+            # Update customer total_debt
+            if new_mp.customer_id and new_mp.debt:
+                customer = db.query(Customers).filter(Customers.hoursehold_id == new_mp.customer_id).first()
+                if customer:
+                    old_debt = customer.total_debt or 0
+                    customer.total_debt = old_debt + int(new_mp.debt)
+                    db.commit()
+                    db.refresh(customer)
+                    LogInfo(f"[TienNga API] Updated customer '{customer.fullname}' debt: {old_debt} -> {customer.total_debt}")
+
             record_dict = {
                 "id": new_mp.id,
                 "transaction_date": new_mp.transaction_date,
@@ -632,7 +642,7 @@ def add_material_purchases(
 def delete_material_purchases(
     purchase_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-material-purchases request. Total purchases to delete: {len(purchase_ids)}")
     try:
@@ -688,6 +698,16 @@ def delete_material_purchases(
             else:
                 LogInfo(f"[TienNga API] No matching inventory found for storage_name='{purchase.storage_name}', material_type='{purchase.material_type}'. Inventory quantity not updated.")
 
+            # Revert customer total_debt
+            if purchase.customer_id and purchase.debt:
+                customer = db.query(Customers).filter(Customers.hoursehold_id == purchase.customer_id).first()
+                if customer:
+                    old_debt = customer.total_debt or 0
+                    customer.total_debt = old_debt - int(purchase.debt)
+                    db.commit()
+                    db.refresh(customer)
+                    LogInfo(f"[TienNga API] Reverted customer '{customer.fullname}' debt: {old_debt} -> {customer.total_debt}")
+
             record_dict = {
                 "id": purchase.id,
                 "transaction_date": purchase.transaction_date,
@@ -722,7 +742,7 @@ def delete_material_purchases(
 def get_inventories_api(
     material_name: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-inventories request. material_name filter: {material_name}")
     try:
@@ -737,7 +757,7 @@ def get_inventories_api(
 @router.get("/get-partners", response_model=List[PartnerResponse])
 def get_partners_api(
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo("[TienNga API] Received get-partners request.")
     try:
@@ -753,7 +773,7 @@ def get_partners_api(
 def add_partners(
     partners_in: List[PartnerCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-partners request. Total partners to add: {len(partners_in)}")
     try:
@@ -792,7 +812,7 @@ def add_partners(
 def update_partners(
     partners_in: List[PartnerUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received update-partners request. Total partners to update: {len(partners_in)}")
     try:
@@ -833,7 +853,7 @@ def update_partners(
 def delete_partners(
     partner_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-partners request. Total partners to delete: {len(partner_ids)}")
     try:
@@ -876,7 +896,7 @@ def get_partner_businesses(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-partner-businesses request. Filters: product_type={product_type}, transaction_type={transaction_type}, start_date={start_date}, end_date={end_date}")
     try:
@@ -899,7 +919,7 @@ def get_partner_businesses(
 def add_partner_businesses(
     purchases_in: List[PartnerBusinessCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-partner-businesses request. Total purchases: {len(purchases_in)}")
     try:
@@ -944,7 +964,7 @@ def add_partner_businesses(
 def update_partner_businesses(
     purchases_in: List[PartnerBusinessUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received update-partner-businesses request. Total records to update: {len(purchases_in)}")
     try:
@@ -1017,7 +1037,7 @@ def update_partner_businesses(
 def delete_partner_businesses(
     business_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-partner-businesses request. Total records to delete: {len(business_ids)}")
     try:
@@ -1081,7 +1101,7 @@ def get_investments_api(
     role: Optional[str] = None,
     parent_id: Optional[UUID] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-investments request. Filters: role={role}, parent_id={parent_id}")
     try:
@@ -1097,7 +1117,7 @@ def get_investments_api(
 def add_investments(
     investments_in: List[InvestmentCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-investments request. Total investments to add: {len(investments_in)}")
     try:
@@ -1152,7 +1172,7 @@ def add_investments(
 def update_investments(
     investments_in: List[InvestmentUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received update-investments request. Total investments to update: {len(investments_in)}")
     try:
@@ -1205,7 +1225,7 @@ def update_investments(
 def delete_investments(
     investment_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-investments request. Total investments to delete: {len(investment_ids)}")
     try:
@@ -1248,7 +1268,7 @@ def get_daily_payments_api(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-daily-payments request. Filters: investment_id={investment_id}, payment_type={payment_type}, start_date={start_date}, end_date={end_date}")
     try:
@@ -1270,7 +1290,7 @@ def get_daily_payments_api(
 def add_daily_payments(
     payments_in: List[DailyPaymentCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-daily-payments request. Total payments: {len(payments_in)}")
     try:
@@ -1318,7 +1338,7 @@ def add_daily_payments(
 def delete_daily_payments(
     payment_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-daily-payments request. Total payments to delete: {len(payment_ids)}")
     try:
@@ -1369,7 +1389,7 @@ def get_inventory_exports_api(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-inventory-exports request. Filters: storage_name={storage_name}, material_type={material_type}, start_date={start_date}, end_date={end_date}")
     try:
@@ -1385,7 +1405,7 @@ def get_inventory_exports_api(
 def add_inventory_exports_api(
     exports_in: List[InventoryExportCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-inventory-exports request. Total exports: {len(exports_in)}")
     try:
@@ -1432,7 +1452,7 @@ def add_inventory_exports_api(
 def delete_inventory_exports_api(
     export_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-inventory-exports request. Total exports to delete: {len(export_ids)}")
     try:
@@ -1512,7 +1532,7 @@ def get_product_transactions_api(
     end_date: Optional[date] = None,
     storage_name: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received get-product-transactions request. Filters: transaction_type={transaction_type}, material_type={material_type}, start_date={start_date}, end_date={end_date}, storage_name={storage_name}")
     try:
@@ -1535,7 +1555,7 @@ def get_product_transactions_api(
 def add_product_transactions_api(
     txns_in: List[ProductTransactionCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-product-transactions request. Total: {len(txns_in)}")
     try:
@@ -1629,7 +1649,7 @@ def add_product_transactions_api(
 def delete_product_transactions_api(
     transaction_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-product-transactions request. Total: {len(transaction_ids)}")
     try:
@@ -1746,7 +1766,7 @@ def delete_product_transactions_api(
 def process_debt(
     request: ProcessDebtRequest,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received process-debt request. hoursehold_id={request.hoursehold_id}, employee_id={request.employee_id}, partner_id={request.partner_id}, amount={request.amount}, type_transaction={request.type_transaction}, start_date={request.start_date}, end_date={request.end_date}")
 
@@ -1877,7 +1897,7 @@ def process_debt(
 def process_loss_control(
     request: ProcessLossControlRequest,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received process-loss-control request. collection_point_id={request.collection_point_id}, start_date={request.start_date}, end_date={request.end_date}")
     try:
@@ -1991,7 +2011,7 @@ def process_loss_control(
 def add_inventories(
     inventories_in: List[InventoryCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received add-inventories request. Total inventories to add: {len(inventories_in)}")
     try:
@@ -2011,7 +2031,7 @@ def add_inventories(
 def update_inventories(
     inventories_in: List[InventoryUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received update-inventories request. Total inventories to update: {len(inventories_in)}")
     try:
@@ -2054,7 +2074,7 @@ def update_inventories(
 def delete_inventories(
     inventory_ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     LogInfo(f"[TienNga API] Received delete-inventories request. Total inventories to delete: {len(inventory_ids)}")
     try:
@@ -2099,7 +2119,7 @@ class ProcessAdvanceAmountRequest(BaseModel):
 def process_advance_amount(
     payloads: List[ProcessAdvanceAmountRequest],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     import calendar
     from datetime import date
@@ -2218,7 +2238,7 @@ class BillReportRequest(BaseModel):
 @router.post("/export-paid-bill")
 async def export_paid_bill(
     payload: BillReportRequest,
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     from fastapi import Response
     from bot.utils.paid_bill_report_generator import generate_paid_bill_report_image
@@ -2233,7 +2253,7 @@ async def export_paid_bill(
 @router.post("/export-saved-bill")
 async def export_saved_bill(
     payload: BillReportRequest,
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("tien-nga"))
 ):
     from fastapi import Response
     from bot.utils.saved_bill_report_generator import generate_saved_bill_report_image

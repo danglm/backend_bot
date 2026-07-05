@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, require_permission
 from app.schemas import credit as schemas_credit
 from app.crud import credit as crud_credit
 from app.models.employee import Credential
@@ -19,7 +19,7 @@ async def api_get_credit_interests(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Lấy danh sách lịch sử thu lãi kèm thông tin hợp đồng và khách hàng.
@@ -71,7 +71,7 @@ async def api_get_credit_interests(
 async def api_add_credit_interests(
     interests_in: list[schemas_credit.CreditInterestCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Thêm mới danh sách lịch sử thu lãi (bulk).
@@ -121,7 +121,7 @@ async def api_add_credit_interests(
 async def api_get_credit_customers(
     customer_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Lấy toàn bộ danh sách khách hàng tín dụng.
@@ -144,7 +144,7 @@ async def api_get_credits(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Lấy danh sách các hợp đồng tín dụng kèm thông tin khách hàng.
@@ -199,7 +199,7 @@ async def api_get_credits(
 async def api_add_credit_customers(
     customers_in: list[schemas_credit.CreditCustomerCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Thêm mới danh sách khách hàng tín dụng (bulk).
@@ -241,7 +241,7 @@ async def api_add_credit_customers(
 async def api_update_credit_customers(
     customers_in: list[schemas_credit.CreditCustomerUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Cập nhật danh sách khách hàng tín dụng (bulk).
@@ -286,7 +286,7 @@ async def api_update_credit_customers(
 async def api_delete_credit_customers(
     customer_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Xóa danh sách khách hàng tín dụng (bulk).
@@ -330,7 +330,7 @@ async def api_delete_credit_customers(
 async def api_add_credits(
     credits_in: list[schemas_credit.CreditCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Thêm mới danh sách hợp đồng tín dụng (bulk).
@@ -406,7 +406,7 @@ async def api_add_credits(
 async def api_update_credits(
     credits_in: list[schemas_credit.CreditUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Cập nhật danh sách hợp đồng tín dụng (bulk).
@@ -487,7 +487,7 @@ async def api_update_credits(
 async def api_delete_credits(
     credit_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Xóa danh sách hợp đồng tín dụng (bulk).
@@ -552,7 +552,7 @@ async def api_delete_credits(
 async def api_delete_credit_interests(
     interest_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Xóa danh sách lịch sử thu lãi (bulk) và hoàn lại nợ lãi.

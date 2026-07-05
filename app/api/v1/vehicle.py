@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, require_permission
 from app.schemas import vehicle as schemas_vehicle
 from app.crud import vehicle as crud_vehicle
 from app.models.employee import Credential
@@ -15,7 +15,7 @@ async def api_get_vehicles(
     license_plate: str = None,
     status: str = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("vehicle"))
 ):
     """
     Get vehicles.
@@ -29,7 +29,7 @@ async def api_get_vehicles(
 async def api_add_vehicles(
     vehicles_in: List[schemas_vehicle.VehicleCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("vehicle"))
 ):
     """
     Add a list of new vehicles.
@@ -82,7 +82,7 @@ async def api_add_vehicles(
 async def api_update_vehicles(
     vehicles_in: List[schemas_vehicle.VehicleBulkUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("vehicle"))
 ):
     """
     Update a list of vehicles.
@@ -130,7 +130,7 @@ async def api_update_vehicles(
 async def api_delete_vehicles(
     ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("vehicle"))
 ):
     """
     Delete a list of vehicles by ID.

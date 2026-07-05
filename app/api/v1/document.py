@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
 import uuid
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, require_permission
 from app.schemas import document as schemas_document
 from app.models.employee import Credential
 from app.models.document import Document, DocumentReminder
@@ -23,7 +23,7 @@ async def api_get_documents(
     category: Optional[str] = None,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("document"))
 ):
     """
     Get documents.
@@ -42,7 +42,7 @@ async def api_get_documents(
 async def api_add_documents(
     documents_in: List[schemas_document.DocumentCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("document"))
 ):
     """
     Add a list of new documents.
@@ -87,7 +87,7 @@ async def api_add_documents(
 async def api_update_documents(
     documents_in: List[schemas_document.DocumentBulkUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("document"))
 ):
     """
     Update a list of documents.
@@ -126,7 +126,7 @@ async def api_update_documents(
 async def api_delete_documents(
     ids: List[str],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("document"))
 ):
     """
     Delete a list of documents by ID.
@@ -152,7 +152,7 @@ async def api_get_document_reminders(
     document_id: Optional[str] = None,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("document"))
 ):
     """
     Get document reminders.
@@ -171,7 +171,7 @@ async def api_get_document_reminders(
 async def api_add_document_reminders(
     reminders_in: List[schemas_document.DocumentReminderCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("document"))
 ):
     """
     Add a list of new document reminders.
@@ -213,7 +213,7 @@ async def api_add_document_reminders(
 async def api_update_document_reminders(
     reminders_in: List[schemas_document.DocumentReminderBulkUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("document"))
 ):
     """
     Update a list of document reminders.
@@ -251,7 +251,7 @@ async def api_update_document_reminders(
 async def api_delete_document_reminders(
     ids: List[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("document"))
 ):
     """
     Delete a list of document reminders by ID.

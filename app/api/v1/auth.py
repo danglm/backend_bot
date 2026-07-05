@@ -97,3 +97,78 @@ def forgot_password(obj_in: ForgotPassword, db: Session = Depends(get_db)):
     LogInfo(f"[Auth] Password updated successfully for user '{obj_in.username}'", LogType.MAIN_LOG)
     return {"message": "Password updated successfully"}
 
+
+from typing import List
+from app.api.deps import require_permission
+from app.models.employee import Credential as DBCredential
+from app.schemas.employee import Credential as SchemaCredential
+from pydantic import BaseModel
+
+class PermissionUpdate(BaseModel):
+    permissions: List[str]
+
+@router.get("/get-permissions/{employee_id}", response_model=List[str])
+def get_permissions(
+    employee_id: str,
+    db: Session = Depends(get_db),
+    current_user: DBCredential = Depends(require_permission("admin"))
+):
+    """
+    Xem quyền (permissions) của một user theo employee_id.
+    Chỉ admin mới có quyền xem.
+    """
+    user = db.query(DBCredential).filter(DBCredential.employee_id == employee_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy credential cho nhân viên này."
+        )
+    return user.permissions or []
+
+@router.put("/update-permissions/{employee_id}", response_model=List[str])
+def update_permissions(
+    employee_id: str,
+    payload: PermissionUpdate,
+    db: Session = Depends(get_db),
+    current_user: DBCredential = Depends(require_permission("admin"))
+):
+    """
+    Cập nhật quyền (permissions) cho user theo employee_id.
+    Chỉ admin mới có quyền thực hiện.
+    """
+    user = db.query(DBCredential).filter(DBCredential.employee_id == employee_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy credential cho nhân viên này."
+        )
+    
+    allowed_permissions = {
+        "admin", "tien-nga", "ggomoosin", "rental", "credit", 
+        "harvest", "project", "vehicle", "document", "attendance", "other"
+    }
+    
+    invalid_perms = [p for p in payload.permissions if p not in allowed_permissions]
+    if invalid_perms:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Các quyền sau không hợp lệ: {invalid_perms}. Quyền hợp lệ gồm: {list(allowed_permissions)}"
+        )
+        
+    user.permissions = list(set(payload.permissions))
+    db.commit()
+    db.refresh(user)
+    return user.permissions
+
+@router.get("/get-all-credentials", response_model=List[SchemaCredential])
+def get_all_credentials(
+    db: Session = Depends(get_db),
+    current_user: DBCredential = Depends(require_permission("admin"))
+):
+    """
+    Lấy danh sách tất cả credential (kèm permissions).
+    Chỉ admin mới được lấy danh sách.
+    """
+    return db.query(DBCredential).all()
+
+

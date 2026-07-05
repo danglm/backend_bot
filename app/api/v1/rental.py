@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, require_permission
 from app.schemas import rental as schemas_rental
 from app.crud import rental as crud_rental
 from app.models.employee import Credential
@@ -18,7 +18,7 @@ router = APIRouter()
 async def api_get_all_real_estates(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Lấy toàn bộ danh sách Bất Động Sản.
@@ -37,7 +37,7 @@ async def api_get_all_real_estates(
 async def api_add_real_estates(
     real_estates_in: list[schemas_rental.RealEstateCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Thêm mới danh sách Bất Động Sản (bulk).
@@ -79,7 +79,7 @@ async def api_add_real_estates(
 async def api_update_real_estates(
     real_estates_in: list[schemas_rental.RealEstateUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Cập nhật danh sách Bất Động Sản (bulk).
@@ -124,7 +124,7 @@ async def api_update_real_estates(
 async def api_delete_real_estates(
     real_estate_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Xóa danh sách Bất Động Sản (bulk).
@@ -168,7 +168,7 @@ async def api_delete_real_estates(
 async def api_get_rentals_detailed(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Lấy danh sách các hợp đồng thuê kèm thông tin chi tiết khách hàng.
@@ -186,7 +186,7 @@ async def api_get_rentals_detailed(
 async def api_add_rentals(
     rentals_in: list[schemas_rental.RentalCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Thêm mới danh sách hợp đồng thuê (bulk).
@@ -228,7 +228,7 @@ async def api_add_rentals(
 async def api_update_rentals(
     rentals_in: list[schemas_rental.RentalUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Cập nhật danh sách hợp đồng thuê (bulk).
@@ -273,7 +273,7 @@ async def api_update_rentals(
 async def api_delete_rentals(
     rental_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Xóa danh sách hợp đồng thuê (bulk).
@@ -317,7 +317,7 @@ async def api_delete_rentals(
 async def api_add_rental_customers(
     customers_in: list[schemas_rental.RentalCustomerCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Thêm mới danh sách khách hàng thuê (bulk).
@@ -359,7 +359,7 @@ async def api_add_rental_customers(
 async def api_get_rental_customers(
     customer_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Lấy danh sách các khách hàng thuê.
@@ -377,7 +377,7 @@ async def api_get_rental_customers(
 async def api_update_rental_customers(
     customers_in: list[schemas_rental.RentalCustomerUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Cập nhật danh sách khách hàng thuê (bulk).
@@ -422,7 +422,7 @@ async def api_update_rental_customers(
 async def api_delete_rental_customers(
     customer_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Xóa danh sách khách hàng thuê (bulk).
@@ -466,7 +466,7 @@ async def api_delete_rental_customers(
 async def api_add_rental_payments(
     payments_in: list[schemas_rental.RentalPaymentCreate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Thêm mới danh sách khoản thanh toán (bulk).
@@ -511,7 +511,7 @@ async def api_add_rental_payments(
 async def api_update_rental_payments(
     payments_in: list[schemas_rental.RentalPaymentUpdate],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Cập nhật danh sách các khoản thanh toán (bulk) và điều chỉnh công nợ hợp đồng.
@@ -605,7 +605,7 @@ async def api_update_rental_payments(
 async def api_delete_rental_payments(
     payment_ids: list[UUID],
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Xóa danh sách khoản thanh toán (bulk) và hoàn trả công nợ hợp đồng.
@@ -667,7 +667,7 @@ async def api_get_rental_payments(
     end_date: Optional[str] = None,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Credential = Depends(get_current_user)
+    current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Lấy danh sách chi tiết các khoản thanh toán tiền thuê kèm thông tin hợp đồng và khách hàng.

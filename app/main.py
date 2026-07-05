@@ -80,7 +80,7 @@ app.add_middleware(
 
 app.include_router(hello.router)
 
-from app.api.v1 import telegram, auth, business, employee, salary, vehicle, document, credit, rental, tien_nga, attendance, harvest, other, projects
+from app.api.v1 import telegram, auth, business, employee, salary, vehicle, document, credit, rental, tien_nga, attendance, harvest, other, projects, rosca
 app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["telegram"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(business.router, prefix="/api/v1/business", tags=["business"])
@@ -95,6 +95,7 @@ app.include_router(attendance.router, prefix="/api/v1", tags=["attendance"])
 app.include_router(harvest.router, prefix="/api/v1/harvest", tags=["harvest"])
 app.include_router(other.router, prefix="/api/v1/other", tags=["other"])
 app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
+app.include_router(rosca.router, prefix="/api/v1/rosca", tags=["rosca"])
 
 
 

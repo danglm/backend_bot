@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, Float, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Date, Float, Boolean, DateTime, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 import uuid
@@ -75,6 +75,7 @@ class Credential(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(String, default="employee")
+    permissions = Column(JSON, default=list)  ## Danh sách quyền: ["admin", "tien-nga", "rental", "credit", "harvest", "project", "vehicle", "document", "attendance", "other", "ggomoosin"]
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.now())
     updated_at = Column(DateTime, default=datetime.datetime.now(), onupdate=datetime.datetime.now())
