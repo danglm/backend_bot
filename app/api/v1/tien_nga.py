@@ -2411,6 +2411,60 @@ def process_advance_amount(
     return results
 
 
+class ProcessDeductionAdvanceAmountRequest(BaseModel):
+    hoursehold_id: str
+    amount: float
+
+
+@router.post("/process-deduction-advance-amount")
+def process_deduction_advance_amount(
+    payloads: List[ProcessDeductionAdvanceAmountRequest],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    results = []
+
+    for payload in payloads:
+        hoursehold_id = payload.hoursehold_id.strip()
+        amount = payload.amount
+
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            results.append({
+                "hoursehold_id": hoursehold_id,
+                "success": False,
+                "message": f"Không tìm thấy hộ dân có mã {hoursehold_id}."
+            })
+            continue
+
+        current_debt = customer.total_debt or 0
+
+        if amount > current_debt:
+            results.append({
+                "hoursehold_id": hoursehold_id,
+                "success": False,
+                "message": "Công nợ không đủ dư."
+            })
+            continue
+
+        customer.total_debt = current_debt - int(amount)
+        customer.cash_advance = (customer.cash_advance or 0) - int(amount)
+        db.commit()
+        db.refresh(customer)
+
+        LogInfo(f"[TienNga API] User {current_user.username} processed deduction advance amount {amount} for household {hoursehold_id}")
+
+        results.append({
+            "hoursehold_id": hoursehold_id,
+            "success": True,
+            "message": "Khấu trừ công nợ thành công!",
+            "new_debt": customer.total_debt,
+            "new_advance": customer.cash_advance
+        })
+
+    return results
+
+
 class BillRecord(BaseModel):
     ngay: str
     tuan: Optional[str] = "—"

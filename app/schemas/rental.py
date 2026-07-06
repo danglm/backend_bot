@@ -5,11 +5,13 @@ import enum
 
 
 class RealEstateStatus(str, enum.Enum):
+    LIVING = "living"
+    RENTED = "rented"
+    SELF_EXPLOITED = "self_exploited"
     VACANT = "vacant"
-    OCCUPIED = "occupied"
-    SELLING = "selling"
+    INSTALLMENT = "installment"
+    LEGAL_ISSUES = "legal_issues"
     SOLD = "sold"
-    MAINTENANCE = "maintenance"
 
 
 class RealEstateBase(BaseModel):
