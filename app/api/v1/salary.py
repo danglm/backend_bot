@@ -84,7 +84,8 @@ def get_salaries(
                 total_overtime += diff
 
         # Base salary info
-        base_salary = employee.monthly_salary or employee.base_salary or 0.0
+        monthly_salary = employee.monthly_salary or employee.base_salary or 0.0
+        base_salary = employee.base_salary or 0.0
         
         # Overtime salary
         overtime_rate = employee.overtime_salary or 0.0
@@ -113,7 +114,7 @@ def get_salaries(
 
         # Calculate total received
         if standard_days > 0:
-            base_received = (base_salary / standard_days) * actual_workdays
+            base_received = (monthly_salary / standard_days) * actual_workdays
         else:
             base_received = 0.0
 

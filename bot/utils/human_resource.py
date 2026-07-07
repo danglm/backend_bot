@@ -3929,10 +3929,11 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
             unpaid_leave = 0
 
         # Calculations
-        base_salary = employee.monthly_salary or employee.base_salary or 0.0
+        monthly_salary = employee.monthly_salary or employee.base_salary or 0.0
+        base_salary = employee.base_salary or 0.0
         daily_salary = employee.daily_salary
         if not daily_salary and standard_days > 0:
-            daily_salary = base_salary / standard_days
+            daily_salary = monthly_salary / standard_days
             
         salary_earned = round(daily_salary * actual_working_days, 2)
         
