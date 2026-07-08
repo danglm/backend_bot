@@ -45,39 +45,47 @@ async def api_add_smartphones(
     created_phones = []
     try:
         for phone_in in smartphones_in:
+            # Clean empty strings to None
+            phone_data = phone_in.dict()
+            for key, val in phone_data.items():
+                if val == "":
+                    phone_data[key] = None
+
             # 1. If ID is provided, check if it already exists in the database
-            if phone_in.id:
-                existing_id = db.query(Smartphone).filter(Smartphone.id == phone_in.id).first()
+            req_id = phone_data.get("id")
+            if req_id:
+                existing_id = db.query(Smartphone).filter(Smartphone.id == req_id).first()
                 if existing_id:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Điện thoại với mã '{phone_in.id}' đã tồn tại trong hệ thống."
+                        detail=f"Điện thoại với mã '{req_id}' đã tồn tại trong hệ thống."
                     )
-                new_id = phone_in.id
+                new_id = req_id
             else:
                 # Generate unique ID if not provided
                 new_id = generate_next_smartphone_id(db)
 
             # 2. Check duplicate IMEI 1
-            if phone_in.imei_1:
-                existing_imei1 = crud_device.get_smartphone_by_imei(db, phone_in.imei_1)
+            imei_1 = phone_data.get("imei_1")
+            if imei_1:
+                existing_imei1 = crud_device.get_smartphone_by_imei(db, imei_1)
                 if existing_imei1:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"IMEI 1 '{phone_in.imei_1}' đã tồn tại trong hệ thống (Model: {existing_imei1.model_name})."
+                        detail=f"IMEI 1 '{imei_1}' đã tồn tại trong hệ thống (Model: {existing_imei1.model_name})."
                     )
 
             # 3. Check duplicate IMEI 2
-            if phone_in.imei_2:
-                existing_imei2 = crud_device.get_smartphone_by_imei(db, phone_in.imei_2)
+            imei_2 = phone_data.get("imei_2")
+            if imei_2:
+                existing_imei2 = crud_device.get_smartphone_by_imei(db, imei_2)
                 if existing_imei2:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"IMEI 2 '{phone_in.imei_2}' đã tồn tại trong hệ thống (Model: {existing_imei2.model_name})."
+                        detail=f"IMEI 2 '{imei_2}' đã tồn tại trong hệ thống (Model: {existing_imei2.model_name})."
                     )
 
             # Create smartphone db object
-            phone_data = phone_in.dict()
             phone_data.pop("id", None)
             db_obj = Smartphone(
                 id=new_id,
@@ -109,36 +117,44 @@ async def api_update_smartphones(
     updated_phones = []
     try:
         for phone_in in smartphones_in:
+            # Clean empty strings to None
+            phone_data = phone_in.dict(exclude_unset=True)
+            for key, val in phone_data.items():
+                if val == "":
+                    phone_data[key] = None
+
             # 1. Find the smartphone by ID
-            db_obj = db.query(Smartphone).filter(Smartphone.id == phone_in.id).first()
+            req_id = phone_data.get("id")
+            db_obj = db.query(Smartphone).filter(Smartphone.id == req_id).first()
             if not db_obj:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Không tìm thấy điện thoại với mã '{phone_in.id}'."
+                    detail=f"Không tìm thấy điện thoại với mã '{req_id}'."
                 )
 
             # 2. Check duplicate IMEI 1 (excluding itself)
-            if phone_in.imei_1 and phone_in.imei_1 != db_obj.imei_1:
-                existing_imei1 = crud_device.get_smartphone_by_imei(db, phone_in.imei_1)
+            imei_1 = phone_data.get("imei_1")
+            if imei_1 and imei_1 != db_obj.imei_1:
+                existing_imei1 = crud_device.get_smartphone_by_imei(db, imei_1)
                 if existing_imei1 and existing_imei1.id != db_obj.id:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"IMEI 1 '{phone_in.imei_1}' đã tồn tại ở thiết bị khác."
+                        detail=f"IMEI 1 '{imei_1}' đã tồn tại ở thiết bị khác."
                     )
 
             # 3. Check duplicate IMEI 2 (excluding itself)
-            if phone_in.imei_2 and phone_in.imei_2 != db_obj.imei_2:
-                existing_imei2 = crud_device.get_smartphone_by_imei(db, phone_in.imei_2)
+            imei_2 = phone_data.get("imei_2")
+            if imei_2 and imei_2 != db_obj.imei_2:
+                existing_imei2 = crud_device.get_smartphone_by_imei(db, imei_2)
                 if existing_imei2 and existing_imei2.id != db_obj.id:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"IMEI 2 '{phone_in.imei_2}' đã tồn tại ở thiết bị khác."
+                        detail=f"IMEI 2 '{imei_2}' đã tồn tại ở thiết bị khác."
                     )
 
             # Update fields
-            update_data = phone_in.dict(exclude_unset=True)
-            update_data.pop("id", None)
-            for field, value in update_data.items():
+            phone_data.pop("id", None)
+            for field, value in phone_data.items():
                 setattr(db_obj, field, value)
             
             updated_phones.append(db_obj)
@@ -212,39 +228,47 @@ async def api_add_tablets(
     created_tablets = []
     try:
         for tablet_in in tablets_in:
+            # Clean empty strings to None
+            tablet_data = tablet_in.dict()
+            for key, val in tablet_data.items():
+                if val == "":
+                    tablet_data[key] = None
+
             # 1. If ID is provided, check if it already exists in the database
-            if tablet_in.id:
-                existing_id = db.query(Tablet).filter(Tablet.id == tablet_in.id).first()
+            req_id = tablet_data.get("id")
+            if req_id:
+                existing_id = db.query(Tablet).filter(Tablet.id == req_id).first()
                 if existing_id:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Máy tính bảng với mã '{tablet_in.id}' đã tồn tại trong hệ thống."
+                        detail=f"Máy tính bảng với mã '{req_id}' đã tồn tại trong hệ thống."
                     )
-                new_id = tablet_in.id
+                new_id = req_id
             else:
                 # Generate unique ID if not provided
                 new_id = generate_next_tablet_id(db)
 
             # 2. Check duplicate IMEI 1
-            if tablet_in.imei_1:
-                existing_imei1 = crud_device.get_tablet_by_imei(db, tablet_in.imei_1)
+            imei_1 = tablet_data.get("imei_1")
+            if imei_1:
+                existing_imei1 = crud_device.get_tablet_by_imei(db, imei_1)
                 if existing_imei1:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"IMEI 1 '{tablet_in.imei_1}' đã tồn tại trong hệ thống (Model: {existing_imei1.model_name})."
+                        detail=f"IMEI 1 '{imei_1}' đã tồn tại trong hệ thống (Model: {existing_imei1.model_name})."
                     )
 
             # 3. Check duplicate IMEI 2
-            if tablet_in.imei_2:
-                existing_imei2 = crud_device.get_tablet_by_imei(db, tablet_in.imei_2)
+            imei_2 = tablet_data.get("imei_2")
+            if imei_2:
+                existing_imei2 = crud_device.get_tablet_by_imei(db, imei_2)
                 if existing_imei2:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"IMEI 2 '{tablet_in.imei_2}' đã tồn tại trong hệ thống (Model: {existing_imei2.model_name})."
+                        detail=f"IMEI 2 '{imei_2}' đã tồn tại trong hệ thống (Model: {existing_imei2.model_name})."
                     )
 
             # Create tablet db object
-            tablet_data = tablet_in.dict()
             tablet_data.pop("id", None)
             db_obj = Tablet(
                 id=new_id,
@@ -276,36 +300,44 @@ async def api_update_tablets(
     updated_tablets = []
     try:
         for tablet_in in tablets_in:
+            # Clean empty strings to None
+            tablet_data = tablet_in.dict(exclude_unset=True)
+            for key, val in tablet_data.items():
+                if val == "":
+                    tablet_data[key] = None
+
             # 1. Find the tablet by ID
-            db_obj = db.query(Tablet).filter(Tablet.id == tablet_in.id).first()
+            req_id = tablet_data.get("id")
+            db_obj = db.query(Tablet).filter(Tablet.id == req_id).first()
             if not db_obj:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Không tìm thấy máy tính bảng với mã '{tablet_in.id}'."
+                    detail=f"Không tìm thấy máy tính bảng với mã '{req_id}'."
                 )
 
             # 2. Check duplicate IMEI 1 (excluding itself)
-            if tablet_in.imei_1 and tablet_in.imei_1 != db_obj.imei_1:
-                existing_imei1 = crud_device.get_tablet_by_imei(db, tablet_in.imei_1)
+            imei_1 = tablet_data.get("imei_1")
+            if imei_1 and imei_1 != db_obj.imei_1:
+                existing_imei1 = crud_device.get_tablet_by_imei(db, imei_1)
                 if existing_imei1 and existing_imei1.id != db_obj.id:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"IMEI 1 '{tablet_in.imei_1}' đã tồn tại ở thiết bị khác."
+                        detail=f"IMEI 1 '{imei_1}' đã tồn tại ở thiết bị khác."
                     )
 
             # 3. Check duplicate IMEI 2 (excluding itself)
-            if tablet_in.imei_2 and tablet_in.imei_2 != db_obj.imei_2:
-                existing_imei2 = crud_device.get_tablet_by_imei(db, tablet_in.imei_2)
+            imei_2 = tablet_data.get("imei_2")
+            if imei_2 and imei_2 != db_obj.imei_2:
+                existing_imei2 = crud_device.get_tablet_by_imei(db, imei_2)
                 if existing_imei2 and existing_imei2.id != db_obj.id:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"IMEI 2 '{tablet_in.imei_2}' đã tồn tại ở thiết bị khác."
+                        detail=f"IMEI 2 '{imei_2}' đã tồn tại ở thiết bị khác."
                     )
 
             # Update fields
-            update_data = tablet_in.dict(exclude_unset=True)
-            update_data.pop("id", None)
-            for field, value in update_data.items():
+            tablet_data.pop("id", None)
+            for field, value in tablet_data.items():
                 setattr(db_obj, field, value)
             
             updated_tablets.append(db_obj)

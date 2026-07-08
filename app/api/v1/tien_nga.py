@@ -558,6 +558,14 @@ def add_daily_purchases(
         for purchase_in in purchases_in:
             new_dp = create_daily_purchase(db, obj_in=purchase_in)
             
+            # Update customer debt if there is any saved amount
+            if new_dp.saved_amount and new_dp.saved_amount > 0:
+                customer = db.query(Customers).filter(Customers.hoursehold_id == new_dp.hoursehold_id).first()
+                if customer:
+                    if customer.total_debt is None: customer.total_debt = 0
+                    customer.total_debt += int(new_dp.saved_amount)
+                    db.commit()
+            
             # Form response dictionary containing fullname and collection_name
             record_dict = {
                 "id": new_dp.id,
@@ -642,7 +650,37 @@ def update_daily_purchases(
         # Update each purchase
         updated_records = []
         for purchase_in in purchases_in:
+            db_p = db.query(DailyPurchases).filter(DailyPurchases.id == purchase_in.id).first()
+            old_saved_amount = db_p.saved_amount if db_p else 0
+            old_hoursehold_id = db_p.hoursehold_id if db_p else None
+            
             updated_dp = update_daily_purchase(db, purchase_id=purchase_in.id, obj_in=purchase_in)
+            
+            # Adjust customer debt
+            new_saved_amount = updated_dp.saved_amount or 0
+            new_hoursehold_id = updated_dp.hoursehold_id
+            
+            if old_hoursehold_id == new_hoursehold_id:
+                diff = new_saved_amount - old_saved_amount
+                if diff != 0:
+                    customer = db.query(Customers).filter(Customers.hoursehold_id == new_hoursehold_id).first()
+                    if customer:
+                        if customer.total_debt is None: customer.total_debt = 0
+                        customer.total_debt += int(diff)
+                        db.commit()
+            else:
+                if old_hoursehold_id and old_saved_amount > 0:
+                    old_cust = db.query(Customers).filter(Customers.hoursehold_id == old_hoursehold_id).first()
+                    if old_cust:
+                        if old_cust.total_debt is None: old_cust.total_debt = 0
+                        old_cust.total_debt -= int(old_saved_amount)
+                        db.commit()
+                if new_hoursehold_id and new_saved_amount > 0:
+                    new_cust = db.query(Customers).filter(Customers.hoursehold_id == new_hoursehold_id).first()
+                    if new_cust:
+                        if new_cust.total_debt is None: new_cust.total_debt = 0
+                        new_cust.total_debt += int(new_saved_amount)
+                        db.commit()
             
             record_dict = {
                 "id": updated_dp.id,
@@ -735,6 +773,15 @@ def delete_daily_purchases(
                 "product_code": purchase.product_code
             }
             deleted_records.append(record_dict)
+            
+            # Adjust customer debt before deleting the purchase record
+            if purchase.saved_amount and purchase.saved_amount > 0:
+                customer = db.query(Customers).filter(Customers.hoursehold_id == purchase.hoursehold_id).first()
+                if customer:
+                    if customer.total_debt is None: customer.total_debt = 0
+                    customer.total_debt -= int(purchase.saved_amount)
+                    db.commit()
+                    
             delete_daily_purchase(db, purchase_id=purchase.id)
             
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_records)} daily purchase records.")
