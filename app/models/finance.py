@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Time, Date, DateTime
+from sqlalchemy import Column, Integer, String, Float, Time, Date, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 import datetime
@@ -39,6 +39,7 @@ class Attendance(Base):
     late_time = Column(Float)
     overtime = Column(Float)
     error = Column(String)
+    is_half_day = Column(Boolean, default=False)  ## Nửa ngày công
 
 class Payroll(Base):
     __tablename__ = "payrolls"

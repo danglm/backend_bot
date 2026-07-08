@@ -77,7 +77,7 @@ def _build_attendance_excel(
 
     col_headers = [
         "Ngày", "Thứ", "Giờ vào", "Giờ ra", "Giờ làm việc (h)",
-        "Đi muộn (phút)", "Tăng ca (h)", "Nghỉ phép năm", "Ghi chú",
+        "Đi muộn (phút)", "Tăng ca (h)", "Nửa ngày", "Nghỉ phép năm", "Ghi chú",
     ]
 
     for record in employee_records:
@@ -131,6 +131,7 @@ def _build_attendance_excel(
                     is_annual_leave = "X"
                     total_leave_days += 1
                 
+                is_half = "X" if att.is_half_day else ""
                 note = att.error or ""
             else:
                 # Ngày nghỉ theo work_type
@@ -138,11 +139,13 @@ def _build_attendance_excel(
                     check_in = check_out = "—"
                     working = late = overtime = 0.0
                     is_annual_leave = ""
+                    is_half = ""
                     note = _get_off_day_note(date_obj.weekday(), work_type)
                 else:
                     check_in = check_out = "—"
                     working = late = overtime = 0.0
                     is_annual_leave = ""
+                    is_half = ""
                     note = "Không có dữ liệu"
 
             total_working += working
@@ -150,7 +153,7 @@ def _build_attendance_excel(
             total_overtime += overtime
 
             row_fill = ALT_FILL if day % 2 == 0 else WHITE_FILL
-            values = [day, weekday_vn, check_in, check_out, working, late, overtime, is_annual_leave, note]
+            values = [day, weekday_vn, check_in, check_out, working, late, overtime, is_half, is_annual_leave, note]
             for col_idx, val in enumerate(values, start=1):
                 cell = ws.cell(row=row_num, column=col_idx, value=val)
                 cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -170,7 +173,7 @@ def _build_attendance_excel(
             (5, round(total_working, 2)), 
             (6, round(total_late, 2)), 
             (7, round(total_overtime, 2)),
-            (8, total_leave_days)
+            (9, total_leave_days)
         ]:
             cell = ws.cell(row=summary_row, column=col_idx, value=val)
             cell.font = Font(bold=True)
@@ -180,7 +183,7 @@ def _build_attendance_excel(
             cell.border = thin_border
 
         # ── Column widths ─────────────────────────────────────────────
-        col_widths = [8, 10, 12, 12, 20, 18, 16, 18, 30]
+        col_widths = [8, 10, 12, 12, 20, 18, 16, 12, 18, 30]
         for i, w in enumerate(col_widths, start=1):
             ws.column_dimensions[get_column_letter(i)].width = w
 
@@ -273,7 +276,7 @@ def get_payroll_data(db: Session, employee_id: str, month: int, year: int) -> di
             standard_days += 1
             
     # Aggregate Attendance
-    actual_working_days = 0
+    actual_working_days = 0.0
     total_overtime = 0.0
     leave_days = 0
     unpaid_leave = 0
@@ -285,7 +288,7 @@ def get_payroll_data(db: Session, employee_id: str, month: int, year: int) -> di
         
         if att:
             if (att.working_time or 0) > 0:
-                actual_working_days += 1
+                actual_working_days += 0.5 if att.is_half_day else 1
             total_overtime += (att.overtime or 0.0)
             if att.error and "nghỉ phép năm" in att.error.lower():
                 leave_days += 1

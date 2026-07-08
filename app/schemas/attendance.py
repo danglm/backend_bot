@@ -20,6 +20,7 @@ class AttendanceBase(BaseModel):
     late_time: Optional[float] = None
     overtime: Optional[float] = None
     error: Optional[str] = None
+    is_half_day: Optional[bool] = False
 
 class AttendanceCreate(AttendanceBase):
     pass
@@ -42,6 +43,7 @@ class AttendanceUpdate(BaseModel):
     late_time: Optional[float] = None
     overtime: Optional[float] = None
     error: Optional[str] = None
+    is_half_day: Optional[bool] = None
 
 class AttendanceInDBBase(AttendanceBase):
     id: UUID

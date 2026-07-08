@@ -1831,6 +1831,36 @@ def add_product_transactions_api(
             else:
                 LogInfo(f"[TienNga API] Match FAILED: No matching inventory found for storage_name='{new_txn.storage_name}' and material_type='{new_txn.material_type}'. Inventory quantity was NOT updated.")
 
+            # Enforce debt sign: Nhập is positive, Xuất is negative
+            if direction == 1:
+                new_txn.debt = abs(new_txn.debt or 0.0)
+            else:
+                new_txn.debt = -abs(new_txn.debt or 0.0)
+
+            # Update Customer or Partner debt
+            if new_txn.customer_id:
+                debt_change = new_txn.debt or 0.0
+                if debt_change != 0.0:
+                    # 1. Search in Customers
+                    customer = db.query(Customers).filter(
+                        (Customers.hoursehold_id == new_txn.customer_id) | (Customers.id == new_txn.customer_id)
+                    ).first()
+                    if customer:
+                        if customer.total_debt is None:
+                            customer.total_debt = 0.0
+                        customer.total_debt += int(round(debt_change))
+                        LogInfo(f"[TienNga API] Updated customer '{customer.fullname}' total_debt by {debt_change}: new_debt={customer.total_debt}")
+                    else:
+                        # 2. Search in Partners
+                        partner = db.query(Partners).filter(Partners.partner_id == new_txn.customer_id).first()
+                        if partner:
+                            if partner.total_debt is None:
+                                partner.total_debt = 0.0
+                            partner.total_debt += debt_change
+                            LogInfo(f"[TienNga API] Updated partner '{partner.partner_name}' total_debt by {debt_change}: new_debt={partner.total_debt}")
+                        else:
+                            LogInfo(f"[TienNga API] customer_id '{new_txn.customer_id}' not found in Customers or Partners. Debt not updated.")
+
             created_records.append(new_txn)
 
         # Commit everything atomically
@@ -1955,6 +1985,30 @@ def delete_product_transactions_api(
                 "note": txn.note,
             }
             deleted_records.append(record_dict)
+
+            # Revert Customer or Partner debt
+            if txn.customer_id:
+                debt_change = txn.debt or 0.0
+                if debt_change != 0.0:
+                    # 1. Search in Customers
+                    customer = db.query(Customers).filter(
+                        (Customers.hoursehold_id == txn.customer_id) | (Customers.id == txn.customer_id)
+                    ).first()
+                    if customer:
+                        if customer.total_debt is None:
+                            customer.total_debt = 0.0
+                        customer.total_debt -= int(round(debt_change))
+                        LogInfo(f"[TienNga API] Reverted customer '{customer.fullname}' total_debt by {-debt_change}: new_debt={customer.total_debt}")
+                    else:
+                        # 2. Search in Partners
+                        partner = db.query(Partners).filter(Partners.partner_id == txn.customer_id).first()
+                        if partner:
+                            if partner.total_debt is None:
+                                partner.total_debt = 0.0
+                            partner.total_debt -= debt_change
+                            LogInfo(f"[TienNga API] Reverted partner '{partner.partner_name}' total_debt by {-debt_change}: new_debt={partner.total_debt}")
+                        else:
+                            LogInfo(f"[TienNga API] customer_id '{txn.customer_id}' not found in Customers or Partners during delete. Debt not updated.")
 
             # Perform the actual deletion in CRUD
             delete_product_transaction(db, transaction_id=txn.id)

@@ -71,11 +71,11 @@ def get_salaries(
         ).all()
 
         # Calculate actual workdays
-        actual_workdays = 0
+        actual_workdays = 0.0
         total_overtime = 0.0
         for att in attendances:
             if att.check_in_time is not None or (att.working_time or 0) > 0:
-                actual_workdays += 1
+                actual_workdays += 0.5 if att.is_half_day else 1
             
             if att.overtime:
                 total_overtime += att.overtime

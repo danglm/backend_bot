@@ -26,11 +26,15 @@ def build_attendance_html(
         check_out = rec.get("check_out", "—")
         overtime = rec.get("overtime", "—")
         work_h = rec.get("work_hours", "—")
+        is_half = rec.get("is_half_day", False)
         error = rec.get("error", "")
 
         ci_class = "success" if check_in not in ("—", "") else "muted"
         co_class = "success" if check_out not in ("—", "") else "muted"
         err_class = "error" if error else ""
+
+        half_icon = "✓" if is_half else ""
+        half_class = "success" if is_half else "muted"
 
         table_rows += f"""
         <tr class="{row_class}">
@@ -40,6 +44,7 @@ def build_attendance_html(
           <td class="center {co_class}">{check_out}</td>
           <td class="center">{overtime}</td>
           <td class="center">{work_h}</td>
+          <td class="center {half_class}">{half_icon}</td>
           <td class="{err_class}">{error}</td>
         </tr>"""
 
@@ -238,6 +243,7 @@ def build_attendance_html(
             <th>Check-out</th>
             <th>Tăng ca</th>
             <th>Giờ làm</th>
+            <th>½ ngày</th>
             <th>Ghi chú</th>
           </tr>
         </thead>

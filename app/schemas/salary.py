@@ -40,7 +40,7 @@ class GetSalaryResponse(BaseModel):
     employee_id: str
     employee_name: str
     standard_workdays: int
-    actual_workdays: int
+    actual_workdays: float
     base_salary: float
     overtime_salary: float
     other_allowance: float

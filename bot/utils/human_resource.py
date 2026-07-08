@@ -2302,11 +2302,13 @@ Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
 <pre>{cmd}
 Thời gian: dd/mm/yyyy
 Ca làm: hh:mm - hh:mm
+Nửa ngày: Không
 Người duyệt: @username
 Người hỗ trợ: @username
 Lý do: </pre>
 
 <i>Ví dụ ca làm: 08:00 - 17:00
+Nửa ngày: Có / Không (mặc định: Không)
 Mã NV: <b>{emp_id}</b></i>"""
 
 
@@ -2317,6 +2319,7 @@ async def _execute_request_attendance_update_for_employee(
     """Thực hiện logic request_attendance_update cho 1 Employee cụ thể."""
     date_str = form_data["date_str"]
     shift_str = form_data["shift_str"]
+    half_day_str = form_data.get("half_day_str", "Không")
     approver = form_data["approver"]
     supporter = form_data["supporter"]
     reason = form_data["reason"]
@@ -2324,6 +2327,10 @@ async def _execute_request_attendance_update_for_employee(
 
     full_name = f"{employee.last_name} {employee.first_name}"
     emp_username = employee.username or employee.id
+
+    # Xác định nửa ngày
+    is_half = half_day_str.lower() in ("có", "co", "yes", "true", "1")
+    half_day_label = "✓ Có" if is_half else "Không"
 
     delegated_note = ""
     if acting_username != employee.username:
@@ -2335,6 +2342,7 @@ async def _execute_request_attendance_update_for_employee(
         f"Mã NV: <code>{employee.id}</code>\n"
         f"Thời gian: <code>{display_date}</code>\n"
         f"Ca làm: <b>{shift_str}</b>\n"
+        f"Nửa ngày: <b>{half_day_label}</b>\n"
         f"Người duyệt: <b>{approver}</b>\n"
         f"Người hỗ trợ: <b>{supporter}</b>\n"
         f"Lý do: <i>{reason}</i>"
@@ -2451,6 +2459,7 @@ async def handle_request_attendance_update(client, message: Message, command_nam
     # Lấy các trường
     date_str = data.get("Thời gian", "").strip()
     shift_str = data.get("Ca làm", "").strip()
+    half_day_str = data.get("Nửa ngày", "Không").strip()
     approver = data.get("Người duyệt", "").strip()
     supporter = data.get("Người hỗ trợ", "").strip()
     reason = data.get("Lý do", "").strip()
@@ -2521,6 +2530,7 @@ async def handle_request_attendance_update(client, message: Message, command_nam
     form_data = {
         "date_str": date_str,
         "shift_str": shift_str,
+        "half_day_str": half_day_str,
         "approver": approver,
         "supporter": supporter,
         "reason": reason,
@@ -2621,12 +2631,19 @@ async def handle_attendance_update_request_callback(client, callback_query) -> N
     if action == "ok" and "YÊU CẦU CẬP NHẬT CHẤM CÔNG" in content:
         d_match = re.search(r"Thời gian:\s*(?:<code>)?(.*?)(?:</code>)?(?:\n|$)", content)
         s_match = re.search(r"Ca làm:\s*(?:<b>)?(.*?)(?:</b>)?(?:\n|$)", content)
+        h_match = re.search(r"Nửa ngày:\s*(?:<b>)?(.*?)(?:</b>)?(?:\n|$)", content)
         u_match = re.search(r"Người yêu cầu:.*?\(\s*(?:<b>)?@([^\s<]+)(?:</b>)?\s*\)", content)
 
         if d_match and s_match and u_match:
             att_date_str = d_match.group(1).strip()
             att_shift = s_match.group(1).strip()
             att_username = u_match.group(1).strip()
+
+            # Parse nửa ngày
+            att_is_half_day = False
+            if h_match:
+                half_val = h_match.group(1).strip().lower()
+                att_is_half_day = half_val in ("✓ có", "có", "co", "yes", "true", "1")
 
             db = SessionLocal()
             try:
@@ -2669,6 +2686,7 @@ async def handle_attendance_update_request_callback(client, callback_query) -> N
                                 if existing_att:
                                     existing_att.check_in_time = start_dt
                                     existing_att.check_out_time = end_dt
+                                    existing_att.is_half_day = att_is_half_day
                                     db.add(existing_att)
                                 else:
                                     new_att = Attendance(
@@ -2678,7 +2696,8 @@ async def handle_attendance_update_request_callback(client, callback_query) -> N
                                         day=d,
                                         date_str=ds_vn,
                                         check_in_time=start_dt,
-                                        check_out_time=end_dt
+                                        check_out_time=end_dt,
+                                        is_half_day=att_is_half_day,
                                     )
                                     db.add(new_att)
 
@@ -3896,7 +3915,7 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
         num_days_in_month = calendar.monthrange(year, month)[1]
         standard_days = sum(1 for d in range(1, num_days_in_month + 1) if _is_working_day(datetime.date(year, month, d).weekday(), emp_work_type))
 
-        actual_working_days = 0
+        actual_working_days = 0.0
         total_overtime = 0.0
         leave_days = 0
 
@@ -3912,7 +3931,7 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
                     has_worked = True
                     
                 if has_worked:
-                    actual_working_days += 1
+                    actual_working_days += 0.5 if att.is_half_day else 1
                 
                 # Overtime
                 if att.overtime:
