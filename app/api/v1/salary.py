@@ -113,12 +113,16 @@ def get_salaries(
             status = "draft"
 
         # Calculate total received
-        if standard_days > 0:
-            base_received = (monthly_salary / standard_days) * actual_workdays
-        else:
-            base_received = 0.0
+        base_received = base_salary
 
-        total_received = base_received + overtime_salary_amount + other_allowance + lunch_allowance + productivity_bonus + bonus - bhxh - penalty
+        if standard_days > 0:
+            total_received = (
+                (base_received + overtime_salary_amount + other_allowance + lunch_allowance + productivity_bonus)
+                * actual_workdays / standard_days
+                + bonus - bhxh - penalty
+            )
+        else:
+            total_received = bonus - bhxh - penalty
 
         response_list.append(
             GetSalaryResponse(
