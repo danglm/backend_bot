@@ -1339,6 +1339,20 @@ def delete_partner_businesses(
                 "degree": record.degree
             }
             deleted_records.append(record_dict)
+            # Revert partner debt if the deleted transaction was a debt transaction (total_amount > 0)
+            if record.partner_id and record.total_amount > 0:
+                partner = db.query(Partners).filter(Partners.partner_id == record.partner_id).first()
+                if partner:
+                    if partner.total_debt is None:
+                        partner.total_debt = 0.0
+                    
+                    if record.export_amount > 0:
+                        partner.total_debt += record.total_amount
+                        LogInfo(f"[TienNga API] Reverted partner '{partner.partner_name}' total_debt by adding back exported amount {record.total_amount}. New debt: {partner.total_debt}")
+                    elif record.import_amount > 0:
+                        partner.total_debt -= record.total_amount
+                        LogInfo(f"[TienNga API] Reverted partner '{partner.partner_name}' total_debt by subtracting imported amount {record.total_amount}. New debt: {partner.total_debt}")
+
             delete_partner_business(db, business_id=record.id)
             
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_records)} partner business records.")
@@ -1798,8 +1812,39 @@ def get_product_transactions_api(
             end_date=end_date,
             storage_name=storage_name
         )
-        LogInfo(f"[TienNga API] Found {len(results)} product transaction records.")
-        return results
+        # Build maps for customer name resolution
+        customers = db.query(Customers).all()
+        cust_map = {}
+        for c in customers:
+            if c.hoursehold_id:
+                cust_map[c.hoursehold_id] = c.fullname
+            cust_map[str(c.id)] = c.fullname
+
+        partners = db.query(Partners).all()
+        partner_map = {p.partner_id: p.partner_name for p in partners if p.partner_id}
+
+        response_data = []
+        for txn in results:
+            fullname = cust_map.get(txn.customer_id) or partner_map.get(txn.customer_id) or txn.customer_id
+            response_data.append({
+                "id": txn.id,
+                "product_code": txn.product_code,
+                "transaction_date": txn.transaction_date,
+                "customer_id": txn.customer_id,
+                "fullname": fullname,
+                "transaction_type": txn.transaction_type,
+                "material_type": txn.material_type,
+                "storage_id": txn.storage_id,
+                "storage_name": txn.storage_name,
+                "quantity": txn.quantity,
+                "unit_price": txn.unit_price,
+                "total_amount": txn.total_amount,
+                "debt": txn.debt,
+                "note": txn.note
+            })
+
+        LogInfo(f"[TienNga API] Found {len(response_data)} product transaction records.")
+        return response_data
     except Exception as e:
         LogInfo(f"[TienNga API] Error in get-product-transactions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1913,12 +1958,39 @@ def add_product_transactions_api(
         # Commit everything atomically
         db.commit()
 
-        # Refresh objects
-        for rec in created_records:
-            db.refresh(rec)
+        # Build maps for customer name resolution
+        customers = db.query(Customers).all()
+        cust_map = {}
+        for c in customers:
+            if c.hoursehold_id:
+                cust_map[c.hoursehold_id] = c.fullname
+            cust_map[str(c.id)] = c.fullname
 
-        LogInfo(f"[TienNga API] Successfully added {len(created_records)} product transaction records.")
-        return created_records
+        partners = db.query(Partners).all()
+        partner_map = {p.partner_id: p.partner_name for p in partners if p.partner_id}
+
+        response_data = []
+        for txn in created_records:
+            fullname = cust_map.get(txn.customer_id) or partner_map.get(txn.customer_id) or txn.customer_id
+            response_data.append({
+                "id": txn.id,
+                "product_code": txn.product_code,
+                "transaction_date": txn.transaction_date,
+                "customer_id": txn.customer_id,
+                "fullname": fullname,
+                "transaction_type": txn.transaction_type,
+                "material_type": txn.material_type,
+                "storage_id": txn.storage_id,
+                "storage_name": txn.storage_name,
+                "quantity": txn.quantity,
+                "unit_price": txn.unit_price,
+                "total_amount": txn.total_amount,
+                "debt": txn.debt,
+                "note": txn.note
+            })
+
+        LogInfo(f"[TienNga API] Successfully added {len(response_data)} product transaction records.")
+        return response_data
 
     except HTTPException as he:
         db.rollback()
@@ -2086,10 +2158,15 @@ def process_debt(
                 detail="type_transaction phải là 'thu' hoặc 'chi'."
             )
 
-        if request.amount <= 0:
+        if not request.partner_id and request.amount <= 0:
             raise HTTPException(
                 status_code=400,
                 detail="amount phải lớn hơn 0."
+            )
+        if request.partner_id and request.amount == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="amount phải khác 0 đối với đối tác."
             )
 
         # --- Xử lý cho hoursehold_id (customer) ---
@@ -2184,9 +2261,30 @@ def process_debt(
             )
 
         if request.partner_id:
-            raise HTTPException(
-                status_code=501,
-                detail="Xử lý công nợ cho partner chưa được triển khai."
+            partner = db.query(Partners).filter(
+                Partners.partner_id == request.partner_id
+            ).first()
+
+            if not partner:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Không tìm thấy đối tác với mã '{request.partner_id}'."
+                )
+
+            old_debt = partner.total_debt or 0.0
+            new_debt = old_debt + request.amount
+            partner.total_debt = new_debt
+            db.commit()
+
+            return ProcessDebtResponse(
+                success=True,
+                message=f"Cập nhật công nợ thành công cho đối tác {partner.partner_name or partner.partner_id}.",
+                target_id=partner.partner_id,
+                target_name=partner.partner_name,
+                type_transaction=request.type_transaction,
+                amount=request.amount,
+                old_debt=old_debt,
+                new_debt=new_debt,
             )
 
         raise HTTPException(

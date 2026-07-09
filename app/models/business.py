@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, Date, DateTime, func
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, Date, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 import uuid
@@ -20,9 +20,9 @@ class Customers(Base):
     number_phone = Column(String)
     address = Column(String)
     ingredient = Column(String)
-    amount_of_debt = Column(Integer)
-    cash_advance = Column(Integer)
-    total_debt = Column(Integer)
+    amount_of_debt = Column(BigInteger)
+    cash_advance = Column(BigInteger)
+    total_debt = Column(BigInteger)
     status = Column(String, default="ACTIVE")
     username = Column(String)    ## Tài Khoản Telegram
     telegram_group = Column(String)                     # Nhóm Telegram

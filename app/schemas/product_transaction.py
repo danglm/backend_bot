@@ -8,6 +8,7 @@ class ProductTransactionResponse(BaseModel):
     product_code: Optional[str] = None
     transaction_date: Optional[date] = None
     customer_id: Optional[str] = None
+    fullname: Optional[str] = None
     transaction_type: Optional[str] = None
     material_type: Optional[str] = None
     storage_id: Optional[UUID] = None
