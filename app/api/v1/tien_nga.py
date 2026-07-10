@@ -2609,7 +2609,7 @@ def process_deduction_advance_amount(
             })
             continue
 
-        customer.total_debt = current_debt - int(amount)
+        # customer.total_debt = current_debt - int(amount)
         customer.cash_advance = (customer.cash_advance or 0) - int(amount)
         db.commit()
         db.refresh(customer)

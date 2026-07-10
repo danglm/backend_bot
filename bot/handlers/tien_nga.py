@@ -18652,15 +18652,26 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_khau_tru_tien_ung"])
     if args is None: return
 
-    if len(args) < 2:
+    if len(args) < 3:
         await message.reply_text(
-            "⚠️ <b>Cú pháp:</b> <code>/tien_nga_khau_tru_tien_ung [Mã Hộ Dân]</code>\n\n"
-            "<i>Ví dụ: <code>/tien_nga_khau_tru_tien_ung X051</code></i>",
+            "⚠️ <b>Cú pháp:</b> <code>/tien_nga_khau_tru_tien_ung [Mã Hộ Dân] [Số Tiền]</code>\n\n"
+            "<i>Ví dụ: <code>/tien_nga_khau_tru_tien_ung X051 5,000,000</code></i>",
             parse_mode=ParseMode.HTML
         )
         return
 
     hoursehold_id = args[1].strip().upper()
+    try:
+        # Hỗ trợ format số tiền có phẩy hoặc chấm
+        amount_str = args[2].strip().replace(",", "").replace(".", "")
+        deducted_amount = float(amount_str)
+    except ValueError:
+        await message.reply_text("⚠️ Số tiền khấu trừ không hợp lệ.", parse_mode=ParseMode.HTML)
+        return
+
+    if deducted_amount <= 0:
+        await message.reply_text("⚠️ Số tiền khấu trừ phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
 
     from app.models.business import Customers
 
@@ -18675,42 +18686,30 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
             return
 
         cash_adv = customer.cash_advance or 0
-        total_dbt = customer.total_debt or 0
 
         if cash_adv <= 0:
             await message.reply_text(
                 f"⚠️ Hộ dân <b>{customer.fullname}</b> (<code>{hoursehold_id}</code>) "
                 f"không có tiền ứng để khấu trừ.\n\n"
-                f"<b>Số tiền ứng:</b> <code>{fmt_money(cash_adv)}</code>\n"
-                f"<b>Tổng công nợ:</b> <code>{fmt_money(total_dbt)}</code>",
+                f"<b>Số tiền ứng hiện tại:</b> <code>{fmt_money(cash_adv)}</code>",
                 parse_mode=ParseMode.HTML
             )
             return
 
-        if total_dbt <= 0:
+        if deducted_amount > cash_adv:
             await message.reply_text(
                 f"⚠️ Hộ dân <b>{customer.fullname}</b> (<code>{hoursehold_id}</code>) "
-                f"không có công nợ để khấu trừ.\n\n"
-                f"<b>Số tiền ứng:</b> <code>{fmt_money(cash_adv)}</code>\n"
-                f"<b>Tổng công nợ:</b> <code>{fmt_money(total_dbt)}</code>",
+                f"chỉ có <code>{fmt_money(cash_adv)}</code> tiền ứng, "
+                f"không đủ để khấu trừ <code>{fmt_money(deducted_amount)}</code>.",
                 parse_mode=ParseMode.HTML
             )
             return
 
         # Tính toán kết quả sau khấu trừ
-        if total_dbt >= cash_adv:
-            new_total_debt = total_dbt - cash_adv
-            new_cash_advance = 0
-            deducted = cash_adv
-            note = f"Công nợ ≥ Tiền ứng → Trừ toàn bộ tiền ứng vào công nợ"
-        else:
-            new_total_debt = 0
-            new_cash_advance = cash_adv - total_dbt
-            deducted = total_dbt
-            note = f"Công nợ < Tiền ứng → Trừ toàn bộ công nợ, tiền ứng còn lại"
+        new_cash_advance = cash_adv - deducted_amount
 
         buttons = [
-            [InlineKeyboardButton("Xác nhận", callback_data=f"kttu:ok:{hoursehold_id}")],
+            [InlineKeyboardButton("Xác nhận", callback_data=f"kttu:ok:{hoursehold_id}:{deducted_amount}")],
             [InlineKeyboardButton("Hủy", callback_data="kttu:cancel")]
         ]
         keyboard = InlineKeyboardMarkup(buttons)
@@ -18721,12 +18720,8 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
             f"<b>Tên KH:</b> {customer.fullname}\n"
             f"{'━' * 20}\n"
             f"<b>Số tiền ứng hiện tại:</b> <code>{fmt_money(cash_adv)}</code>\n"
-            f"<b>Tổng công nợ hiện tại:</b> <code>{fmt_money(total_dbt)}</code>\n"
-            f"{'━' * 20}\n"
-            f"<b>Số tiền khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
-            f"<b>→ Số tiền ứng sau khấu trừ:</b> <code>{fmt_money(new_cash_advance)}</code>\n"
-            f"<b>→ Tổng công nợ sau khấu trừ:</b> <code>{fmt_money(new_total_debt)}</code>\n\n"
-            f"<i>{note}</i>\n\n"
+            f"<b>Số tiền khấu trừ:</b> <code>{fmt_money(deducted_amount)}</code>\n"
+            f"<b>→ Số tiền ứng sau khấu trừ:</b> <code>{fmt_money(new_cash_advance)}</code>\n\n"
             f"Bạn có muốn xác nhận khấu trừ không?",
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML
@@ -18738,11 +18733,16 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
         db.close()
 
 
-@bot.on_callback_query(filters.regex(r"^kttu:ok:(.+)$"))
+@bot.on_callback_query(filters.regex(r"^kttu:ok:(.+):(.+)$"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
 async def kttu_confirm_callback(client, callback_query):
     hoursehold_id = callback_query.matches[0].group(1)
+    try:
+        deducted = float(callback_query.matches[0].group(2))
+    except ValueError:
+        await callback_query.answer("⚠️ Số tiền khấu trừ trong yêu cầu không hợp lệ.", show_alert=True)
+        return
 
     from app.models.business import Customers
     from app.models.telegram import TelegramProjectMember
@@ -18755,28 +18755,26 @@ async def kttu_confirm_callback(client, callback_query):
             return
 
         cash_adv = customer.cash_advance or 0
-        total_dbt = customer.total_debt or 0
 
-        if cash_adv <= 0 or total_dbt <= 0:
-            await callback_query.answer("⚠️ Không còn giá trị để khấu trừ.", show_alert=True)
+        if cash_adv <= 0:
+            await callback_query.answer("⚠️ Hộ dân không còn tiền ứng để khấu trừ.", show_alert=True)
+            return
+
+        if deducted > cash_adv:
+            await callback_query.answer(
+                f"⚠️ Số tiền khấu trừ vượt quá số tiền ứng hiện tại ({fmt_money(cash_adv)}).",
+                show_alert=True
+            )
             return
 
         # Thực hiện khấu trừ
-        if total_dbt >= cash_adv:
-            deducted = cash_adv
-            customer.total_debt = total_dbt - cash_adv
-            customer.cash_advance = 0
-        else:
-            deducted = total_dbt
-            customer.cash_advance = cash_adv - total_dbt
-            customer.total_debt = 0
-
+        customer.cash_advance = cash_adv - deducted
         db.commit()
 
         LogInfo(
             f"[TienNga] User {callback_query.from_user.id} deducted cash advance "
             f"for household {hoursehold_id}: deducted={deducted}, "
-            f"new_cash_advance={customer.cash_advance}, new_total_debt={customer.total_debt}",
+            f"new_cash_advance={customer.cash_advance}",
             LogType.SYSTEM_STATUS
         )
 
@@ -18787,7 +18785,6 @@ async def kttu_confirm_callback(client, callback_query):
             f"{'━' * 20}\n"
             f"<b>Số tiền đã khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
             f"<b>Số tiền ứng còn lại:</b> <code>{fmt_money(customer.cash_advance)}</code>\n"
-            f"<b>Tổng công nợ còn lại:</b> <code>{fmt_money(customer.total_debt)}</code>\n"
             f"{'━' * 20}\n"
             f"<i>Thực hiện bởi: {callback_query.from_user.first_name or ''} "
             f"(@{callback_query.from_user.username or 'N/A'})</i>"
@@ -18812,8 +18809,7 @@ async def kttu_confirm_callback(client, callback_query):
                     f"<b>Tên KH:</b> {customer.fullname}\n"
                     f"{'━' * 20}\n"
                     f"<b>Số tiền đã khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
-                    f"<b>Số tiền ứng còn lại:</b> <code>{fmt_money(customer.cash_advance)}</code>\n"
-                    f"<b>Tổng công nợ còn lại:</b> <code>{fmt_money(customer.total_debt)}</code>"
+                    f"<b>Số tiền ứng còn lại:</b> <code>{fmt_money(customer.cash_advance)}</code>"
                 )
 
                 for chat_id in chat_ids:
