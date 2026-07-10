@@ -6,7 +6,10 @@ from app.schemas.customer import CustomerResponse, CustomerCreate, CustomerUpdat
 from app.schemas.collection_point import CollectionPointResponse
 from app.schemas import DailyPurchaseResponse, DailyPurchaseCreate, DailyPurchaseUpdate, MaterialPurchaseResponse, MaterialPurchaseCreate, InventoryResponse, InventoryCreate, InventoryUpdate, PartnerResponse, PartnerCreate, PartnerUpdate, PartnerBusinessResponse, PartnerBusinessCreate, PartnerBusinessUpdate, InvestmentResponse, InvestmentCreate, InvestmentUpdate, DailyPaymentResponse, DailyPaymentCreate, InventoryExportResponse, InventoryExportCreate, ProductTransactionResponse, ProductTransactionCreate
 from app.schemas.process_debt import ProcessDebtRequest, ProcessDebtResponse, DailyPurchaseAllocation
-from app.schemas.loss_control import ProcessLossControlRequest, LossControlItem, ProcessLossControlResponse
+from app.schemas.loss_control import (
+    ProcessLossControlRequest, LossControlItem, ProcessLossControlResponse,
+    LossControlCreate, LossControlBulkUpdate, LossControlResponse
+)
 from app.crud.customer import (
     get_customers_with_collection_name,
     get_collection_points_by_ingredient,
@@ -2683,6 +2686,159 @@ async def export_saved_bill(
         return Response(content=img_buf.getvalue(), media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate saved bill report: {str(e)}")
+
+
+@router.get("/get-loss-controls", response_model=List[LossControlResponse])
+def api_get_loss_controls(
+    product_code: Optional[str] = None,
+    processing_type: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    estimated_completion: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    """
+    Get loss controls with optional filtering.
+    """
+    LogInfo(f"[TienNga API] Received get-loss-controls request. product_code={product_code}, processing_type={processing_type}, estimated_completion={estimated_completion}")
+    try:
+        query = db.query(LossControls)
+        if product_code:
+            query = query.filter(LossControls.product_code.like(f"%{product_code}%"))
+        if processing_type:
+            query = query.filter(LossControls.processing_type == processing_type)
+        if start_date:
+            query = query.filter(LossControls.day >= start_date)
+        if end_date:
+            query = query.filter(LossControls.day <= end_date)
+        if estimated_completion:
+            query = query.filter(LossControls.estimated_completion == estimated_completion)
+        
+        return query.order_by(LossControls.day.desc()).all()
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in get-loss-controls: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/add-loss-controls", response_model=List[LossControlResponse])
+def api_add_loss_controls(
+    loss_controls_in: List[LossControlCreate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    """
+    Add a list of new loss controls.
+    """
+    LogInfo(f"[TienNga API] Received add-loss-controls request. Count: {len(loss_controls_in)}")
+    created_records = []
+    try:
+        import uuid
+        for lc_in in loss_controls_in:
+            new_id = lc_in.id if lc_in.id else uuid.uuid4()
+            if lc_in.id:
+                existing_id = db.query(LossControls).filter(LossControls.id == lc_in.id).first()
+                if existing_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Bản ghi hao hụt với ID '{lc_in.id}' đã tồn tại."
+                    )
+            
+            # Create LossControls db object
+            lc_data = lc_in.dict()
+            lc_data.pop("id", None)
+            
+            # Default created_by to username
+            if not lc_data.get("created_by") and current_user:
+                lc_data["created_by"] = current_user.username
+
+            db_obj = LossControls(
+                id=new_id,
+                **lc_data
+            )
+            db.add(db_obj)
+            created_records.append(db_obj)
+
+        db.commit()
+        for r in created_records:
+            db.refresh(r)
+        LogInfo(f"[TienNga API] Successfully added {len(created_records)} loss control records.")
+        return created_records
+    except HTTPException as he:
+        db.rollback()
+        raise he
+    except Exception as e:
+        db.rollback()
+        LogInfo(f"[TienNga API] Error in add-loss-controls: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/update-loss-controls", response_model=List[LossControlResponse])
+def api_update_loss_controls(
+    loss_controls_in: List[LossControlBulkUpdate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    """
+    Update a list of loss controls.
+    """
+    LogInfo(f"[TienNga API] Received update-loss-controls request. Count: {len(loss_controls_in)}")
+    updated_records = []
+    try:
+        for lc_in in loss_controls_in:
+            db_obj = db.query(LossControls).filter(LossControls.id == lc_in.id).first()
+            if not db_obj:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Không tìm thấy bản ghi hao hụt với ID '{lc_in.id}'."
+                )
+
+            # Update fields
+            update_data = lc_in.dict(exclude_unset=True)
+            update_data.pop("id", None)
+            for field, value in update_data.items():
+                setattr(db_obj, field, value)
+            
+            updated_records.append(db_obj)
+
+        db.commit()
+        for r in updated_records:
+            db.refresh(r)
+        LogInfo(f"[TienNga API] Successfully updated {len(updated_records)} loss control records.")
+        return updated_records
+    except HTTPException as he:
+        db.rollback()
+        raise he
+    except Exception as e:
+        db.rollback()
+        LogInfo(f"[TienNga API] Error in update-loss-controls: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/delete-loss-controls")
+def api_delete_loss_controls(
+    ids: List[UUID],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    """
+    Delete a list of loss controls by ID.
+    """
+    LogInfo(f"[TienNga API] Received delete-loss-controls request. Count: {len(ids)}")
+    try:
+        deleted_ids = []
+        for lc_id in ids:
+            db_obj = db.query(LossControls).filter(LossControls.id == lc_id).first()
+            if db_obj:
+                db.delete(db_obj)
+                deleted_ids.append(lc_id)
+        db.commit()
+        LogInfo(f"[TienNga API] Successfully deleted {len(deleted_ids)} loss control records.")
+        return {"deleted_ids": deleted_ids}
+    except Exception as e:
+        db.rollback()
+        LogInfo(f"[TienNga API] Error in delete-loss-controls: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
