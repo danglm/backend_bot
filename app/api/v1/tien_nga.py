@@ -2319,9 +2319,22 @@ def process_loss_control(
             lc_query = lc_query.filter(
                 LossControls.product_code.like(f"{code_prefix}%")
             )
+        else:
+            code_prefix = "TN"
+            collection_name = "Tổng Hợp"
+
+            lc_query = lc_query.filter(
+                LossControls.product_code.like(f"{code_prefix}%")
+            )
 
         # 3. Execute query
         loss_controls = lc_query.order_by(LossControls.day.asc()).all()
+
+        if not loss_controls:
+            raise HTTPException(
+                status_code=404,
+                detail="Không tìm thấy Kết quả"
+            )
 
         # 4. Với mỗi LossControl → query ProductTransaction + tính % hao hụt
         items = []

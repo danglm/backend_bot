@@ -1948,9 +1948,29 @@ async def tien_nga_control_losses_handler(client, message: Message) -> None:
             )
             return
 
+        from app.models.business import CollectionPoint
+
+        # Lấy danh sách ID các điểm thu mua có giao dịch trong ngày target_date để dựng bitmask
+        cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
+            DailyPurchases.day == target_date,
+            DailyPurchases.collection_point_id.isnot(None)
+        ).distinct().all()
+        cp_ids = [r[0] for r in cp_ids_with_purchases]
+        cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
+
         # callback: cl:dtl:{product_code}:{purchase_date}:{est_date}
         date_str = target_date.strftime('%d%m%Y')
         buttons = []
+
+        # Thêm nút Tiến Nga ảo lên đầu nếu có điểm thu mua
+        if cps:
+            default_bitmask = (1 << len(cps)) - 1
+            tn_product_code = f"TN{target_date.strftime('%Y%m%d')}"
+            buttons.append([InlineKeyboardButton(
+                f"{tn_product_code} (Tiến Nga)",
+                callback_data=f"cl:cps_sel:{date_str}:{est_date_str}:{default_bitmask}"
+            )])
+
         for pc in sorted(product_codes):
             buttons.append([InlineKeyboardButton(
                 f"{pc}",
@@ -2066,11 +2086,193 @@ async def control_losses_detail_callback(client, callback_query):
         db.close()
 
 
+# Callback: Chọn điểm thu mua để kiểm soát hao hụt Tiến Nga
+@bot.on_callback_query(filters.regex(r"^cl:cps_sel:(\d{8}):(\d{8}|0):(\d+)$"))
+async def control_losses_cps_select_callback(client, callback_query):
+    from datetime import datetime
+    from app.models.business import DailyPurchases, CollectionPoint
+
+    date_str = callback_query.matches[0].group(1)
+    est_date_str = callback_query.matches[0].group(2)
+    bitmask = int(callback_query.matches[0].group(3))
+
+    try:
+        target_date = datetime.strptime(date_str, "%d%m%Y").date()
+    except ValueError:
+        await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
+        return
+
+    est_display = ""
+    if est_date_str != "0":
+        try:
+            est_display = f"\nDự kiến hoàn thành: <b>{datetime.strptime(est_date_str, '%d%m%Y').strftime('%d/%m/%Y')}</b>"
+        except ValueError:
+            pass
+
+    db = SessionLocal()
+    try:
+        # Lấy danh sách ID các điểm thu mua có giao dịch trong ngày target_date
+        cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
+            DailyPurchases.day == target_date,
+            DailyPurchases.collection_point_id.isnot(None)
+        ).distinct().all()
+        cp_ids = [r[0] for r in cp_ids_with_purchases]
+        cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
+
+        if not cps:
+            await callback_query.answer("⚠️ Không tìm thấy điểm thu mua nào có giao dịch.", show_alert=True)
+            return
+
+        buttons = []
+        for i, cp in enumerate(cps):
+            is_selected = bool(bitmask & (1 << i))
+            icon = "✅" if is_selected else "⬜"
+            toggled_bitmask = bitmask ^ (1 << i)
+            buttons.append([InlineKeyboardButton(
+                f"{icon} {cp.collection_name}",
+                callback_data=f"cl:cps_sel:{date_str}:{est_date_str}:{toggled_bitmask}"
+            )])
+
+        buttons.append([
+            InlineKeyboardButton("Quay lại", callback_data=f"cl:back:{date_str}:{est_date_str}"),
+            InlineKeyboardButton("Xác nhận", callback_data=f"cl:cps_conf:{date_str}:{est_date_str}:{bitmask}")
+        ])
+
+        keyboard = InlineKeyboardMarkup(buttons)
+        await callback_query.message.edit_text(
+            f"<b>KIỂM SOÁT HAO HỤT — CHỌN ĐIỂM THU MUA</b>\n\n"
+            f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{est_display}\n\n"
+            f"Vui lòng chọn các điểm thu mua cần tính hao hụt:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in control_losses_cps_select: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# Callback: Xác nhận chọn điểm thu mua -> tính toán chi tiết hao hụt Tiến Nga
+@bot.on_callback_query(filters.regex(r"^cl:cps_conf:(\d{8}):(\d{8}|0):(\d+)$"))
+async def control_losses_cps_confirm_callback(client, callback_query):
+    from datetime import datetime
+    from app.models.business import DailyPurchases, CollectionPoint
+
+    date_str = callback_query.matches[0].group(1)
+    est_date_str = callback_query.matches[0].group(2)
+    bitmask = int(callback_query.matches[0].group(3))
+
+    if bitmask == 0:
+        await callback_query.answer("⚠️ Vui lòng chọn ít nhất một điểm thu mua.", show_alert=True)
+        return
+
+    try:
+        target_date = datetime.strptime(date_str, "%d%m%Y").date()
+    except ValueError:
+        await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
+        return
+
+    est_display = ""
+    if est_date_str != "0":
+        try:
+            est_display = f"\n⏳ Dự kiến hoàn thành: <b>{datetime.strptime(est_date_str, '%d%m%Y').strftime('%d/%m/%Y')}</b>"
+        except ValueError:
+            pass
+
+    db = SessionLocal()
+    try:
+        # Lấy danh sách ID các điểm thu mua có giao dịch trong ngày target_date
+        cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
+            DailyPurchases.day == target_date,
+            DailyPurchases.collection_point_id.isnot(None)
+        ).distinct().all()
+        cp_ids = [r[0] for r in cp_ids_with_purchases]
+        cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
+
+        selected_cp_ids = []
+        selected_names = []
+        for i, cp in enumerate(cps):
+            if bitmask & (1 << i):
+                selected_cp_ids.append(cp.id)
+                selected_names.append(cp.collection_name)
+
+        if not selected_cp_ids:
+            await callback_query.answer("⚠️ Vui lòng chọn ít nhất một điểm thu mua.", show_alert=True)
+            return
+
+        purchases = db.query(DailyPurchases).filter(
+            DailyPurchases.day == target_date,
+            DailyPurchases.collection_point_id.in_(selected_cp_ids)
+        ).all()
+
+        if not purchases:
+            await callback_query.answer("⚠️ Không tìm thấy dữ liệu thu mua cho các điểm đã chọn.", show_alert=True)
+            return
+
+        total_wet_rubber = sum(p.actual_weight or 0 for p in purchases)
+        total_dry_rubber = sum(p.dry_rubber or 0 for p in purchases)
+        total_amount = sum(p.total_amount or 0 for p in purchases)
+        total_transactions = len(purchases)
+        avg_degree = (total_dry_rubber / total_wet_rubber * 100) if total_wet_rubber > 0 else 0
+        avg_unit_price = total_amount / total_dry_rubber if total_dry_rubber > 0 else 0
+
+        def fmt_money(val):
+            if val is None or val == 0: return "0 VNĐ"
+            return f"{int(val):,} VNĐ".replace(",", ".")
+
+        def fmt_num(val):
+            if val is None: return "0"
+            try:
+                if float(val) == int(val):
+                    return f"{int(val):,}".replace(",", ".")
+                return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except:
+                return str(val)
+
+        tn_product_code = f"TN{target_date.strftime('%Y%m%d')}"
+
+        buttons = [
+            [InlineKeyboardButton("Lưu — Sản Xuất Mủ Khô", callback_data=f"cl:save:{tn_product_code}:{date_str}:{est_date_str}:dry:{bitmask}")],
+            [InlineKeyboardButton("Lưu — Bán Mủ Nước", callback_data=f"cl:save:{tn_product_code}:{date_str}:{est_date_str}:wet:{bitmask}")],
+            [InlineKeyboardButton("Quay lại", callback_data=f"cl:cps_sel:{date_str}:{est_date_str}:{bitmask}")],
+            [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
+        ]
+        keyboard = InlineKeyboardMarkup(buttons)
+
+        cp_list_display = "\n".join([f"- {name}" for name in selected_names])
+
+        await callback_query.message.edit_text(
+            f"<b>KIỂM SOÁT HAO HỤT — TIẾN NGA</b>\n\n"
+            f"Mã Hàng: <code>{tn_product_code}</code>\n"
+            f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{est_display}\n"
+            f"Điểm thu mua đã chọn:\n{cp_list_display}\n"
+            f"Số giao dịch: <b>{total_transactions}</b>\n\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🔹 <b>Tổng Mủ Nước:</b> {fmt_num(total_wet_rubber)} Kg\n"
+            f"🔹 <b>Tổng Mủ Khô:</b> {fmt_num(total_dry_rubber)} Kg\n"
+            f"🔹 <b>Số Độ TB:</b> {fmt_num(avg_degree)}%\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"<b>Tổng Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
+            f"<b>Đơn Giá TB:</b> <code>{fmt_money(avg_unit_price)}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"<i>Đơn giá TB = Tổng thành tiền / Tổng mủ khô</i>\n"
+            f"<i>Chọn loại hình để lưu:</i>",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in control_losses_cps_confirm: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
 # Callback: Quay lại danh sách mã hàng
 @bot.on_callback_query(filters.regex(r"^cl:back:(\d{8}):(\d{8}|0)$"))
 async def control_losses_back_callback(client, callback_query):
     from datetime import datetime
-    from app.models.business import DailyPurchases
+    from app.models.business import DailyPurchases, CollectionPoint
 
     date_str = callback_query.matches[0].group(1)
     est_date_str = callback_query.matches[0].group(2)
@@ -2102,7 +2304,22 @@ async def control_losses_back_callback(client, callback_query):
             await callback_query.answer("⚠️ Không có dữ liệu.", show_alert=True)
             return
 
+        cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
+            DailyPurchases.day == target_date,
+            DailyPurchases.collection_point_id.isnot(None)
+        ).distinct().all()
+        cp_ids = [r[0] for r in cp_ids_with_purchases]
+        cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
+
         buttons = []
+        if cps:
+            default_bitmask = (1 << len(cps)) - 1
+            tn_product_code = f"TN{target_date.strftime('%Y%m%d')}"
+            buttons.append([InlineKeyboardButton(
+                f"{tn_product_code} (Tiến Nga)",
+                callback_data=f"cl:cps_sel:{date_str}:{est_date_str}:{default_bitmask}"
+            )])
+
         for pc in sorted(product_codes):
             buttons.append([InlineKeyboardButton(
                 f"{pc}",
@@ -2126,15 +2343,17 @@ async def control_losses_back_callback(client, callback_query):
         db.close()
 
 # Callback: Lưu kiểm soát hao hụt vào DB
-@bot.on_callback_query(filters.regex(r"^cl:save:(.+):(\d{8}):(\d{8}|0):(dry|wet)$"))
+@bot.on_callback_query(filters.regex(r"^cl:save:([^:]+):(\d{8}):(\d{8}|0):(dry|wet)(?::(\d+))?$"))
 async def control_losses_save_callback(client, callback_query):
     from datetime import datetime
-    from app.models.business import DailyPurchases, LossControls
+    from app.models.business import DailyPurchases, LossControls, CollectionPoint
 
     product_code = callback_query.matches[0].group(1)
     date_str = callback_query.matches[0].group(2)
     est_date_str = callback_query.matches[0].group(3)
     proc_type_short = callback_query.matches[0].group(4)
+    bitmask_str = callback_query.matches[0].group(5)
+    
     processing_type = "wet_sale" if proc_type_short == "wet" else "dry_production"
 
     try:
@@ -2158,10 +2377,18 @@ async def control_losses_save_callback(client, callback_query):
             LossControls.day == target_date
         ).first()
         
+        bitmask = int(bitmask_str) if bitmask_str else None
+        
         if existing:
+            ovr_callback = f"cl:ovr:{product_code}:{date_str}:{est_date_str}:{proc_type_short}"
+            if bitmask is not None:
+                ovr_callback += f":{bitmask}"
+            
+            back_callback = f"cl:cps_sel:{date_str}:{est_date_str}:{bitmask}" if bitmask is not None else f"cl:back:{date_str}:{est_date_str}"
+            
             buttons = [
-                [InlineKeyboardButton("Đồng ý", callback_data=f"cl:ovr:{product_code}:{date_str}:{est_date_str}:{proc_type_short}")],
-                [InlineKeyboardButton("Quay lại", callback_data=f"cl:back:{date_str}:{est_date_str}")],
+                [InlineKeyboardButton("Đồng ý", callback_data=ovr_callback)],
+                [InlineKeyboardButton("Quay lại", callback_data=back_callback)],
                 [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
             ]
             keyboard = InlineKeyboardMarkup(buttons)
@@ -2175,10 +2402,29 @@ async def control_losses_save_callback(client, callback_query):
             return
 
         # Tính toán lại từ DailyPurchases để chắc chắn
-        purchases = db.query(DailyPurchases).filter(
-            DailyPurchases.day == target_date,
-            DailyPurchases.product_code == product_code
-        ).all()
+        if bitmask is not None:
+            # Lấy danh sách ID các điểm thu mua có giao dịch trong ngày target_date
+            cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
+                DailyPurchases.day == target_date,
+                DailyPurchases.collection_point_id.isnot(None)
+            ).distinct().all()
+            cp_ids = [r[0] for r in cp_ids_with_purchases]
+            cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
+
+            selected_cp_ids = []
+            for i, cp in enumerate(cps):
+                if bitmask & (1 << i):
+                    selected_cp_ids.append(cp.id)
+
+            purchases = db.query(DailyPurchases).filter(
+                DailyPurchases.day == target_date,
+                DailyPurchases.collection_point_id.in_(selected_cp_ids)
+            ).all()
+        else:
+            purchases = db.query(DailyPurchases).filter(
+                DailyPurchases.day == target_date,
+                DailyPurchases.product_code == product_code
+            ).all()
 
         if not purchases:
             await callback_query.answer("⚠️ Không có dữ liệu để lưu.", show_alert=True)
@@ -2212,9 +2458,9 @@ async def control_losses_save_callback(client, callback_query):
         
         await callback_query.answer("✅ Đã lưu thông tin kiểm soát hao hụt thành công!", show_alert=True)
         
-        # Cập nhật lại message để ẩn nút Lưu (có thể làm nếu muốn, tạm thời giữ nguyên hoặc xoá nút Lưu đi)
+        back_callback = f"cl:cps_sel:{date_str}:{est_date_str}:{bitmask}" if bitmask is not None else f"cl:back:{date_str}:{est_date_str}"
         buttons = [
-            [InlineKeyboardButton("Quay lại", callback_data=f"cl:back:{date_str}:{est_date_str}")],
+            [InlineKeyboardButton("Quay lại", callback_data=back_callback)],
             [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
         ]
         keyboard = InlineKeyboardMarkup(buttons)
@@ -2235,15 +2481,16 @@ async def control_losses_cancel_callback(client, callback_query):
 
 
 # Callback: Xác nhận ghi đè
-@bot.on_callback_query(filters.regex(r"^cl:ovr:(.+):(\d{8}):(\d{8}|0):(dry|wet)$"))
+@bot.on_callback_query(filters.regex(r"^cl:ovr:([^:]+):(\d{8}):(\d{8}|0):(dry|wet)(?::(\d+))?$"))
 async def control_losses_overwrite_callback(client, callback_query):
     from datetime import datetime
-    from app.models.business import DailyPurchases, LossControls
+    from app.models.business import DailyPurchases, LossControls, CollectionPoint
 
     product_code = callback_query.matches[0].group(1)
     date_str = callback_query.matches[0].group(2)
     est_date_str = callback_query.matches[0].group(3)
     proc_type_short = callback_query.matches[0].group(4)
+    bitmask_str = callback_query.matches[0].group(5)
     processing_type = "wet_sale" if proc_type_short == "wet" else "dry_production"
 
     try:
@@ -2270,11 +2517,32 @@ async def control_losses_overwrite_callback(client, callback_query):
             await callback_query.answer("⚠️ Không tìm thấy dữ liệu cũ để ghi đè.", show_alert=True)
             return
 
+        bitmask = int(bitmask_str) if bitmask_str else None
+
         # Tính toán lại từ DailyPurchases
-        purchases = db.query(DailyPurchases).filter(
-            DailyPurchases.day == target_date,
-            DailyPurchases.product_code == product_code
-        ).all()
+        if bitmask is not None:
+            # Lấy danh sách ID các điểm thu mua có giao dịch trong ngày target_date
+            cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
+                DailyPurchases.day == target_date,
+                DailyPurchases.collection_point_id.isnot(None)
+            ).distinct().all()
+            cp_ids = [r[0] for r in cp_ids_with_purchases]
+            cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
+
+            selected_cp_ids = []
+            for i, cp in enumerate(cps):
+                if bitmask & (1 << i):
+                    selected_cp_ids.append(cp.id)
+
+            purchases = db.query(DailyPurchases).filter(
+                DailyPurchases.day == target_date,
+                DailyPurchases.collection_point_id.in_(selected_cp_ids)
+            ).all()
+        else:
+            purchases = db.query(DailyPurchases).filter(
+                DailyPurchases.day == target_date,
+                DailyPurchases.product_code == product_code
+            ).all()
 
         if not purchases:
             await callback_query.answer("⚠️ Không có dữ liệu thu mua.", show_alert=True)
@@ -2306,8 +2574,9 @@ async def control_losses_overwrite_callback(client, callback_query):
         
         await callback_query.answer("✅ Đã ghi đè thông tin thành công!", show_alert=True)
         
+        back_callback = f"cl:cps_sel:{date_str}:{est_date_str}:{bitmask}" if bitmask is not None else f"cl:back:{date_str}:{est_date_str}"
         buttons = [
-            [InlineKeyboardButton("Quay lại", callback_data=f"cl:back:{date_str}:{est_date_str}")],
+            [InlineKeyboardButton("Quay lại", callback_data=back_callback)],
             [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
         ]
         keyboard = InlineKeyboardMarkup(buttons)

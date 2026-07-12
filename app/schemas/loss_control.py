@@ -24,7 +24,7 @@ class LossControlItem(BaseModel):
 
 
 class ProcessLossControlResponse(BaseModel):
-    collection_point_id: str
+    collection_point_id: Optional[str] = None
     collection_name: Optional[str] = None
     code_prefix: Optional[str] = None
     start_date: date
