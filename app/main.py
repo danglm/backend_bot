@@ -107,9 +107,8 @@ class CORSPreflightMiddleware(BaseHTTPMiddleware):
 
 
 # CORS - cho phép frontend Cloudflare Workers kết nối
-# Middleware thứ tự: CORSPreflightMiddleware chạy TRƯỚC để handle OPTIONS sớm,
-# CORSMiddleware chạy SAU để handle các response thông thường.
-app.add_middleware(CORSPreflightMiddleware)
+# Starlette LIFO: middleware add_middleware CUỐI CÙNG = outermost = chạy TRƯỚC.
+# → CORSMiddleware add TRƯỚC (innermost), CORSPreflightMiddleware add SAU (outermost/chạy trước).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -117,6 +116,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(CORSPreflightMiddleware)
 
 app.include_router(hello.router)
 
