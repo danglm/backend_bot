@@ -2,6 +2,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 import os
 from bot.core.config import settings
 from bot.utils.logger import LogInfo, LogError, LogType
@@ -61,18 +63,56 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+ALLOWED_ORIGINS = [
+    "https://hdggroup-frontend-2026.lmd16032002.workers.dev",
+    "https://hdg-group-2026.lmd16032002.workers.dev",
+    "https://unaffecting-christel-semijocularly.ngrok-free.dev",
+    "https://spore-unknown-crank.ngrok-free.dev",
+    "https://nonsuggestively-approvable-oswaldo.ngrok-free.dev",
+    "http://localhost:5173",   # dev local frontend
+    "http://localhost:3000",   # dev local frontend
+]
+
+
+class CORSPreflightMiddleware(BaseHTTPMiddleware):
+    """Middleware xử lý OPTIONS preflight trước khi ngrok hoặc bất kỳ tầng nào khác chặn."""
+
+    async def dispatch(self, request: Request, call_next):
+        origin = request.headers.get("origin", "")
+
+        # Kiểm tra origin có được phép không
+        is_allowed = origin in ALLOWED_ORIGINS or origin.endswith(".ngrok-free.dev")
+
+        if request.method == "OPTIONS" and is_allowed:
+            # Trả về preflight response ngay lập tức với CORS headers
+            return Response(
+                status_code=204,
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                    "Access-Control-Allow-Headers": "Authorization, Content-Type, ngrok-skip-browser-warning, Accept, Origin",
+                    "Access-Control-Max-Age": "86400",
+                },
+            )
+
+        response = await call_next(request)
+
+        # Thêm CORS headers vào mọi response nếu origin được phép
+        if is_allowed:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+
+        return response
+
+
 # CORS - cho phép frontend Cloudflare Workers kết nối
+# Middleware thứ tự: CORSPreflightMiddleware chạy TRƯỚC để handle OPTIONS sớm,
+# CORSMiddleware chạy SAU để handle các response thông thường.
+app.add_middleware(CORSPreflightMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://hdggroup-frontend-2026.lmd16032002.workers.dev",
-        "https://hdg-group-2026.lmd16032002.workers.dev",
-        "https://unaffecting-christel-semijocularly.ngrok-free.dev",
-        "https://spore-unknown-crank.ngrok-free.dev",
-        "https://nonsuggestively-approvable-oswaldo.ngrok-free.dev",
-        "http://localhost:5173",   # dev local frontend
-        "http://localhost:3000",   # dev local frontend
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
