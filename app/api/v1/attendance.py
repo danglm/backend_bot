@@ -7,7 +7,8 @@ from app.crud import attendance as crud_attendance
 from app.models.finance import Attendance, Payroll
 from app.schemas.attendance import AttendanceResponse, AttendanceCreate, AttendanceUpdate, Attendance as schema_Attendance
 from app.schemas import PayrollResponse, PayrollCreate
-from bot.utils.logger import LogInfo
+from bot.utils.logger import LogInfo, LogError
+from app.services.notification import notify_telegram_group
 import re
 import calendar
 import datetime
@@ -283,7 +284,7 @@ def get_payrolls(
 
 
 @router.post("/add-payrolls", response_model=List[PayrollResponse], status_code=status.HTTP_201_CREATED)
-def add_payrolls(
+async def add_payrolls(
     *,
     db: Session = Depends(deps.get_db),
     payrolls_in: List[PayrollCreate],
@@ -378,11 +379,28 @@ def add_payrolls(
                 bhxh=employee.rate_bhxh
             )
         )
+
+    # Send Telegram notification
+    try:
+        performer = current_user.employee_id or current_user.username or "unknown"
+        details = "Đã xuất bảng lương mới:\n" + "\n".join(
+            [f"- Nhân viên: {r.employee_id} ({r.first_name} {r.last_name}) - Tháng: {r.month}/{r.year} - Thực lĩnh: {r.total_salary:,.0f} VNĐ" for r in response_list]
+        )
+        await notify_telegram_group(
+            db=db,
+            action="UPDATE",
+            module_key="salaries",
+            details=details,
+            performer=performer
+        )
+    except Exception as err:
+        LogError(f"[Attendance API] Failed to send Telegram notification: {err}")
+
     return response_list
 
 
 @router.delete("/delete-payrolls", response_model=List[PayrollResponse])
-def delete_payrolls(
+async def delete_payrolls(
     *,
     db: Session = Depends(deps.get_db),
     payroll_ids: List[UUID] = Body(..., description="List of payroll IDs to delete"),
@@ -452,6 +470,24 @@ def delete_payrolls(
             db.delete(record)
             
         db.commit()
+        LogInfo(f"[Attendance API] Successfully deleted {len(deleted_records)} payroll records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa bảng lương:\n" + "\n".join(
+                [f"- Phiếu ID: {r.id} - Nhân viên: {r.employee_id} ({r.first_name} {r.last_name}) - Tháng: {r.month}/{r.year} - Số tiền: {r.total_salary:,.0f} VNĐ" for r in deleted_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="salaries",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[Attendance API] Failed to send Telegram notification: {err}")
+
         return deleted_records
     except HTTPException:
         raise

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, Form, File
+import os
+import shutil
 from pydantic import BaseModel
 from bot.utils.logger import LogInfo, LogError, LogType
 from bot.utils.db_logger import get_joined_users
@@ -7,8 +9,21 @@ from app.api.deps import get_db, get_current_user
 from app.schemas import telegram as schemas_telegram
 from app.crud import telegram as crud_telegram
 from app.models.employee import Credential
-from typing import Optional
+from typing import Optional, List
 from bot.utils.bot import bot
+from uuid import UUID
+
+# ── Notification imports ──────────────────────────────────────────────────────
+from app.schemas.notification import (
+    TelegramNotifyRequest,
+    NotifyConfigCreate, NotifyConfigUpdate, NotifyConfigResponse,
+    NotifyLogResponse,
+)
+from app.crud.notification import (
+    get_notify_configs, create_notify_config, update_notify_config, delete_notify_config,
+    get_notify_logs,
+)
+from app.services.notification import notify_telegram_group
 
 router = APIRouter()
 
@@ -239,3 +254,232 @@ async def api_get_project_members(
     except Exception as e:
         LogError(f"API Error in /get_project_members: {e}", LogType.SYSTEM_STATUS)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── Telegram Notify Endpoints ────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/notify")
+async def api_send_notify(
+    request: TelegramNotifyRequest,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user),
+):
+    """
+    Gửi thông báo hành vi xuống nhóm Telegram dựa trên cấu hình notify_configs.
+    Frontend chỉ cần gửi: action, module_key, details.
+    Backend tự lấy performer từ token (employee_id) và tra config để biết gửi đến đâu.
+    """
+    try:
+        performer = current_user.employee_id or current_user.username or "unknown"
+
+        result = await notify_telegram_group(
+            db=db,
+            action=request.action,
+            module_key=request.module_key,
+            details=request.details,
+            performer=performer,
+        )
+        return result
+    except Exception as e:
+        LogError(f"API Error in /notify: {e}", LogType.SYSTEM_STATUS)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Notify Config CRUD ───────────────────────────────────────────────────────
+
+@router.get("/get-notify-configs", response_model=List[NotifyConfigResponse])
+async def api_get_notify_configs(
+    module_key: Optional[str] = None,
+    project_name: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user),
+):
+    """Lấy danh sách cấu hình notify."""
+    try:
+        configs = get_notify_configs(db, module_key=module_key, project_name=project_name)
+        return configs
+    except Exception as e:
+        LogError(f"API Error in /get-notify-configs: {e}", LogType.SYSTEM_STATUS)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/add-notify-configs", response_model=List[NotifyConfigResponse])
+async def api_add_notify_configs(
+    configs_in: List[NotifyConfigCreate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user),
+):
+    """Thêm cấu hình notify."""
+    try:
+        created = []
+        for cfg_in in configs_in:
+            new_cfg = create_notify_config(db, obj_in=cfg_in)
+            created.append(new_cfg)
+        return created
+    except Exception as e:
+        LogError(f"API Error in /add-notify-configs: {e}", LogType.SYSTEM_STATUS)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/update-notify-configs", response_model=List[NotifyConfigResponse])
+async def api_update_notify_configs(
+    configs_in: List[NotifyConfigUpdate],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user),
+):
+    """Cập nhật cấu hình notify."""
+    try:
+        updated = []
+        for cfg_in in configs_in:
+            result = update_notify_config(db, config_id=cfg_in.id, obj_in=cfg_in)
+            if not result:
+                raise HTTPException(status_code=404, detail=f"Config {cfg_in.id} not found.")
+            updated.append(result)
+        return updated
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogError(f"API Error in /update-notify-configs: {e}", LogType.SYSTEM_STATUS)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/delete-notify-configs", response_model=List[NotifyConfigResponse])
+async def api_delete_notify_configs(
+    config_ids: List[UUID],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user),
+):
+    """Xóa cấu hình notify."""
+    try:
+        deleted = []
+        for config_id in config_ids:
+            result = delete_notify_config(db, config_id=config_id)
+            if not result:
+                raise HTTPException(status_code=404, detail=f"Config {config_id} not found.")
+            deleted.append(result)
+        return deleted
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogError(f"API Error in /delete-notify-configs: {e}", LogType.SYSTEM_STATUS)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Notify Log Query ─────────────────────────────────────────────────────────
+
+@router.get("/get-notify-logs", response_model=List[NotifyLogResponse])
+async def api_get_notify_logs(
+    module_key: Optional[str] = None,
+    performer: Optional[str] = None,
+    status: Optional[str] = None,
+    project_name: Optional[str] = None,
+    search_query: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(get_current_user),
+):
+    """Xem lịch sử gửi thông báo."""
+    try:
+        logs = get_notify_logs(
+            db,
+            module_key=module_key,
+            performer=performer,
+            status=status,
+            project_name=project_name,
+            search_query=search_query,
+            start_date=start_date,
+            end_date=end_date,
+            skip=skip,
+            limit=limit,
+        )
+        return logs
+    except Exception as e:
+        LogError(f"API Error in /get-notify-logs: {e}", LogType.SYSTEM_STATUS)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SendMessageRequest(BaseModel):
+    chat_id: str
+    message: str
+
+
+@router.post("/send-message")
+async def api_send_message(
+    request: SendMessageRequest,
+    current_user: Credential = Depends(get_current_user)
+):
+    """Gửi tin nhắn trực tiếp đến chat ID bằng Telegram Bot."""
+    if not bot.is_connected:
+        raise HTTPException(status_code=500, detail="Bot Telegram chưa kết nối.")
+    try:
+        chat_id_int = int(request.chat_id)
+        msg = await bot.send_message(
+            chat_id=chat_id_int,
+            text=request.message
+        )
+        return {
+            "status": "success",
+            "message_id": msg.id,
+            "chat_id": request.chat_id,
+            "text": request.message
+        }
+    except Exception as e:
+        LogError(f"API Error in /send-message: {e}", LogType.SYSTEM_STATUS)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/send-document")
+async def api_send_document(
+    chat_id: str = Form(...),
+    caption: Optional[str] = Form(""),
+    file: UploadFile = File(...),
+    current_user: Credential = Depends(get_current_user)
+):
+    """Gửi tài liệu (Excel, ảnh, PDF...) đến nhóm Telegram."""
+    if not bot.is_connected:
+        raise HTTPException(status_code=500, detail="Bot Telegram chưa kết nối.")
+    
+    # Tạo thư mục temp trong workspace nếu chưa có
+    temp_dir = os.path.join(os.getcwd(), "temp_uploads")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    file_path = os.path.join(temp_dir, file.filename)
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        chat_id_int = int(chat_id)
+        # Kiểm tra nếu là hình ảnh thì gửi bằng send_photo, ngược lại gửi bằng send_document
+        is_photo = file.content_type.startswith("image/") if file.content_type else False
+        
+        if is_photo:
+            msg = await bot.send_photo(
+                chat_id=chat_id_int,
+                photo=file_path,
+                caption=caption
+            )
+        else:
+            msg = await bot.send_document(
+                chat_id=chat_id_int,
+                document=file_path,
+                caption=caption
+            )
+            
+        return {
+            "status": "success",
+            "message_id": msg.id,
+            "chat_id": chat_id,
+            "filename": file.filename
+        }
+    except Exception as e:
+        LogError(f"API Error in /send-document: {e}", LogType.SYSTEM_STATUS)
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Dọn dẹp file tạm
+        if os.path.exists(file_path):
+            os.remove(file_path)

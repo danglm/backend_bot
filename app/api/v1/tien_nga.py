@@ -60,6 +60,7 @@ import app.crud.shareholder as crud_shareholder
 from typing import Optional, List
 from datetime import date
 from uuid import UUID
+from app.services.notification import notify_telegram_group
 
 router = APIRouter()
 
@@ -104,7 +105,7 @@ def get_collection_points(
 
 
 @router.post("/add-customers", response_model=List[CustomerResponse])
-def add_customers(
+async def add_customers(
     customers_in: List[CustomerCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -162,6 +163,21 @@ def add_customers(
             created_customers.append(customer_dict)
             
         LogInfo(f"[TienNga API] Successfully added {len(created_customers)} customers.")
+        
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm mới các khách hàng:\n" + "\n".join([f"- {c['hoursehold_id']} - {c['fullname']}" for c in created_customers])
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="customers",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_customers
     except HTTPException as he:
         raise he
@@ -171,7 +187,7 @@ def add_customers(
 
 
 @router.post("/update-customers", response_model=List[CustomerResponse])
-def update_customers(
+async def update_customers(
     customers_in: List[CustomerUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -231,6 +247,21 @@ def update_customers(
             updated_customers.append(customer_dict)
             
         LogInfo(f"[TienNga API] Successfully updated {len(updated_customers)} customers.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật thông tin các khách hàng:\n" + "\n".join([f"- {c['hoursehold_id']} - {c['fullname']}" for c in updated_customers])
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="customers",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return updated_customers
     except HTTPException as he:
         raise he
@@ -240,7 +271,7 @@ def update_customers(
 
 
 @router.delete("/delete-customers", response_model=List[CustomerResponse])
-def delete_customers(
+async def delete_customers(
     customer_ids: List[str],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -297,6 +328,21 @@ def delete_customers(
             delete_customer(db, customer_id=customer.id)
             
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_customers)} customers.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa các khách hàng:\n" + "\n".join([f"- {c['hoursehold_id']} - {c['fullname']}" for c in deleted_customers])
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="customers",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_customers
     except HTTPException as he:
         raise he
@@ -326,7 +372,7 @@ def get_shareholders(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/add-shareholders", response_model=List[ShareholderResponse])
-def add_shareholders(
+async def add_shareholders(
     shareholders_in: List[ShareholderCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -377,6 +423,23 @@ def add_shareholders(
             })
             
         LogInfo(f"[TienNga API] Successfully added {len(created_shareholders)} shareholders.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm mới cổ đông:\n" + "\n".join(
+                [f"- Mã: {s['shareholder_code']} - Tên: {s['fullname']} - Số tiền đầu tư: {s['investment_amount'] or 0:,.0f} VNĐ" for s in created_shareholders]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="shareholders",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_shareholders
     except HTTPException as he:
         raise he
@@ -385,7 +448,7 @@ def add_shareholders(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/update-shareholders", response_model=List[ShareholderResponse])
-def update_shareholders(
+async def update_shareholders(
     shareholders_in: List[ShareholderUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -437,6 +500,23 @@ def update_shareholders(
             })
             
         LogInfo(f"[TienNga API] Successfully updated {len(updated_shareholders)} shareholders.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật thông tin cổ đông:\n" + "\n".join(
+                [f"- Mã: {s['shareholder_code']} - Tên: {s['fullname']} - Số tiền đầu tư: {s['investment_amount'] or 0:,.0f} VNĐ" for s in updated_shareholders]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="shareholders",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return updated_shareholders
     except HTTPException as he:
         raise he
@@ -445,7 +525,7 @@ def update_shareholders(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/delete-shareholders", response_model=List[ShareholderResponse])
-def delete_shareholders(
+async def delete_shareholders(
     shareholder_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -494,6 +574,23 @@ def delete_shareholders(
             crud_shareholder.delete_shareholder(db, shareholder_id=sh.id)
             
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_shareholders)} shareholders.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa cổ đông:\n" + "\n".join(
+                [f"- Mã: {s['shareholder_code']} - Tên: {s['fullname']}" for s in deleted_shareholders]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="shareholders",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_shareholders
     except HTTPException as he:
         raise he
@@ -534,7 +631,7 @@ def get_daily_purchases(
 
 
 @router.post("/add-daily-purchases", response_model=List[DailyPurchaseResponse])
-def add_daily_purchases(
+async def add_daily_purchases(
     purchases_in: List[DailyPurchaseCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -592,6 +689,23 @@ def add_daily_purchases(
             created_records.append(record_dict)
 
         LogInfo(f"[TienNga API] Successfully added {len(created_records)} daily purchase records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm mới phiếu thu mua mủ:\n" + "\n".join(
+                [f"- Hộ dân: {r['hoursehold_id']} ({r['fullname']}) - Số lượng: {r['weight']}kg - Độ: {r['degree']}% - Khô: {r['dry_rubber']}kg" for r in created_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="daily_purchases",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_records
     except Exception as e:
         LogInfo(f"[TienNga API] Error in add-daily-purchases: {e}")
@@ -599,7 +713,7 @@ def add_daily_purchases(
 
 
 @router.post("/update-daily-purchases", response_model=List[DailyPurchaseResponse])
-def update_daily_purchases(
+async def update_daily_purchases(
     purchases_in: List[DailyPurchaseUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -707,6 +821,23 @@ def update_daily_purchases(
             updated_records.append(record_dict)
             
         LogInfo(f"[TienNga API] Successfully updated {len(updated_records)} daily purchase records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật phiếu thu mua mủ:\n" + "\n".join(
+                [f"- Phiếu ID: {r['id']} (Hộ dân: {r['hoursehold_id']} - {r['fullname']}) - Số lượng mới: {r['weight']}kg" for r in updated_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="daily_purchases",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return updated_records
     except HTTPException as he:
         raise he
@@ -716,7 +847,7 @@ def update_daily_purchases(
 
 
 @router.delete("/delete-daily-purchases", response_model=List[DailyPurchaseResponse])
-def delete_daily_purchases(
+async def delete_daily_purchases(
     purchase_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -788,6 +919,23 @@ def delete_daily_purchases(
             delete_daily_purchase(db, purchase_id=purchase.id)
             
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_records)} daily purchase records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa phiếu thu mua mủ:\n" + "\n".join(
+                [f"- Phiếu ID: {r['id']} (Hộ dân: {r['hoursehold_id']} - {r['fullname']}) - Khối lượng: {r['weight']}kg ngày {r['day']}" for r in deleted_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="daily_purchases",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_records
     except HTTPException as he:
         raise he
@@ -822,7 +970,7 @@ def get_material_purchases(
 
 
 @router.post("/add-material-purchases", response_model=List[MaterialPurchaseResponse])
-def add_material_purchases(
+async def add_material_purchases(
     purchases_in: List[MaterialPurchaseCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -891,12 +1039,29 @@ def add_material_purchases(
             created_records.append(record_dict)
 
         LogInfo(f"[TienNga API] Successfully added {len(created_records)} material purchase records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm phiếu thu mua nguyên liệu:\n" + "\n".join(
+                [f"- Loại: {r['material_type']} - Kho: {r['storage_name']} - Số lượng: {r['weight'] or 0:,.2f} kg - Thành tiền: {r['total_amount'] or 0:,.0f} VNĐ" for r in created_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="material_purchases",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_records
     except Exception as e:
         LogInfo(f"[TienNga API] Error in add-material-purchases: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 @router.delete("/delete-material-purchases", response_model=List[MaterialPurchaseResponse])
-def delete_material_purchases(
+async def delete_material_purchases(
     purchase_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -986,6 +1151,23 @@ def delete_material_purchases(
             delete_material_purchase(db, purchase_id=purchase.id)
 
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_records)} material purchase records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa phiếu thu mua nguyên liệu:\n" + "\n".join(
+                [f"- Phiếu ID: {r['id']} - Loại: {r['material_type']} - Số lượng: {r['weight'] or 0:,.2f} kg ngày {r['transaction_date']}" for r in deleted_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="material_purchases",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_records
 
     except HTTPException as he:
@@ -1027,7 +1209,7 @@ def get_partners_api(
 
 
 @router.post("/add-partners", response_model=List[PartnerResponse])
-def add_partners(
+async def add_partners(
     partners_in: List[PartnerCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1057,6 +1239,23 @@ def add_partners(
             created_partners.append(new_partner)
             
         LogInfo(f"[TienNga API] Successfully added {len(created_partners)} partners.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm mới các đối tác:\n" + "\n".join(
+                [f"- {p.partner_id} - {p.partner_name} - SĐT: {p.number_phone or 'N/A'}" for p in created_partners]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="partners",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_partners
     except HTTPException as he:
         raise he
@@ -1066,7 +1265,7 @@ def add_partners(
 
 
 @router.post("/update-partners", response_model=List[PartnerResponse])
-def update_partners(
+async def update_partners(
     partners_in: List[PartnerUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1098,6 +1297,23 @@ def update_partners(
             updated_partners.append(updated_partner)
             
         LogInfo(f"[TienNga API] Successfully updated {len(updated_partners)} partners.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật thông tin đối tác:\n" + "\n".join(
+                [f"- {p.partner_id} - {p.partner_name}" for p in updated_partners]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="partners",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return updated_partners
     except HTTPException as he:
         raise he
@@ -1107,7 +1323,7 @@ def update_partners(
 
 
 @router.delete("/delete-partners", response_model=List[PartnerResponse])
-def delete_partners(
+async def delete_partners(
     partner_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1138,6 +1354,23 @@ def delete_partners(
             delete_partner(db, partner_uuid=partner.id)
             
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_partners)} partners.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa các đối tác:\n" + "\n".join(
+                [f"- {p.partner_id} - {p.partner_name}" for p in deleted_partners]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="partners",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_partners
     except HTTPException as he:
         raise he
@@ -1173,7 +1406,7 @@ def get_partner_businesses(
 
 
 @router.post("/add-partner-businesses", response_model=List[PartnerBusinessResponse])
-def add_partner_businesses(
+async def add_partner_businesses(
     purchases_in: List[PartnerBusinessCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1211,6 +1444,23 @@ def add_partner_businesses(
             created_records.append(record_dict)
 
         LogInfo(f"[TienNga API] Successfully added {len(created_records)} partner business records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm giao dịch đối tác mới:\n" + "\n".join(
+                [f"- Đối tác: {r['partner_id']} ({r['partner_name']}) - {r['product_type']} - Nhập: {r['import_amount']} - Xuất: {r['export_amount']} - Trị giá: {r['total_amount'] or 0:,.0f} VNĐ" for r in created_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="partner_businesses",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_records
     except Exception as e:
         LogInfo(f"[TienNga API] Error in add-partner-businesses: {e}")
@@ -1218,7 +1468,7 @@ def add_partner_businesses(
 
 
 @router.post("/update-partner-businesses", response_model=List[PartnerBusinessResponse])
-def update_partner_businesses(
+async def update_partner_businesses(
     purchases_in: List[PartnerBusinessUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1282,6 +1532,23 @@ def update_partner_businesses(
             updated_records.append(record_dict)
             
         LogInfo(f"[TienNga API] Successfully updated {len(updated_records)} partner business records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật giao dịch đối tác:\n" + "\n".join(
+                [f"- Phiếu ID: {r['id']} - Đối tác: {r['partner_id']} ({r['partner_name']}) - Trị giá mới: {r['total_amount'] or 0:,.0f} VNĐ" for r in updated_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="partner_businesses",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return updated_records
     except HTTPException as he:
         raise he
@@ -1291,7 +1558,7 @@ def update_partner_businesses(
 
 
 @router.delete("/delete-partner-businesses", response_model=List[PartnerBusinessResponse])
-def delete_partner_businesses(
+async def delete_partner_businesses(
     business_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1359,6 +1626,23 @@ def delete_partner_businesses(
             delete_partner_business(db, business_id=record.id)
             
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_records)} partner business records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa giao dịch đối tác:\n" + "\n".join(
+                [f"- Phiếu ID: {r['id']} - Đối tác: {r['partner_id']} ({r['partner_name']}) - Trị giá: {r['total_amount'] or 0:,.0f} VNĐ ngày {r['day']}" for r in deleted_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="partner_businesses",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_records
     except HTTPException as he:
         raise he
@@ -1385,7 +1669,7 @@ def get_investments_api(
 
 
 @router.post("/add-investments", response_model=List[InvestmentResponse])
-def add_investments(
+async def add_investments(
     investments_in: List[InvestmentCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1431,6 +1715,23 @@ def add_investments(
             created_investments.append(new_inv)
             
         LogInfo(f"[TienNga API] Successfully added {len(created_investments)} investments.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm mới quỹ đầu tư:\n" + "\n".join(
+                [f"- {i.investment_code} - {i.name} - Vốn: {i.capital or 0:,.0f} VNĐ" for i in created_investments]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="investments",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_investments
     except HTTPException as he:
         raise he
@@ -1440,7 +1741,7 @@ def add_investments(
 
 
 @router.post("/update-investments", response_model=List[InvestmentResponse])
-def update_investments(
+async def update_investments(
     investments_in: List[InvestmentUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1484,6 +1785,23 @@ def update_investments(
             updated_investments.append(updated_inv)
             
         LogInfo(f"[TienNga API] Successfully updated {len(updated_investments)} investments.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật quỹ đầu tư:\n" + "\n".join(
+                [f"- {i.investment_code} - {i.name} - Vốn mới: {i.capital or 0:,.0f} VNĐ" for i in updated_investments]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="investments",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return updated_investments
     except HTTPException as he:
         raise he
@@ -1493,7 +1811,7 @@ def update_investments(
 
 
 @router.delete("/delete-investments", response_model=List[InvestmentResponse])
-def delete_investments(
+async def delete_investments(
     investment_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1524,6 +1842,23 @@ def delete_investments(
             delete_investment(db, investment_uuid=inv.id)
             
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_investments)} investments.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa quỹ đầu tư:\n" + "\n".join(
+                [f"- {i.investment_code} - {i.name}" for i in deleted_investments]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="investments",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_investments
     except HTTPException as he:
         raise he
@@ -1558,7 +1893,7 @@ def get_daily_payments_api(
 
 
 @router.post("/add-daily-payments", response_model=List[DailyPaymentResponse])
-def add_daily_payments(
+async def add_daily_payments(
     payments_in: List[DailyPaymentCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1597,6 +1932,23 @@ def add_daily_payments(
                 LogInfo(f"[TienNga API] → Skipped (status != APPROVED or no investment_id)")
 
         LogInfo(f"[TienNga API] Successfully added {len(created_records)} daily payment records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm phiếu thu chi mới:\n" + "\n".join(
+                [f"- Loại: {p.payment_type} - Số tiền: {p.amount:,.0f} VNĐ - Trạng thái: {p.status} - Ghi chú: {p.notes or 'N/A'}" for p in created_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="daily_payments",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_records
     except HTTPException as he:
         raise he
@@ -1606,7 +1958,7 @@ def add_daily_payments(
 
 
 @router.delete("/delete-daily-payments", response_model=List[DailyPaymentResponse])
-def delete_daily_payments(
+async def delete_daily_payments(
     payment_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1645,6 +1997,23 @@ def delete_daily_payments(
             delete_daily_payment(db, payment_id=payment.id)
 
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_records)} daily payment records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa phiếu thu chi:\n" + "\n".join(
+                [f"- Phiếu ID: {p.id} - Loại: {p.payment_type} - Số tiền: {p.amount:,.0f} VNĐ ngày {p.day}" for p in deleted_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="daily_payments",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_records
     except HTTPException as he:
         raise he
@@ -1673,7 +2042,7 @@ def get_inventory_exports_api(
 
 
 @router.post("/add-inventory-exports", response_model=List[InventoryExportResponse])
-def add_inventory_exports_api(
+async def add_inventory_exports_api(
     exports_in: List[InventoryExportCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1713,6 +2082,23 @@ def add_inventory_exports_api(
             created_records.append(new_export)
 
         LogInfo(f"[TienNga API] Successfully added {len(created_records)} inventory export records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xuất kho:\n" + "\n".join(
+                [f"- Vật tư: {e.material_type} - Kho: {e.storage_name} - Trọng lượng xuất: {e.export_weight or 0:,.2f} kg - Trọng lượng còn lại: {e.remaining_weight or 0:,.2f} kg" for e in created_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="inventory_exports",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_records
     except Exception as e:
         LogInfo(f"[TienNga API] Error in add-inventory-exports: {e}")
@@ -1720,7 +2106,7 @@ def add_inventory_exports_api(
 
 
 @router.delete("/delete-inventory-exports", response_model=List[InventoryExportResponse])
-def delete_inventory_exports_api(
+async def delete_inventory_exports_api(
     export_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1786,6 +2172,23 @@ def delete_inventory_exports_api(
             delete_inventory_export(db, export_id=export.id)
 
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_records)} inventory export records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa phiếu xuất kho:\n" + "\n".join(
+                [f"- Phiếu ID: {e['id']} - Vật tư: {e['material_type']} - Kho: {e['storage_name']} - Trọng lượng xuất: {e['export_weight'] or 0:,.2f} kg ngày {e['export_date']}" for e in deleted_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="inventory_exports",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_records
 
     except HTTPException as he:
@@ -1854,7 +2257,7 @@ def get_product_transactions_api(
 
 
 @router.post("/add-product-transactions", response_model=List[ProductTransactionResponse])
-def add_product_transactions_api(
+async def add_product_transactions_api(
     txns_in: List[ProductTransactionCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -1973,8 +2376,24 @@ def add_product_transactions_api(
             })
 
         LogInfo(f"[TienNga API] Successfully added {len(response_data)} product transaction records.")
-        return response_data
 
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm giao dịch thành phẩm:\n" + "\n".join(
+                [f"- Mã lô: {r['product_code']} - {r['transaction_type']} - Loại mủ: {r['material_type']} - Số lượng: {r['quantity'] or 0:,.2f} kg - Kho: {r['storage_name']}" for r in response_data]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="product_transactions",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
+        return response_data
     except HTTPException as he:
         db.rollback()
         raise he
@@ -1985,7 +2404,7 @@ def add_product_transactions_api(
 
 
 @router.delete("/delete-product-transactions", response_model=List[ProductTransactionResponse])
-def delete_product_transactions_api(
+async def delete_product_transactions_api(
     transaction_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2096,6 +2515,23 @@ def delete_product_transactions_api(
             delete_product_transaction(db, transaction_id=txn.id)
 
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_records)} product transaction records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa giao dịch thành phẩm:\n" + "\n".join(
+                [f"- Phiếu ID: {r['id']} - Mã lô: {r['product_code']} - {r['transaction_type']} - Loại mủ: {r['material_type']} - Số lượng: {r['quantity'] or 0:,.2f} kg ngày {r['transaction_date']}" for r in deleted_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="product_transactions",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_records
 
     except HTTPException as he:
@@ -2106,7 +2542,7 @@ def delete_product_transactions_api(
 
 
 @router.post("/process-debt", response_model=ProcessDebtResponse)
-def process_debt(
+async def process_debt(
     request: ProcessDebtRequest,
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2151,6 +2587,20 @@ def process_debt(
                 new_debt = old_debt + int(request.amount)
                 customer.total_debt = new_debt
                 db.commit()
+
+                # Send Telegram notification
+                try:
+                    performer = current_user.employee_id or current_user.username or "unknown"
+                    details = f"Đã thu công nợ của hộ dân: {customer.hoursehold_id} ({customer.fullname})\n- Số tiền thu: {request.amount:,.0f} VNĐ\n- Công nợ cũ: {old_debt:,.0f} VNĐ\n- Công nợ mới: {new_debt:,.0f} VNĐ"
+                    await notify_telegram_group(
+                        db=db,
+                        action="PROCESS",
+                        module_key="payment",
+                        details=details,
+                        performer=performer
+                    )
+                except Exception as err:
+                    LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
 
                 return ProcessDebtResponse(
                     success=True,
@@ -2203,6 +2653,20 @@ def process_debt(
 
                 db.commit()
 
+                # Send Telegram notification
+                try:
+                    performer = current_user.employee_id or current_user.username or "unknown"
+                    details = f"Đã trả công nợ cho hộ dân: {customer.hoursehold_id} ({customer.fullname})\n- Số tiền trả: {request.amount:,.0f} VNĐ\n- Công nợ cũ: {old_debt:,.0f} VNĐ\n- Công nợ mới: {new_debt:,.0f} VNĐ"
+                    await notify_telegram_group(
+                        db=db,
+                        action="PROCESS",
+                        module_key="payment",
+                        details=details,
+                        performer=performer
+                    )
+                except Exception as err:
+                    LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
                 return ProcessDebtResponse(
                     success=True,
                     message=f"Trả công nợ thành công cho khách hàng {customer.fullname or customer.hoursehold_id}.",
@@ -2239,6 +2703,20 @@ def process_debt(
             partner.total_debt = new_debt
             db.commit()
 
+            # Send Telegram notification
+            try:
+                performer = current_user.employee_id or current_user.username or "unknown"
+                details = f"Đã cập nhật công nợ đối tác: {partner.partner_id} ({partner.partner_name})\n- Số tiền giao dịch: {request.amount:,.0f} VNĐ\n- Công nợ cũ: {old_debt:,.0f} VNĐ\n- Công nợ mới: {new_debt:,.0f} VNĐ"
+                await notify_telegram_group(
+                    db=db,
+                    action="PROCESS",
+                    module_key="payment",
+                    details=details,
+                    performer=performer
+                )
+            except Exception as err:
+                LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
             return ProcessDebtResponse(
                 success=True,
                 message=f"Cập nhật công nợ thành công cho đối tác {partner.partner_name or partner.partner_id}.",
@@ -2263,7 +2741,7 @@ def process_debt(
 
 
 @router.post("/process-loss-control", response_model=ProcessLossControlResponse)
-def process_loss_control(
+async def process_loss_control(
     request: ProcessLossControlRequest,
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2372,6 +2850,20 @@ def process_loss_control(
         log_suffix = f"prefix '{code_prefix}'" if code_prefix else "all collection points"
         LogInfo(f"[TienNga API] process-loss-control: found {len(items)} loss control records for {log_suffix}.")
 
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = f"Đã tính toán hao hụt thành công cho: {collection_name} ({code_prefix})\n- Thời gian: {request.start_date.strftime('%d/%m/%Y')} - {request.end_date.strftime('%d/%m/%Y')}\n- Số bản ghi xử lý: {len(items)}"
+            await notify_telegram_group(
+                db=db,
+                action="PROCESS",
+                module_key="loss_controls",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return ProcessLossControlResponse(
             collection_point_id=request.collection_point_id,
             collection_name=collection_name,
@@ -2390,7 +2882,7 @@ def process_loss_control(
 
 
 @router.post("/add-inventories", response_model=List[InventoryResponse])
-def add_inventories(
+async def add_inventories(
     inventories_in: List[InventoryCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2403,6 +2895,23 @@ def add_inventories(
             created_inventories.append(new_inv)
             
         LogInfo(f"[TienNga API] Successfully added {len(created_inventories)} inventories.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm mới vật tư vào kho:\n" + "\n".join(
+                [f"- Tên: {i.material_name} - Kho: {i.storage_name} - Số lượng: {i.quantity or 0:,.2f}" for i in created_inventories]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="inventories",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_inventories
     except Exception as e:
         LogInfo(f"[TienNga API] Error in add-inventories: {e}")
@@ -2410,7 +2919,7 @@ def add_inventories(
 
 
 @router.post("/update-inventories", response_model=List[InventoryResponse])
-def update_inventories(
+async def update_inventories(
     inventories_in: List[InventoryUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2444,6 +2953,23 @@ def update_inventories(
                 updated_inventories.append(updated_inv)
                 
         LogInfo(f"[TienNga API] Successfully updated {len(updated_inventories)} inventories.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật vật tư kho:\n" + "\n".join(
+                [f"- Tên: {i.material_name} - Kho: {i.storage_name} - Số lượng mới: {i.quantity or 0:,.2f}" for i in updated_inventories]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="inventories",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return updated_inventories
     except HTTPException as he:
         raise he
@@ -2453,7 +2979,7 @@ def update_inventories(
 
 
 @router.delete("/delete-inventories", response_model=List[InventoryResponse])
-def delete_inventories(
+async def delete_inventories(
     inventory_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2484,6 +3010,23 @@ def delete_inventories(
             delete_inventory(db, inventory_id=inv.id)
             
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_inventories)} inventories.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa vật tư kho:\n" + "\n".join(
+                [f"- Tên: {i.material_name} - Kho: {i.storage_name}" for i in deleted_inventories]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="inventories",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return deleted_inventories
     except HTTPException as he:
         raise he
@@ -2498,7 +3041,7 @@ class ProcessAdvanceAmountRequest(BaseModel):
 
 
 @router.post("/process-advance-amount")
-def process_advance_amount(
+async def process_advance_amount(
     payloads: List[ProcessAdvanceAmountRequest],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2583,6 +3126,24 @@ def process_advance_amount(
             "new_advance": total_after_advance
         })
 
+    # Send Telegram notification
+    try:
+        successful_advances = [r for r in results if r["success"]]
+        if successful_advances:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xử lý tạm ứng:\n" + "\n".join(
+                [f"- Hộ dân: {r['hoursehold_id']} - Số tiền: {next(p.amount for p in payloads if p.hoursehold_id == r['hoursehold_id']):,.0f} VNĐ - Dư nợ ứng mới: {r['new_advance']:,.0f} VNĐ" for r in successful_advances]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="PROCESS",
+                module_key="payment",
+                details=details,
+                performer=performer
+            )
+    except Exception as err:
+        LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
     return results
 
 
@@ -2592,7 +3153,7 @@ class ProcessDeductionAdvanceAmountRequest(BaseModel):
 
 
 @router.post("/process-deduction-advance-amount")
-def process_deduction_advance_amount(
+async def process_deduction_advance_amount(
     payloads: List[ProcessDeductionAdvanceAmountRequest],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2636,6 +3197,24 @@ def process_deduction_advance_amount(
             "new_debt": customer.total_debt,
             "new_advance": customer.cash_advance
         })
+
+    # Send Telegram notification
+    try:
+        successful_deductions = [r for r in results if r["success"]]
+        if successful_deductions:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã khấu trừ tạm ứng:\n" + "\n".join(
+                [f"- Hộ dân: {r['hoursehold_id']} - Số tiền khấu trừ: {next(p.amount for p in payloads if p.hoursehold_id == r['hoursehold_id']):,.0f} VNĐ - Dư nợ ứng mới: {r['new_advance']:,.0f} VNĐ" for r in successful_deductions]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="PROCESS",
+                module_key="payment",
+                details=details,
+                performer=performer
+            )
+    except Exception as err:
+        LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
 
     return results
 
@@ -2735,7 +3314,7 @@ def api_get_loss_controls(
 
 
 @router.post("/add-loss-controls", response_model=List[LossControlResponse])
-def api_add_loss_controls(
+async def api_add_loss_controls(
     loss_controls_in: List[LossControlCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2776,6 +3355,23 @@ def api_add_loss_controls(
         for r in created_records:
             db.refresh(r)
         LogInfo(f"[TienNga API] Successfully added {len(created_records)} loss control records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm lô kiểm soát hao hụt mới:\n" + "\n".join(
+                [f"- Lô: {r.product_code} - Ngày: {r.day.strftime('%d/%m/%Y')} - Tổng mủ khô: {r.total_dry_rubber or 0:,.2f} kg" for r in created_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="loss_controls",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return created_records
     except HTTPException as he:
         db.rollback()
@@ -2787,7 +3383,7 @@ def api_add_loss_controls(
 
 
 @router.post("/update-loss-controls", response_model=List[LossControlResponse])
-def api_update_loss_controls(
+async def api_update_loss_controls(
     loss_controls_in: List[LossControlBulkUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2818,6 +3414,23 @@ def api_update_loss_controls(
         for r in updated_records:
             db.refresh(r)
         LogInfo(f"[TienNga API] Successfully updated {len(updated_records)} loss control records.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật lô kiểm soát hao hụt:\n" + "\n".join(
+                [f"- Lô: {r.product_code} - Ngày: {r.day.strftime('%d/%m/%Y')} - Tổng mủ khô: {r.total_dry_rubber or 0:,.2f} kg" for r in updated_records]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="loss_controls",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return updated_records
     except HTTPException as he:
         db.rollback()
@@ -2829,7 +3442,7 @@ def api_update_loss_controls(
 
 
 @router.delete("/delete-loss-controls")
-def api_delete_loss_controls(
+async def api_delete_loss_controls(
     ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("tien-nga"))
@@ -2840,13 +3453,31 @@ def api_delete_loss_controls(
     LogInfo(f"[TienNga API] Received delete-loss-controls request. Count: {len(ids)}")
     try:
         deleted_ids = []
+        deleted_details = []
         for lc_id in ids:
             db_obj = db.query(LossControls).filter(LossControls.id == lc_id).first()
             if db_obj:
+                deleted_details.append(f"- Lô: {db_obj.product_code} (Ngày: {db_obj.day.strftime('%d/%m/%Y')})")
                 db.delete(db_obj)
                 deleted_ids.append(lc_id)
         db.commit()
         LogInfo(f"[TienNga API] Successfully deleted {len(deleted_ids)} loss control records.")
+
+        # Send Telegram notification
+        try:
+            if deleted_details:
+                performer = current_user.employee_id or current_user.username or "unknown"
+                details = "Đã xóa lô kiểm soát hao hụt:\n" + "\n".join(deleted_details)
+                await notify_telegram_group(
+                    db=db,
+                    action="DELETE",
+                    module_key="loss_controls",
+                    details=details,
+                    performer=performer
+                )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
         return {"deleted_ids": deleted_ids}
     except Exception as e:
         db.rollback()

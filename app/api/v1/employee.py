@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.models.employee import Employee, Credential
 from app.schemas import employee as schema_employee
-from bot.utils.logger import LogInfo
+from bot.utils.logger import LogInfo, LogError
+from app.services.notification import notify_telegram_group
 
 router = APIRouter()
 
@@ -29,7 +30,7 @@ def get_employee(
 
 
 @router.post("/add-employee", response_model=schema_employee.EmployeeResponse, status_code=status.HTTP_201_CREATED)
-def add_employee(
+async def add_employee(
     *,
     db: Session = Depends(deps.get_db),
     employee_in: schema_employee.EmployeeCreate,
@@ -68,11 +69,27 @@ def add_employee(
     db.add(db_employee)
     db.commit()
     db.refresh(db_employee)
+
+    # Send Telegram notification
+    try:
+        performer = current_user.employee_id or current_user.username or "unknown"
+        fullname = f"{db_employee.last_name or ''} {db_employee.first_name or ''}".strip()
+        details = f"Đã thêm mới nhân viên:\n- Mã nhân viên: {db_employee.id}\n- Họ tên: {fullname}\n- SĐT: {db_employee.number_phone or 'N/A'}"
+        await notify_telegram_group(
+            db=db,
+            action="CREATE",
+            module_key="employees",
+            details=details,
+            performer=performer
+        )
+    except Exception as err:
+        LogError(f"[Employee API] Failed to send Telegram notification: {err}")
+
     return db_employee
 
 
 @router.post("/update-employee", response_model=schema_employee.EmployeeResponse)
-def update_employee(
+async def update_employee(
     *,
     db: Session = Depends(deps.get_db),
     employee_in: schema_employee.EmployeeUpdate,
@@ -120,11 +137,27 @@ def update_employee(
 
     db.commit()
     db.refresh(db_employee)
+
+    # Send Telegram notification
+    try:
+        performer = current_user.employee_id or current_user.username or "unknown"
+        fullname = f"{db_employee.last_name or ''} {db_employee.first_name or ''}".strip()
+        details = f"Đã cập nhật nhân viên:\n- Mã nhân viên: {db_employee.id}\n- Họ tên: {fullname}\n- SĐT: {db_employee.number_phone or 'N/A'}"
+        await notify_telegram_group(
+            db=db,
+            action="UPDATE",
+            module_key="employees",
+            details=details,
+            performer=performer
+        )
+    except Exception as err:
+        LogError(f"[Employee API] Failed to send Telegram notification: {err}")
+
     return db_employee
 
 
 @router.delete("/delete-employee", response_model=List[schema_employee.EmployeeResponse])
-def delete_employee(
+async def delete_employee(
     *,
     db: Session = Depends(deps.get_db),
     employee_ids: List[str] = Body(...),
@@ -165,6 +198,23 @@ def delete_employee(
             
         db.commit()
         LogInfo(f"[Employee API] Successfully deleted {len(deleted_employees)} employees.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa nhân viên:\n" + "\n".join(
+                [f"- Mã nhân viên: {e.id} - Họ tên: {e.last_name or ''} {e.first_name or ''}" for e in deleted_employees]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="employees",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[Employee API] Failed to send Telegram notification: {err}")
+
         return deleted_employees
         
     except HTTPException as he:

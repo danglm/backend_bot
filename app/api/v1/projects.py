@@ -5,7 +5,8 @@ from app.schemas.project import Project, ProjectCreate, ProjectUpdate
 from app.crud.project import create_project, get_projects, update_project, delete_project
 from app.models.employee import Credential
 from app.models.business import Projects
-from bot.utils.logger import LogInfo
+from bot.utils.logger import LogInfo, LogError
+from app.services.notification import notify_telegram_group
 from typing import List
 from uuid import UUID
 
@@ -27,7 +28,7 @@ def get_projects_api(
 
 
 @router.post("/add-projects", response_model=List[Project])
-def add_projects_api(
+async def add_projects_api(
     projects_in: List[ProjectCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("project"))
@@ -40,6 +41,23 @@ def add_projects_api(
             created_projects.append(new_project)
             
         LogInfo(f"[Projects API] Successfully added {len(created_projects)} projects.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm dự án mới:\n" + "\n".join(
+                [f"- Tên dự án: {p.project_name}" for p in created_projects]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="projects",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[Projects API] Failed to send Telegram notification: {err}")
+
         return created_projects
     except Exception as e:
         LogInfo(f"[Projects API] Error in add-projects: {e}")
@@ -47,7 +65,7 @@ def add_projects_api(
 
 
 @router.post("/update-projects", response_model=List[Project])
-def update_projects_api(
+async def update_projects_api(
     projects_in: List[ProjectUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("project"))
@@ -79,6 +97,23 @@ def update_projects_api(
                 updated_projects.append(updated_project)
             
         LogInfo(f"[Projects API] Successfully updated {len(updated_projects)} projects.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật thông tin dự án:\n" + "\n".join(
+                [f"- Tên dự án: {p.project_name}" for p in updated_projects]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="projects",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[Projects API] Failed to send Telegram notification: {err}")
+
         return updated_projects
     except HTTPException as he:
         raise he
@@ -88,7 +123,7 @@ def update_projects_api(
 
 
 @router.delete("/delete-projects", response_model=List[Project])
-def delete_projects_api(
+async def delete_projects_api(
     project_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("project"))
@@ -119,6 +154,23 @@ def delete_projects_api(
             delete_project(db, project_id=project.id)
             
         LogInfo(f"[Projects API] Successfully deleted {len(deleted_projects)} projects.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa dự án:\n" + "\n".join(
+                [f"- ID: {p.id} - Tên dự án: {p.project_name}" for p in deleted_projects]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="projects",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[Projects API] Failed to send Telegram notification: {err}")
+
         return deleted_projects
     except HTTPException as he:
         raise he
@@ -186,7 +238,7 @@ def get_telegram_project_members_api(
 
 
 @router.post("/add-telegram-project-members", response_model=List[SchemaTelegramProjectMember])
-def add_telegram_project_members_api(
+async def add_telegram_project_members_api(
     members_in: List[TelegramProjectMemberCreate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("project"))
@@ -199,6 +251,23 @@ def add_telegram_project_members_api(
             created_members.append(new_member)
             
         LogInfo(f"[Projects API] Successfully added {len(created_members)} telegram project members.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã thêm thành viên Telegram mới:\n" + "\n".join(
+                [f"- Username: {m.username} - Chat ID: {m.chat_id} - Quyền: {m.role} - Dự án ID: {m.project_id}" for m in created_members]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="CREATE",
+                module_key="telegram_members",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[Projects API] Failed to send Telegram notification: {err}")
+
         return created_members
     except Exception as e:
         LogInfo(f"[Projects API] Error in add-telegram-project-members: {e}")
@@ -206,7 +275,7 @@ def add_telegram_project_members_api(
 
 
 @router.post("/update-telegram-project-members", response_model=List[SchemaTelegramProjectMember])
-def update_telegram_project_members_api(
+async def update_telegram_project_members_api(
     members_in: List[TelegramProjectMemberUpdate],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("project"))
@@ -238,6 +307,23 @@ def update_telegram_project_members_api(
                 updated_members.append(updated_member)
                 
         LogInfo(f"[Projects API] Successfully updated {len(updated_members)} telegram project members.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã cập nhật thành viên Telegram:\n" + "\n".join(
+                [f"- Username: {m.username} - Chat ID: {m.chat_id} - Quyền: {m.role} - Dự án ID: {m.project_id}" for m in updated_members]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="UPDATE",
+                module_key="telegram_members",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[Projects API] Failed to send Telegram notification: {err}")
+
         return updated_members
     except HTTPException as he:
         raise he
@@ -247,7 +333,7 @@ def update_telegram_project_members_api(
 
 
 @router.delete("/delete-telegram-project-members", response_model=List[SchemaTelegramProjectMember])
-def delete_telegram_project_members_api(
+async def delete_telegram_project_members_api(
     member_ids: List[UUID],
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("project"))
@@ -276,6 +362,23 @@ def delete_telegram_project_members_api(
             delete_project_member(db, member_id=member.id)
             
         LogInfo(f"[Projects API] Successfully deleted {len(deleted_members)} telegram project members.")
+
+        # Send Telegram notification
+        try:
+            performer = current_user.employee_id or current_user.username or "unknown"
+            details = "Đã xóa thành viên Telegram:\n" + "\n".join(
+                [f"- Username: {m.username} - Chat ID: {m.chat_id} - Dự án ID: {m.project_id}" for m in deleted_members]
+            )
+            await notify_telegram_group(
+                db=db,
+                action="DELETE",
+                module_key="telegram_members",
+                details=details,
+                performer=performer
+            )
+        except Exception as err:
+            LogError(f"[Projects API] Failed to send Telegram notification: {err}")
+
         return deleted_members
     except HTTPException as he:
         raise he
