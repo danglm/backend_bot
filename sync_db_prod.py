@@ -246,7 +246,7 @@ def generate_seed_sql() -> list[str]:
                 "Inventory_Group_Mapping": tiennga_config.get("Inventory_Group_Mapping", {})
             }
 
-            values = []
+            first_mapping = True
             for mapping_type, mapping_dict in mappings_to_seed.items():
                 if not mapping_dict:
                     # Fallback to root level if not in TienNga
@@ -254,15 +254,22 @@ def generate_seed_sql() -> list[str]:
                 
                 if mapping_dict:
                     for source_name, group_name in mapping_dict.items():
+                        if first_mapping:
+                            seed_cmds.append("-- Seed Telegram Group Mappings dynamically from appsettings.json")
+                            first_mapping = False
+                            
                         uid = str(uuid.uuid4())
                         s_name_esc = source_name.replace("'", "''")
                         g_name_esc = group_name.replace("'", "''")
-                        values.append(f"('{uid}', '{mapping_type}', '{s_name_esc}', '{g_name_esc}', null, true, now(), now())")
-
-            if values:
-                seed_cmds.append("-- Seed Telegram Group Mappings dynamically from appsettings.json")
-                sql = f"INSERT INTO telegram_group_mappings (id, mapping_type, source_name, group_name, chat_id, is_active, created_at, updated_at) VALUES {', '.join(values)} ON CONFLICT (mapping_type, source_name) DO NOTHING;"
-                seed_cmds.append(sql)
+                        sql = (
+                            f"INSERT INTO telegram_group_mappings (id, mapping_type, source_name, group_name, chat_id, is_active, created_at, updated_at) "
+                            f"SELECT '{uid}', '{mapping_type}', '{s_name_esc}', '{g_name_esc}', null, true, now(), now() "
+                            f"WHERE NOT EXISTS ("
+                            f"    SELECT 1 FROM telegram_group_mappings "
+                            f"    WHERE mapping_type = '{mapping_type}' AND source_name = '{s_name_esc}'"
+                            f");"
+                        )
+                        seed_cmds.append(sql)
     except Exception as e:
         print(f"⚠️ Warning: Could not generate dynamic seed SQL for telegram group mappings: {e}")
 
