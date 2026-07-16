@@ -16,6 +16,7 @@ class Settings:
     # Read IMP config
     imp_config = app_config.get("IMP_Config", {})
     CHAT_ID_MAIN = imp_config.get("Chat_ID_Main", "")
+    ALLOWED_ORIGINS = app_config.get("Allowed_Origins", [])
 
     # Read TienNga config
     tiennga_config = app_config.get("TienNga", {})
