@@ -219,8 +219,8 @@ def generate_sql(result: dict) -> list[str]:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def generate_seed_sql() -> list[str]:
-    """Generate SQL to seed code_prefix for existing collection_points."""
-    return [
+    """Generate SQL to seed code_prefix for existing collection_points and Telegram group mappings."""
+    seed_cmds = [
         "-- Seed code_prefix cho các điểm thu mua hiện có",
         "UPDATE collection_points SET code_prefix = 'LT' WHERE collection_name LIKE '%Lạc Tánh%' AND (code_prefix IS NULL OR code_prefix = '');",
         "UPDATE collection_points SET code_prefix = 'P' WHERE collection_name LIKE '%Phê%' AND (code_prefix IS NULL OR code_prefix = '');",
@@ -229,6 +229,44 @@ def generate_seed_sql() -> list[str]:
         "UPDATE collection_points SET code_prefix = 'DLT' WHERE collection_name LIKE '%Trang%' AND (code_prefix IS NULL OR code_prefix = '');",
         "UPDATE collection_points SET code_prefix = 'DLV' WHERE collection_name LIKE '%Vui%' AND (code_prefix IS NULL OR code_prefix = '');",
     ]
+
+    # Dynamically seed telegram group mappings from appsettings.json
+    try:
+        import uuid
+        settings_path = PROJECT_ROOT / "appsettings.json"
+        if settings_path.exists():
+            with open(settings_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            
+            tiennga_config = config.get("TienNga", {})
+            mappings_to_seed = {
+                "Factory_Group_Mapping": tiennga_config.get("Factory_Group_Mapping", {}),
+                "Harvest_Group_Mapping": tiennga_config.get("Harvest_Group_Mapping", {}),
+                "Fund_Group_Mapping": tiennga_config.get("Fund_Group_Mapping", {}),
+                "Inventory_Group_Mapping": tiennga_config.get("Inventory_Group_Mapping", {})
+            }
+
+            values = []
+            for mapping_type, mapping_dict in mappings_to_seed.items():
+                if not mapping_dict:
+                    # Fallback to root level if not in TienNga
+                    mapping_dict = config.get(mapping_type, {})
+                
+                if mapping_dict:
+                    for source_name, group_name in mapping_dict.items():
+                        uid = str(uuid.uuid4())
+                        s_name_esc = source_name.replace("'", "''")
+                        g_name_esc = group_name.replace("'", "''")
+                        values.append(f"('{uid}', '{mapping_type}', '{s_name_esc}', '{g_name_esc}', null, true, now(), now())")
+
+            if values:
+                seed_cmds.append("-- Seed Telegram Group Mappings dynamically from appsettings.json")
+                sql = f"INSERT INTO telegram_group_mappings (id, mapping_type, source_name, group_name, chat_id, is_active, created_at, updated_at) VALUES {', '.join(values)} ON CONFLICT (mapping_type, source_name) DO NOTHING;"
+                seed_cmds.append(sql)
+    except Exception as e:
+        print(f"⚠️ Warning: Could not generate dynamic seed SQL for telegram group mappings: {e}")
+
+    return seed_cmds
 
 
 # ═══════════════════════════════════════════════════════════════════════════
