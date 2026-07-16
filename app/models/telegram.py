@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 import datetime
@@ -38,3 +38,21 @@ class TelegramProjectMember(Base):
     first_seen_at = Column(DateTime, default=datetime.datetime.now)
     last_seen_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
     last_seen_by = Column(String, nullable=True)
+
+
+class TelegramGroupMapping(Base):
+    __tablename__ = "telegram_group_mappings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    mapping_type = Column(String, index=True, nullable=False) # Factory_Group_Mapping, Harvest_Group_Mapping, Fund_Group_Mapping, Inventory_Group_Mapping
+    source_name = Column(String, index=True, nullable=False) # e.g. "Xưởng Gia An", "Vĩnh Hà", "Quỹ ngân hàng An Bình Bank"
+    group_name = Column(String, nullable=False) # e.g. "Test - Nhóm TN02 (TN - Quản Lý Hộ Dân)"
+    chat_id = Column(String, nullable=True) # e.g. "-100123456789"
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("mapping_type", "source_name", name="uq_telegram_group_mapping"),
+    )
+

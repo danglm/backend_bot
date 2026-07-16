@@ -1555,17 +1555,10 @@ async def send_factory_purchase_report(db, project_id, current_date, client, spe
         cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
         cp_name = cp.collection_name if cp else str(cp_id)
         
-        from bot.core.config import settings
+        from bot.utils.mapping_helper import get_target_chat_ids
         
-        target_chat_ids = []
-        
-        # Lấy tên group được map cho xưởng này (nếu có)
-        mapped_group_name = settings.FACTORY_GROUP_MAPPING.get(cp_name)
-        
-        if mapped_group_name:
-            for chat_id, group_name, _title in main_groups:
-                if group_name == mapped_group_name:
-                    target_chat_ids.append(chat_id)
+        fallback_group_name = settings.FACTORY_GROUP_MAPPING.get(cp_name)
+        target_chat_ids = get_target_chat_ids(db, "Factory_Group_Mapping", cp_name, fallback_group_name)
                     
         if not target_chat_ids:
             # Fallback nếu không có mapping hoặc không tìm thấy group: gửi cho tất cả các nhóm main, trừ super_main
@@ -1890,17 +1883,27 @@ async def daily_fund_summary_worker():
                     from sqlalchemy import func
                     from bot.utils.utils import fmt_money
 
-                    for fund_name, group_name in settings.FUND_GROUP_MAPPING.items():
-                        LogInfo(f"Checking fund mapping: {fund_name} -> {group_name}", LogType.SYSTEM_STATUS)
+                    from app.models.telegram import TelegramGroupMapping
+                    from bot.utils.mapping_helper import get_target_chat_ids
+
+                    db_funds = db.query(TelegramGroupMapping.source_name).filter(
+                        TelegramGroupMapping.mapping_type == "Fund_Group_Mapping",
+                        TelegramGroupMapping.is_active == True
+                    ).distinct().all()
+                    fund_names = set(settings.FUND_GROUP_MAPPING.keys()) | {f[0] for f in db_funds}
+
+                    for fund_name in fund_names:
+                        LogInfo(f"Checking fund mapping: {fund_name}", LogType.SYSTEM_STATUS)
                         investment = db.query(Investment).filter(Investment.name == fund_name).first()
                         if not investment:
                             LogInfo(f"Fund '{fund_name}' not found in DB.", LogType.SYSTEM_STATUS)
                             continue
                             
-                        # Find telegram group
-                        tpm = db.query(TelegramProjectMember).filter(TelegramProjectMember.group_name == group_name).first()
-                        if not tpm or not tpm.chat_id:
-                            LogInfo(f"Telegram group '{group_name}' not found or chat_id is missing.", LogType.SYSTEM_STATUS)
+                        # Find telegram groups
+                        fallback_group_name = settings.FUND_GROUP_MAPPING.get(fund_name)
+                        target_chat_ids = get_target_chat_ids(db, "Fund_Group_Mapping", fund_name, fallback_group_name)
+                        if not target_chat_ids:
+                            LogInfo(f"No telegram group found for fund '{fund_name}'", LogType.SYSTEM_STATUS)
                             continue
                             
                         # Calculate today's income/expense
@@ -1939,16 +1942,17 @@ async def daily_fund_summary_worker():
                             f"<i>Vui lòng kiểm tra và xác nhận.</i>"
                         )
                         
-                        try:
-                            await bot.send_message(
-                                chat_id=int(tpm.chat_id),
-                                text=text,
-                                parse_mode=ParseMode.HTML,
-                                reply_markup=markup
-                            )
-                            LogInfo(f"Successfully sent fund summary to {group_name}", LogType.SYSTEM_STATUS)
-                        except Exception as e:
-                            LogError(f"Failed to send fund summary to {group_name}: {e}", LogType.SYSTEM_STATUS)
+                        for chat_id in target_chat_ids:
+                            try:
+                                await bot.send_message(
+                                    chat_id=int(chat_id),
+                                    text=text,
+                                    parse_mode=ParseMode.HTML,
+                                    reply_markup=markup
+                                )
+                                LogInfo(f"Successfully sent fund summary for {fund_name} to chat_id {chat_id}", LogType.SYSTEM_STATUS)
+                            except Exception as e:
+                                LogError(f"Failed to send fund summary for {fund_name} to chat_id {chat_id}: {e}", LogType.SYSTEM_STATUS)
 
                     last_sent_date = current_date
 
@@ -2021,13 +2025,10 @@ async def generate_and_send_inventory_report(client, target_date: datetime.date 
             current_stock = inv.quantity or 0.0
             capacity = inv.capacity or 0.0
             
-            mapped_group_name = settings.INVENTORY_GROUP_MAPPING.get(inv_name)
-            target_chat_ids = []
+            from bot.utils.mapping_helper import get_target_chat_ids
             
-            if mapped_group_name:
-                for chat_id, group_name in main_groups:
-                    if group_name == mapped_group_name:
-                        target_chat_ids.append(chat_id)
+            fallback_group_name = settings.INVENTORY_GROUP_MAPPING.get(inv_name)
+            target_chat_ids = get_target_chat_ids(db, "Inventory_Group_Mapping", inv_name, fallback_group_name)
                         
             if not target_chat_ids:
                 inventory_groups = db.query(TelegramProjectMember.chat_id).filter(
@@ -2137,7 +2138,15 @@ async def send_harvest_summary_report(db, project_id, current_date, client, spec
     from sqlalchemy import func
 
     # Gather data by affiliation
-    affiliations = settings.HARVEST_GROUP_MAPPING.keys()
+    from app.models.telegram import TelegramGroupMapping
+    from bot.utils.mapping_helper import get_target_chat_ids
+
+    db_affiliations = db.query(TelegramGroupMapping.source_name).filter(
+        TelegramGroupMapping.mapping_type == "Harvest_Group_Mapping",
+        TelegramGroupMapping.is_active == True
+    ).distinct().all()
+
+    affiliations = set(settings.HARVEST_GROUP_MAPPING.keys()) | {a[0] for a in db_affiliations}
     if specific_affiliation:
         affiliations = [specific_affiliation]
 
@@ -2148,12 +2157,8 @@ async def send_harvest_summary_report(db, project_id, current_date, client, spec
     ).all()
 
     for aff in affiliations:
-        mapped_group_name = settings.HARVEST_GROUP_MAPPING.get(aff)
-        target_chat_ids = []
-        if mapped_group_name:
-            for chat_id, group_name in main_groups:
-                if group_name == mapped_group_name:
-                    target_chat_ids.append(chat_id)
+        fallback_group_name = settings.HARVEST_GROUP_MAPPING.get(aff)
+        target_chat_ids = get_target_chat_ids(db, "Harvest_Group_Mapping", aff, fallback_group_name)
                     
         if not target_chat_ids:
             continue

@@ -120,8 +120,9 @@ app.add_middleware(CORSPreflightMiddleware)
 
 app.include_router(hello.router)
 
-from app.api.v1 import telegram, auth, business, employee, salary, vehicle, document, credit, rental, tien_nga, attendance, harvest, other, projects, rosca
+from app.api.v1 import telegram, auth, business, employee, salary, vehicle, document, credit, rental, tien_nga, attendance, harvest, other, projects, rosca, telegram_group_mapping
 app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["telegram"])
+app.include_router(telegram_group_mapping.router, prefix="/api/v1/telegram-group-mappings", tags=["telegram-group-mappings"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(business.router, prefix="/api/v1/business", tags=["business"])
 app.include_router(employee.router, prefix="/api/v1/employee", tags=["employee"])
