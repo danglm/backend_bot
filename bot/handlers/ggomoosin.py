@@ -198,9 +198,11 @@ async def ggomoosin_export_payroll_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_export_payroll
     # Re-construct message.text for the actual handler to parse args
     import re
-    cmd = args[0] if args else "export_payroll"
-    message.text = f"/{cmd} " + " ".join(args[1:]) if len(args) > 1 else f"/{cmd}"
-    await handle_export_payroll(client, message, f"/{cmd}")
+    cmd = args[0] if args else "ggomoosin_export_payroll"
+    if not cmd.startswith("/"):
+        cmd = f"/{cmd}"
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_export_payroll(client, message, cmd)
 
 
 # --- Tạo lại bảng chấm công (Recreate Attendance Report) ---
@@ -215,8 +217,10 @@ async def ggomoosin_recreate_attendance_report_handler(client, message: Message)
     from bot.utils.human_resource import handle_recreate_attendance_report
     import re
     cmd = args[0] if args else "ggomoosin_recreate_attendance_report"
-    message.text = f"/{cmd} " + " ".join(args[1:]) if len(args) > 1 else f"/{cmd}"
-    await handle_recreate_attendance_report(client, message, f"/{cmd}")
+    if not cmd.startswith("/"):
+        cmd = f"/{cmd}"
+    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
+    await handle_recreate_attendance_report(client, message, cmd)
 
 
 # --- Xem danh sách công việc (Admin - Check Tasks) ---

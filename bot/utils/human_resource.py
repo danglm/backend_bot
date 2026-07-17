@@ -716,8 +716,8 @@ async def handle_update_employee(client, message: Message, command_name: str) ->
         full_name = f"{employee.last_name} {employee.first_name}"
         result = (
             f"<b>Cập nhật nhân viên thành công!</b>\n\n"
-            f"<b>Nhân viên:</b> {full_name} (@{username})\n"
-            f"<b>Đã cập nhật {len(updated_fields)} trường:</b> {fields_str}"
+            f"<b>Nhân viên:</b> {full_name} (@{username})"
+            # f"<b>Đã cập nhật {len(updated_fields)} trường:</b> {fields_str}"
         )
         await message.reply_text(result, parse_mode=ParseMode.HTML)
         LogInfo(

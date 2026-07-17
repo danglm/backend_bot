@@ -617,21 +617,12 @@ async def register_bot_command_handler(client, message: Message) -> None:
             if custom_title == "main_device":
                 label = "Other (Device)"
                 commands_to_set = [
-                    # BotCommand("other_tao_dien_thoai", "Tạo điện thoại mới"),
-                    # BotCommand("other_cap_nhat_dien_thoai", "Cập nhật điện thoại"),
-                    # BotCommand("other_xoa_dien_thoai", "Xóa điện thoại"),
-                    # BotCommand("other_tao_laptop", "Tạo laptop mới"),
-                    # BotCommand("other_cap_nhat_laptop", "Cập nhật laptop"),
-                    # BotCommand("other_xoa_laptop", "Xóa laptop"),
                     BotCommand("other_tao_thiet_bi", "Tạo thiết bị mới (chọn loại)"),
                     BotCommand("other_cap_nhat_thiet_bi", "Cập nhật thiết bị"),
                     BotCommand("other_xoa_thiet_bi", "Xóa thiết bị"),
                     BotCommand("other_tao_sim", "Tạo SIM mới"),
                     BotCommand("other_cap_nhat_sim", "Cập nhật SIM"),
                     BotCommand("other_xoa_sim", "Xóa SIM"),
-                    # BotCommand("other_tao_app", "Tạo ứng dụng mới"),
-                    # BotCommand("other_cap_nhat_app", "Cập nhật ứng dụng"),
-                    # BotCommand("other_xoa_app", "Xóa ứng dụng"),
                     BotCommand("other_nhan_thiet_bi", "Nhận thiết bị"),
                     BotCommand("other_tra_thiet_bi", "Trả thiết bị"),
                     BotCommand("other_tra_cuu_thiet_bi", "Kiểm tra thiết bị"),
