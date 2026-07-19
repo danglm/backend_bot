@@ -6184,7 +6184,7 @@ async def tien_nga_check_transaction_handler(client, message: Message) -> None:
                     partner_id = partner.partner_id
         
         if not partner_id:
-            await message.reply_text("⚠️ Không xác định được mã đối tác. Vui lòng truyền mã: <code>/tien_nga_kiem_tra_giao_dich [Mã]</code>", parse_mode=ParseMode.HTML)
+            await message.reply_text("⚠️ Không xác định được mã đối tác. Vui lòng truyền mã: <code>/tien_nga_kiem_tra_giao_dich [Mã đối tác]</code>", parse_mode=ParseMode.HTML)
             return
             
         partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
