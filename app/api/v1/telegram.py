@@ -27,10 +27,6 @@ from app.services.notification import notify_telegram_group
 
 router = APIRouter()
 
-class TelegramActionRequest(BaseModel):
-    message: str 
-    chat_id: int
-
 class MockWaitMsg:
     async def edit_text(self, text: str, parse_mode=None):
         LogInfo(f"[API MockMessage] edit_text: {text}", LogType.SYSTEM_STATUS)
@@ -60,14 +56,6 @@ class MockMessage:
     async def reply_text(self, text: str, parse_mode=None):
         LogInfo(f"[API MockMessage] reply_text: {text}", LogType.SYSTEM_STATUS)
         return MockWaitMsg()
-
-@router.post("/add_user")
-async def api_add_user(request: TelegramActionRequest):
-    raise HTTPException(
-        status_code=501, 
-        detail="add_user_handler is not implemented."
-    )
-
 class TelegramMultipleActionRequest(BaseModel):
     message: str # Format: "@bot_username /add_users @user1 @user2 +841234..."
     chat_ids: list[int]
