@@ -1,5 +1,11 @@
 # Tài Liệu Hướng Dẫn Các Lệnh Nhóm "CREDIT" (Telegram Bot)
 
+<style>
+body {
+  font-size: 14px !important;
+}
+</style>
+
 Tài liệu này cung cấp hướng dẫn chi tiết về mục đích, cú pháp và cách thức hoạt động của các lệnh thuộc nhóm chức năng **CREDIT** trong Telegram Bot, được chia thành hai phân quyền chính: **Quản trị viên (Credit Main)** và **Khách hàng thành viên (Credit Member)**.
 
 ---

@@ -27,15 +27,16 @@ def get_notify_configs(
 
 def get_notify_config_by_module_key(db: Session, module_key: str) -> Optional[NotifyConfig]:
     """Lấy config theo module_key (chỉ lấy config đang bật)."""
+    stripped_key = module_key.strip() if module_key else ""
     return db.query(NotifyConfig).filter(
-        NotifyConfig.module_key == module_key,
+        NotifyConfig.module_key == stripped_key,
         NotifyConfig.enable_send_notify == True
     ).first()
 
 
 def create_notify_config(db: Session, obj_in: NotifyConfigCreate) -> NotifyConfig:
     db_obj = NotifyConfig(
-        module_key=obj_in.module_key,
+        module_key=obj_in.module_key.strip() if obj_in.module_key else "",
         module_name=obj_in.module_name,
         project_name=obj_in.project_name,
         chat_id=obj_in.chat_id,
@@ -59,6 +60,8 @@ def update_notify_config(db: Session, config_id: UUID, obj_in: NotifyConfigUpdat
     update_data = obj_in.dict(exclude_unset=True)
     if "id" in update_data:
         del update_data["id"]
+    if "module_key" in update_data and update_data["module_key"]:
+        update_data["module_key"] = update_data["module_key"].strip()
 
     for field, value in update_data.items():
         setattr(db_obj, field, value)

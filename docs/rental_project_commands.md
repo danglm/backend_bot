@@ -1,5 +1,11 @@
 # Tài Liệu Hướng Dẫn Các Lệnh Nhóm "RENTAL" (Telegram Bot)
 
+<style>
+body {
+  font-size: 14px !important;
+}
+</style>
+
 Tài liệu này cung cấp hướng dẫn chi tiết về mục đích, cú pháp và cách thức hoạt động của các lệnh thuộc nhóm chức năng **RENTAL** (Cho thuê bất động sản/nhà đất) trong Telegram Bot, được chia thành hai phân quyền chính: **Quản trị viên (Rental Main)** và **Khách hàng thành viên (Rental Member)**.
 
 ---

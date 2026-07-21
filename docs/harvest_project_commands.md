@@ -1,5 +1,11 @@
 # Tài Liệu Hướng Dẫn Các Lệnh Nhóm "THU HOẠCH" (Telegram Bot)
 
+<style>
+body {
+  font-size: 14px !important;
+}
+</style>
+
 Tài liệu này cung cấp hướng dẫn chi tiết về mục đích, cú pháp và cách thức hoạt động của các lệnh thuộc nhóm chức năng **THU HOẠCH** (Dự án Thu Hoạch / Đất trồng trọt / Canh tác) trong Telegram Bot, được chia thành hai phân quyền chính: **Quản trị viên (Thu Hoạch Main / Super Main)** và **Thành viên hộ dân (Thu Hoạch Member)**.
 
 ---

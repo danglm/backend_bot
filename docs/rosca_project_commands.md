@@ -1,5 +1,11 @@
 # Tài Liệu Hướng Dẫn Các Lệnh Nhóm "HỤI" (ROSCA - Telegram Bot)
 
+<style>
+body {
+  font-size: 14px !important;
+}
+</style>
+
 Tài liệu này cung cấp hướng dẫn chi tiết về mục đích, cú pháp và cách thức hoạt động của các lệnh thuộc nhóm chức năng **HỤI (ROSCA)** trong Telegram Bot, được chia thành hai phân quyền chính: **Chủ hụi / Quản lý (Hụi Main)** và **Người chơi (Hụi Member)**.
 
 ---

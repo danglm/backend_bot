@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from pyrogram.enums import ParseMode
 
 from bot.utils.bot import bot
-from bot.utils.logger import LogInfo, LogError, LogType
+from bot.utils.logger import LogInfo, LogError, LogWarning, LogType
 from app.crud.notification import get_notify_config_by_module_key, create_notify_log
 
 
@@ -76,6 +76,7 @@ async def notify_telegram_group(
         # 1. Lookup config
         config = get_notify_config_by_module_key(db, module_key)
         if not config:
+            LogWarning(f"[Notify] Không tìm thấy cấu hình notify cho module_key='{module_key}' hoặc đã tắt.", LogType.SYSTEM_STATUS)
             return {
                 "success": False,
                 "message_id": None,
@@ -86,6 +87,7 @@ async def notify_telegram_group(
         # 2. Check action allowed
         allowed_actions = [a.strip().upper() for a in config.actions.split(",")]
         if action.upper() not in allowed_actions:
+            LogWarning(f"[Notify] Action '{action}' không nằm trong danh sách cho phép ({config.actions}) của module_key='{module_key}'.", LogType.SYSTEM_STATUS)
             return {
                 "success": False,
                 "message_id": None,

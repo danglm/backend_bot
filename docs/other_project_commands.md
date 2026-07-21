@@ -1,5 +1,11 @@
 # Tài Liệu Hướng Dẫn Các Lệnh Nhóm "OTHER" (Telegram Bot)
 
+<style>
+body {
+  font-size: 14px !important;
+}
+</style>
+
 Tài liệu này cung cấp hướng dẫn chi tiết về mục đích, cú pháp và cách thức hoạt động của các lệnh thuộc nhóm chức năng **OTHER** trong Telegram Bot, được chia thành ba khu vực quản lý chính: **Quản lý thiết bị (Other Device)**, **Quản lý hồ sơ/giấy tờ & lịch hẹn (Other Image)**, và **Quản lý phương tiện (Other Vehicle)**.
 
 ---

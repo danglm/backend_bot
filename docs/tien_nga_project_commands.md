@@ -1,5 +1,11 @@
 # Tài Liệu Hướng Dẫn Các Lệnh Nhóm "TIẾN NGA" (Telegram Bot)
 
+<style>
+body {
+  font-size: 12px !important;
+}
+</style>
+
 Tài liệu này cung cấp hướng dẫn chi tiết về mục đích, cú pháp và cách thức hoạt động của các lệnh thuộc nhóm chức năng **TIẾN NGA** (Dự án Tiến Nga) trong Telegram Bot, được chia thành hai phân quyền chính: **Quản trị viên (Tiến Nga Main / Super Main)** và **Thành viên bộ phận (Tiến Nga Member)**.
 
 ---
