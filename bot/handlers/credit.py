@@ -2,7 +2,7 @@ from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode
 from bot.utils.bot import bot
-from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_group_role
+from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_group_role, command_timeout
 from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
@@ -237,12 +237,12 @@ async def check_customer_handler(client, message: Message) -> None:
             f"Tên Nhóm: <b>{customer.group_name or 'N/A'}</b>",
             f"Tên Khách Hàng: <b>{customer.customer_name}</b>",
             f"Liên Hệ: <b>{customer.contact_info}</b>",
-            f"--------------------",
+            f"{'━' * 15}",
             f"<b>HẠN MỨC</b>",
             f"Tổng Hạn Mức Tín Dụng: <b>{fmt_num(customer.total_credit_limit):,} VNĐ</b>",
             f"Hạn Mức Còn Lại: <b>{fmt_num(customer.remaining_credit_limit):,} VNĐ</b>",
             f"Tổng Nợ Gốc Hiện Tại: <b>{fmt_num(customer.total_principal_outstanding):,} VNĐ</b>",
-            f"--------------------",
+            f"{'━' * 15}",
             f"<b>DANH SÁCH HỢP ĐỒNG</b>"
         ]
 
@@ -439,12 +439,12 @@ async def check_debt_handler(client, message: Message) -> None:
         reply_lines = [
             f"<b>CÔNG NỢ HIỆN TẠI</b>",
             f"Khách hàng: <b>{customer.customer_name}</b> (Mã: {customer.customer_id})",
-            f"--------------------",
+            f"{'━' * 15}",
             f"Tổng hợp đồng: <b>{len(active_credits)}</b>",
             f"Tổng nợ gốc: <b>{fmt_num(total_principal):,}</b>",
             f"Tổng nợ lãi: <b>{fmt_num(total_interest):,}</b>",
             f"Tổng nợ: <b>{fmt_num(total_debt):,}</b>",
-            f"--------------------",
+            f"{'━' * 15}",
         ] + contract_lines
 
         await message.reply_text("\n".join(reply_lines), parse_mode=ParseMode.HTML)
@@ -1042,6 +1042,7 @@ Phân Loại: {contract.classification or ""}
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def cancel_contract_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["credit_cancel_contract", "credit_huy_hop_dong"])
     if args is None: return
@@ -1219,7 +1220,7 @@ async def credit_list_contract_handler(client, message: Message) -> None:
         lines = [
             "DANH SÁCH HỢP ĐỒNG TÍN DỤNG",
             f"Tổng: {len(all_contracts)} hợp đồng",
-            "--------------------",
+            f"{'━' * 15}",
         ]
 
         idx = 1
@@ -1249,7 +1250,7 @@ async def credit_list_contract_handler(client, message: Message) -> None:
             html_lines = [
                 f"<b>DANH SÁCH HỢP ĐỒNG TÍN DỤNG</b>",
                 f"Tổng: <b>{len(all_contracts)}</b> hợp đồng",
-                f"--------------------",
+                f"{'━' * 15}",
             ]
             idx2 = 1
             for status in status_order:
@@ -1329,6 +1330,7 @@ async def confirm_bad_debt_handler(client, message: Message) -> None:
 @bot.on_message(filters.command(["credit_paid_interest", "credit_thanh_toan_lai"]) | filters.regex(r"^@\w+\s+/(credit_paid_interest|credit_thanh_toan_lai)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
+@command_timeout(auto_delete_cmd=True)
 async def paid_interest_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["credit_paid_interest", "credit_thanh_toan_lai"])
     if args is None: return
@@ -1462,6 +1464,7 @@ async def paid_interest_cancel_callback(client, callback_query: CallbackQuery):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def extend_contract_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["credit_extend_contract", "credit_gia_han"])
     if args is None: return
@@ -1831,12 +1834,12 @@ async def report_cashflow_handler(client, message: Message) -> None:
         total_project_paid = sum(project_monthly_totals.values()) if project_monthly_totals else 0
         header_lines = [
             f"<b>BÁO CÁO DÒNG TIỀN DỰ ÁN</b>",
-            f"--------------------",
+            f"{'━' * 15}",
             f"<b>Tổng Hợp Đồng Đang Vay:</b> {total_contracts}",
             f"<b>Tổng Nợ Gốc:</b> {fmt_vn(total_principal)}",
             f"<b>Tổng Nợ Lãi:</b> {fmt_vn(total_interest)}",
             f"<b>Tổng Lãi Đã Thu:</b> {fmt_vn(total_project_paid)}",
-            f"--------------------"
+            f"{'━' * 15}"
         ]
         
         report_lines = header_lines + customer_lines
@@ -1904,7 +1907,7 @@ async def generate_revenue_report(client, message, project_id, start_date, end_d
         report_lines = [
             f"<b>BÁO CÁO DOANH THU (Lãi đã thu)</b>",
             f"<i>(Thời gian lọc: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})</i>",
-            f"--------------------",
+            f"{'━' * 15}",
             f"<b>Tổng Lãi Đã Thu:</b> <b>{fmt_vn(total_collected)}</b>", 
             f"<b>Tổng Nợ Gốc:</b> {fmt_vn(total_outstanding_principal)}",
             f"<b>Tổng Nợ Lãi Chưa Trả:</b> {fmt_vn(total_outstanding_interest)}"
@@ -1923,6 +1926,7 @@ async def generate_revenue_report(client, message, project_id, start_date, end_d
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def revenue_report_handler(client, message: Message) -> None:
     db = SessionLocal()
     try:

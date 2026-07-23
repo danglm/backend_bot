@@ -2,7 +2,7 @@ from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode
 from bot.utils.bot import bot
-from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_custom_title, require_group_role, fmt_vn, fmt_money, fmt_num, fmt_weight
+from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_custom_title, require_group_role, fmt_vn, fmt_money, fmt_num, fmt_weight, command_timeout
 from bot.utils.enums import UserType, CustomTitle
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
@@ -594,6 +594,7 @@ async def tien_nga_list_collection_point_handler(client, message: Message) -> No
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_update_collection_point_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
@@ -758,6 +759,7 @@ Ghi Chú: {cp.notes or ''}</pre>"""
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_customer_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     
@@ -1843,9 +1845,9 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
                 f"🔻 <b>% Hao hụt:</b> {fmt_num(loss_wet_pct)}%\n"
                 f"🔻 <b>Tiền:</b> <code>{fmt_money(abs(diff_amount))}</code>\n"
                 f"{profit_label}: <code>{fmt_money(abs(profit))}</code>\n"
-                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"{'━' * 15}\n"
                 f"<b>Giá hòa vốn:</b> <code>{fmt_money(breakeven_price)}</code>/Kg\n"
-                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"{'━' * 15}\n"
                 f"<i>% Hao hụt = (Chênh lệch MN / Tổng MN thu mua) × 100</i>\n"
                 f"<i>Giá hòa vốn = Tổng tiền mua / Mủ khô xuất bán</i>\n"
                 f"<i>Lợi nhuận = Tiền bán - Tiền mua</i>",
@@ -1875,12 +1877,12 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
                 f"🔹 <b>Ngày thu mua:</b> {loss_control.day.strftime('%d/%m/%Y')}\n"
                 f"🔹 <b>Dự kiến hoàn thành:</b> {loss_control.estimated_completion.strftime('%d/%m/%Y') if loss_control.estimated_completion else '—'}\n"
                 f"🔹 <b>Giá thu mua TB:</b> <code>{fmt_money(avg_unit_price)}</code>/Kg\n"
-                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"{'━' * 15}\n"
                 f"🔸 <b>Tổng mủ khô (tạm tính):</b> {fmt_num(total_dry_rubber)} Kg\n"
                 f"🔸 <b>Tổng nhập kho thực tế:</b> {fmt_num(total_import_qty)} Kg\n\n"
                 f"🔻 <b>Tỷ lệ hao hụt:</b> {fmt_num(loss_percentage)}%\n"
                 f"🔻 <b>Số tiền hao hụt:</b> <code>{fmt_money(loss_money)}</code>\n"
-                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"{'━' * 15}\n"
                 f"<i>Ghi chú:</i>\n"
                 f"- <i>Tỷ lệ hao hụt = 100 - (Tổng nhập kho / Tổng mủ khô) * 100</i>\n"
                 f"- <i>Tiền hao hụt = Tổng thành tiền - (Đơn giá TB x Tổng nhập kho)</i>",
@@ -1900,6 +1902,7 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_control_losses_handler(client, message: Message) -> None:
     from datetime import datetime, date
     from app.models.business import DailyPurchases
@@ -2066,14 +2069,14 @@ async def control_losses_detail_callback(client, callback_query):
             f"Mã Hàng: <code>{product_code}</code>\n"
             f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{est_display}\n"
             f"Số giao dịch: <b>{total_transactions}</b>\n\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"🔹 <b>Tổng Mủ Nước:</b> {fmt_num(total_wet_rubber)} Kg\n"
             f"🔹 <b>Tổng Mủ Khô:</b> {fmt_num(total_dry_rubber)} Kg\n"
             f"🔹 <b>Số Độ TB:</b> {fmt_num(avg_degree)}%\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Tổng Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
             f"<b>Đơn Giá TB:</b> <code>{fmt_money(avg_unit_price)}</code>\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<i>Đơn giá TB = Tổng thành tiền / Tổng mủ khô</i>\n"
             f"<i>Chọn loại hình để lưu:</i>",
             reply_markup=keyboard,
@@ -2248,14 +2251,14 @@ async def control_losses_cps_confirm_callback(client, callback_query):
             f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{est_display}\n"
             f"Điểm thu mua đã chọn:\n{cp_list_display}\n"
             f"Số giao dịch: <b>{total_transactions}</b>\n\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"🔹 <b>Tổng Mủ Nước:</b> {fmt_num(total_wet_rubber)} Kg\n"
             f"🔹 <b>Tổng Mủ Khô:</b> {fmt_num(total_dry_rubber)} Kg\n"
             f"🔹 <b>Số Độ TB:</b> {fmt_num(avg_degree)}%\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Tổng Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
             f"<b>Đơn Giá TB:</b> <code>{fmt_money(avg_unit_price)}</code>\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<i>Đơn giá TB = Tổng thành tiền / Tổng mủ khô</i>\n"
             f"<i>Chọn loại hình để lưu:</i>",
             reply_markup=keyboard,
@@ -3158,6 +3161,7 @@ async def tien_nga_export_paid_bill_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MAIN_HR, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_PARTNER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_info_handler(client, message: Message) -> None:
     args = message.text.strip().split()
     time_preset = ""
@@ -3628,6 +3632,7 @@ async def tien_nga_export_callback(client, callback_query: CallbackQuery):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_paid_amount_report_handler(client, message: Message) -> None:
     """Bước 1: Hiển thị button chọn khoảng thời gian hoặc nhận ngày tùy chọn."""
     args = message.text.strip().split()
@@ -3684,14 +3689,14 @@ async def tien_nga_paid_amount_report_handler(client, message: Message) -> None:
                 f"<b>Mã Hộ:</b> <code>{hh_id}</code>\n"
                 f"<b>Tên KH:</b> {cust_name}\n"
                 f"<b>Xưởng:</b> {cp_name or 'N/A'}\n"
-                f"{'━' * 20}\n"
+                f"{'━' * 15}\n"
                 f"<b>Số lượt mua:</b> <code>{cnt}</code>\n"
                 f"<b>Tổng KL thực tế:</b> <code>{weight:,.1f} kg</code>\n"
                 f"<b>Tổng thành tiền:</b> <code>{fmt_vn(total)}</code>\n"
                 f"<b>Đã thanh toán:</b> <code>{fmt_vn(paid)}</code>\n"
                 f"<b>Lưu sổ:</b> <code>{fmt_vn(saved)}</code>\n"
                 f"<b>Tạm ứng:</b> <code>{fmt_vn(advance)}</code>\n"
-                f"{'━' * 20}\n"
+                f"{'━' * 15}\n"
                 f"<b>Còn lại:</b> <code>{fmt_vn(total - paid - saved - advance)}</code>"
             )
 
@@ -3924,7 +3929,7 @@ async def tien_nga_paid_amount_callback(client, callback_query: CallbackQuery):
                 f"<b>{time_label}</b>\n"
                 f"<i>Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}</i>\n\n"
                 f"<b>TỔNG ĐÃ THANH TOÁN:</b> <code>{fmt_vn(total_paid)}</code>\n"
-                f"{'━' * 20}\n\n"
+                f"{'━' * 15}\n\n"
                 f"<b>CHI TIẾT THEO TỪNG XƯỞNG:</b>\n\n"
             )
 
@@ -4093,6 +4098,7 @@ async def tien_nga_paid_amount_callback(client, callback_query: CallbackQuery):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_save_amount_report_handler(client, message: Message) -> None:
     """Bước 1: Hiển thị button chọn khoảng thời gian hoặc nhận ngày tùy chọn."""
     args = message.text.strip().split()
@@ -4149,14 +4155,14 @@ async def tien_nga_save_amount_report_handler(client, message: Message) -> None:
                 f"<b>Mã Hộ:</b> <code>{hh_id}</code>\n"
                 f"<b>Tên KH:</b> {cust_name}\n"
                 f"<b>Xưởng:</b> {cp_name or 'N/A'}\n"
-                f"{'━' * 20}\n"
+                f"{'━' * 15}\n"
                 f"<b>Số lượt mua:</b> <code>{cnt}</code>\n"
                 f"<b>Tổng KL thực tế:</b> <code>{weight:,.1f} kg</code>\n"
                 f"<b>Tổng thành tiền:</b> <code>{fmt_vn(total)}</code>\n"
                 f"<b>Lưu sổ:</b> <code>{fmt_vn(saved)}</code>\n"
                 f"<b>Đã thanh toán:</b> <code>{fmt_vn(paid)}</code>\n"
                 f"<b>Tạm ứng:</b> <code>{fmt_vn(advance)}</code>\n"
-                f"{'━' * 20}\n"
+                f"{'━' * 15}\n"
                 f"<b>Còn lại:</b> <code>{fmt_vn(total - paid - saved - advance)}</code>"
             )
 
@@ -4389,7 +4395,7 @@ async def tien_nga_save_amount_callback(client, callback_query: CallbackQuery):
                 f"<b>{time_label}</b>\n"
                 f"<i>Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}</i>\n\n"
                 f"<b>TỔNG LƯU SỔ:</b> <code>{fmt_vn(total_saved)}</code>\n"
-                f"{'━' * 20}\n\n"
+                f"{'━' * 15}\n\n"
                 f"<b>CHI TIẾT THEO TỪNG XƯỞNG:</b>\n\n"
             )
 
@@ -4554,6 +4560,7 @@ _send_msg_state = {}
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 # @require_custom_title(CustomTitle.SUPER_MAIN, "main")
+@command_timeout(auto_delete_cmd=True)
 async def send_message_handler(client, message: Message) -> None:
     """
     /send_message [Nội dung]
@@ -5578,6 +5585,7 @@ async def _do_generate_and_send_summary(client, chat_id, start_date, end_date, p
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_summary_handler(client, message: Message) -> None:
     # Check if there are date arguments
     text = message.text.strip()
@@ -6147,6 +6155,7 @@ async def tien_nga_list_partner_handler(client, message: Message) -> None:
 @bot.on_message(filters.command(["tien_nga_check_transaction", "tien_nga_kiem_tra_giao_dich"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_transaction|tien_nga_kiem_tra_giao_dich)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Tiến Nga")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_transaction_handler(client, message: Message) -> None:
     import re
     text = message.text
@@ -6503,6 +6512,7 @@ async def tien_nga_check_debt_handler(client, message: Message) -> None:
 @bot.on_message(filters.command(["tien_nga_partner_payment", "tien_nga_doi_tac_thanh_toan"]) | filters.regex(r"^@\w+\s+/(tien_nga_partner_payment|tien_nga_doi_tac_thanh_toan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Tiến Nga")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_partner_payment_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) < 2:
@@ -6734,6 +6744,7 @@ async def partner_pay_callback(client, callback_query) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_partner_transaction_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
@@ -7177,6 +7188,7 @@ async def tien_nga_cancel_partner_txn_handler(client, message: Message) -> None:
 
 # ── Callback: Chọn loại giao dịch Đối Tác (Nhập/Xuất) → Hiện danh sách kho ──
 @bot.on_callback_query(filters.regex(r"^tn_ptxn_(.+)$"))
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_partner_txn_type_callback(client, callback_query):
     action = callback_query.matches[0].group(1)
 
@@ -7748,6 +7760,7 @@ async def tien_nga_partner_report_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_chart_purcharse_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_chart_purcharse", "tien_nga_bieu_do_thu_mua"])
     if args is None: return
@@ -8167,6 +8180,7 @@ async def tien_nga_chart_custom_callback(client, callback_query: CallbackQuery):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) < 3:
@@ -8495,6 +8509,7 @@ async def ttcn_action_callback(client, callback_query: CallbackQuery):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_investment_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
@@ -8723,6 +8738,7 @@ Ghi Chú: </pre>
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_request_daily_payments_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
@@ -9264,6 +9280,7 @@ CPD_PAGE_SIZE = 10
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_confirm_payment_debt_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_confirm_payment_debt", "tien_nga_xn_thanh_toan_cong_no"])
     if args is None: return
@@ -10039,6 +10056,7 @@ async def cpd_selinv_callback(client, callback_query: CallbackQuery):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_daily_payment_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_export_daily_payment", "tien_nga_xuat_bao_cao_thu_chi"])
     if args is None: return
@@ -10329,6 +10347,7 @@ async def edp_inv_cb(client, callback_query: CallbackQuery):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_chart_daily_payment_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_chart_daily_payment", "tien_nga_bieu_do_thu_chi"])
     if args is None: return
@@ -10509,6 +10528,7 @@ async def cdp_inv_cb(client, callback_query: CallbackQuery):
 @bot.on_message(filters.command(["tien_nga_check_investments", "tien_nga_kiem_tra_quy_dau_tu"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_investments|tien_nga_kiem_tra_quy_dau_tu)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Tiến Nga")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_investments_handler(client, message: Message) -> None:
     from app.models.business import Investment
     from app.models.telegram import TelegramProjectMember
@@ -10697,7 +10717,7 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
         
         msg = (
             f"<b>THÔNG TIN QUỸ ĐẦU TƯ</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Mã Quỹ:</b> <code>{inv_code}</code>\n"
             f"<b>Tên Quỹ:</b> {inv.name or 'N/A'}\n"
             f"<b>Trạng thái:</b> {status_str}\n\n"
@@ -10721,7 +10741,7 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
         if show_sh:
             if shareholders:
                 total_shareholder_amount = sum(sh.investment_amount or 0 for sh in shareholders)
-                msg += f"\n━━━━━━━━━━━━━━━━━━\n"
+                msg += f"\n{'━' * 15}\n"
                 msg += f"<b>DANH SÁCH CỔ ĐÔNG ({count_sh})</b>\n\n"
                 for idx, sh in enumerate(shareholders, 1):
                     start_str = sh.start_date.strftime('%d/%m/%Y') if sh.start_date else '—'
@@ -10739,7 +10759,7 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
                         msg += f"   {sh.notes}\n"
                     msg += "\n"
             else:
-                msg += f"\n━━━━━━━━━━━━━━━━━━\n"
+                msg += f"\n{'━' * 15}\n"
                 msg += "<i>Chưa có cổ đông nào.</i>\n"
 
         # In member group → also show transaction summary for the matched shareholder
@@ -10772,7 +10792,7 @@ async def chk_inv_cb(client, callback_query: CallbackQuery):
             ).scalar() or 0
 
             msg += (
-                f"━━━━━━━━━━━━━━━━━━\n"
+                f"{'━' * 15}\n"
                 f"<b>TỔNG KẾT GIAO DỊCH ({matched_shareholder.fullname})</b>\n\n"
                 f"Tổng Thu: <code>{fmt_vn(total_thu)}</code>\n"
                 f"Tổng Chi: <code>{fmt_vn(total_chi)}</code>\n"
@@ -10964,6 +10984,7 @@ async def tien_nga_list_inventory_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_update_inventory_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -11059,6 +11080,7 @@ async def _sel_inv_cb(client, callback_query):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_inventory_handler(client, message: Message) -> None:
     from app.db.session import SessionLocal
     from app.models.inventory import Inventory
@@ -11191,6 +11213,7 @@ async def _check_inv_back_cb(client, callback_query):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_material_purchase_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -11345,6 +11368,7 @@ async def _purmat_cb(client, callback_query):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_inventory_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -11488,6 +11512,7 @@ async def _expinv_cb(client, callback_query):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_product_transaction_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -11736,6 +11761,7 @@ async def cancel_action_cb(client, callback_query: CallbackQuery):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_shareholder_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     
@@ -11851,7 +11877,7 @@ async def tien_nga_create_shareholder_handler(client, message: Message) -> None:
         # Build preview message
         preview = (
             f"📋 <b>XÁC NHẬN {action_label}</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>📌 THÔNG TIN CỔ ĐÔNG</b>\n"
             f"<b>Quỹ Đầu Tư:</b> {investment.name} (<code>{investment.investment_code or 'N/A'}</code>)\n"
             f"<b>Mã Cổ Đông:</b> <code>{shareholder_code}</code>\n"
@@ -11875,7 +11901,7 @@ async def tien_nga_create_shareholder_handler(client, message: Message) -> None:
             preview += f"<b>Số Tiền Đầu Tư:</b> <code>{fmt_vn(amount)}</code>\n"
 
         preview += (
-            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"\n{'━' * 15}\n"
             f"<b>💰 PHIẾU THU - DAILY PAYMENT</b>\n"
             f"<b>Loại:</b> THU\n"
             f"<b>Người Thực Hiện:</b> {shareholder_code}\n"
@@ -11883,7 +11909,7 @@ async def tien_nga_create_shareholder_handler(client, message: Message) -> None:
             f"<b>Số Tiền:</b> <code>{fmt_vn(amount)}</code>\n"
             f"<b>Ngày:</b> {start_date_display}\n"
             f"<b>Trạng Thái:</b> APPROVED\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<i>Vui lòng kiểm tra thông tin và nhấn nút bên dưới để xác nhận.</i>"
         )
 
@@ -12019,7 +12045,7 @@ async def tien_nga_confirm_shareholder_callback(client, callback_query):
         if is_existing and existing:
             success_msg = (
                 f"✅ <b>{action_label} THÀNH CÔNG</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n\n"
+                f"{'━' * 15}\n\n"
                 f"<b>📌 THÔNG TIN CỔ ĐÔNG</b>\n"
                 f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
                 f"<b>Mã Cổ Đông:</b> <code>{shareholder_code}</code>\n"
@@ -12030,7 +12056,7 @@ async def tien_nga_confirm_shareholder_callback(client, callback_query):
         else:
             success_msg = (
                 f"✅ <b>{action_label} THÀNH CÔNG</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n\n"
+                f"{'━' * 15}\n\n"
                 f"<b>📌 THÔNG TIN CỔ ĐÔNG</b>\n"
                 f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
                 f"<b>Mã Cổ Đông:</b> <code>{shareholder_code}</code>\n"
@@ -12072,7 +12098,7 @@ async def tien_nga_confirm_shareholder_callback(client, callback_query):
                 if member_group and member_group.chat_id:
                     notify_msg = (
                         f"<b>THÔNG BÁO GÓP VỐN CỔ ĐÔNG</b>\n"
-                        f"━━━━━━━━━━━━━━━━━━\n\n"
+                        f"{'━' * 15}\n\n"
                         f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
                         f"<b>Mã Cổ Đông:</b> <code>{shareholder_code}</code>\n"
                         f"<b>Tên Cổ Đông:</b> {fullname}\n"
@@ -12201,6 +12227,7 @@ Ghi Chú: </pre>
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_chia_co_tuc_handler(client, message: Message) -> None:
     from app.db.session import SessionLocal
     from app.models.business import Investment
@@ -12317,7 +12344,7 @@ async def tien_nga_dividend_main_callback(client, callback_query):
         # Build preview message
         msg = (
             f"<b>XÁC NHẬN CHIA CỔ TỨC</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Quỹ Main:</b> {main_inv.name}\n"
             f"<b>Mã Quỹ:</b> <code>{main_inv.investment_code or 'N/A'}</code>\n"
             f"<b>Số Quỹ Member:</b> {len(member_funds)}\n\n"
@@ -12326,7 +12353,7 @@ async def tien_nga_dividend_main_callback(client, callback_query):
             f"<b>Tổng Vốn Góp:</b> <code>{fmt_vn(total_shareholder_amount)}</code>\n"
             f"<b>Lợi Nhuận Chia:</b> <code>{fmt_vn(distributable_profit)}</code>\n"
             f"<i>(= Tổng Thu - Tổng Chi - Tổng Vốn Góp)</i>\n\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>CHI TIẾT CHIA CỔ TỨC ({len(all_shareholders)} cổ đông)</b>\n\n"
         )
         
@@ -12342,9 +12369,9 @@ async def tien_nga_dividend_main_callback(client, callback_query):
             total_dividend += d['dividend']
         
         msg += (
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Tổng Số Tiền Chi:</b> <code>{fmt_vn(total_dividend)}</code>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
         )
         
         if distributable_profit <= 0:
@@ -12427,7 +12454,7 @@ async def tien_nga_dividend_callback(client, callback_query):
         # Build preview message
         msg = (
             f"<b>XÁC NHẬN CHIA CỔ TỨC</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Quỹ:</b> {inv.name}\n"
             f"<b>Mã Quỹ:</b> <code>{inv.investment_code or 'N/A'}</code>\n\n"
             f"<b>Tổng Thu:</b> <code>{fmt_vn(total_income)}</code>\n"
@@ -12435,7 +12462,7 @@ async def tien_nga_dividend_callback(client, callback_query):
             f"<b>Tổng Vốn Góp:</b> <code>{fmt_vn(total_shareholder_amount)}</code>\n"
             f"<b>Lợi Nhuận Chia:</b> <code>{fmt_vn(distributable_profit)}</code>\n"
             f"<i>(= Tổng Thu - Tổng Chi - Tổng Vốn Góp)</i>\n\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>CHI TIẾT CHIA CỔ TỨC</b>\n\n"
         )
 
@@ -12451,7 +12478,7 @@ async def tien_nga_dividend_callback(client, callback_query):
             total_dividend += d['dividend']
         
         msg += (
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>PHIẾU CHI - DAILY PAYMENT ({len(dividend_details)} phiếu)</b>\n\n"
         )
 
@@ -12469,7 +12496,7 @@ async def tien_nga_dividend_callback(client, callback_query):
 
         msg += (
             f"<b>Tổng Số Tiền Chi:</b> <code>{fmt_vn(total_dividend)}</code>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
         )
 
 
@@ -12584,7 +12611,7 @@ async def tien_nga_confirm_dividend_callback(client, callback_query):
         # Build success message
         success_msg = (
             f"✅ <b>CHIA CỔ TỨC THÀNH CÔNG</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>Quỹ:</b> {investment.name} (<code>{investment.investment_code or 'N/A'}</code>)\n"
             f"<b>Ngày:</b> {today.strftime('%d/%m/%Y')}\n\n"
         )
@@ -12598,7 +12625,7 @@ async def tien_nga_confirm_dividend_callback(client, callback_query):
             )
 
         success_msg += (
-            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"\n{'━' * 15}\n"
             f"<b>TỔNG CHI CỔ TỨC:</b> <code>{fmt_vn(total_dividend_paid)}</code>\n"
             f"<b>Số phiếu chi đã tạo:</b> {sum(1 for d in dividend_details if d['dividend'] > 0)}\n"
             f"<b>Trạng Thái:</b> APPROVED\n\n"
@@ -12632,7 +12659,7 @@ async def tien_nga_confirm_dividend_callback(client, callback_query):
 
                 notify_msg = (
                     f"<b>THÔNG BÁO CHIA CỔ TỨC</b>\n"
-                    f"━━━━━━━━━━━━━━━━━━\n\n"
+                    f"{'━' * 15}\n\n"
                     f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
                     f"<b>Mã Cổ Đông:</b> <code>{d['shareholder_code']}</code>\n"
                     f"<b>Tên Cổ Đông:</b> {d['fullname']}\n"
@@ -12673,6 +12700,7 @@ async def tien_nga_confirm_dividend_callback(client, callback_query):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_payment_shareholder_handler(client, message: Message) -> None:
     from app.db.session import SessionLocal
     from app.models.business import Investment
@@ -12799,7 +12827,7 @@ async def tien_nga_payment_sh_main_callback(client, callback_query):
         # Build preview message
         msg = (
             f"<b>XÁC NHẬN THANH TOÁN QUỸ CỔ ĐÔNG</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Quỹ Main:</b> {main_inv.name}\n"
             f"<b>Mã Quỹ:</b> <code>{main_inv.investment_code or 'N/A'}</code>\n"
             f"<b>Số Quỹ Member:</b> {len(member_funds)}\n\n"
@@ -12810,7 +12838,7 @@ async def tien_nga_payment_sh_main_callback(client, callback_query):
             f"<b>Căn cứ thanh toán:</b> {payout_label}\n"
             f"<b>Quỹ Thanh Toán:</b> <code>{fmt_vn(payout_pool)}</code>\n"
             f"<b>Tổng Vốn Góp:</b> <code>{fmt_vn(total_shareholder_amount)}</code>\n\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>CHI TIẾT THANH TOÁN ({len(all_shareholders)} cổ đông)</b>\n\n"
         )
         
@@ -12825,9 +12853,9 @@ async def tien_nga_payment_sh_main_callback(client, callback_query):
         
         total_payout = sum(d['payment'] for d in payment_details)
         msg += (
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Tổng Số Tiền Chi:</b> <code>{fmt_vn(total_payout)}</code>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
         )
         
         if agg_profit <= 0:
@@ -12918,7 +12946,7 @@ async def tien_nga_payment_shareholder_callback(client, callback_query):
         # Build preview message
         msg = (
             f"<b>XÁC NHẬN THANH TOÁN QUỸ CỔ ĐÔNG</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Quỹ:</b> {inv.name}\n"
             f"<b>Mã Quỹ:</b> <code>{inv.investment_code or 'N/A'}</code>\n\n"
             f"<b>Vốn Ban Đầu:</b> <code>{fmt_vn(initial_capital)}</code>\n"
@@ -12928,7 +12956,7 @@ async def tien_nga_payment_shareholder_callback(client, callback_query):
             f"<b>Căn cứ thanh toán:</b> {payout_label}\n"
             f"<b>Quỹ Thanh Toán:</b> <code>{fmt_vn(payout_pool)}</code>\n"
             f"<b>Tổng Vốn Góp:</b> <code>{fmt_vn(total_shareholder_amount)}</code>\n\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>CHI TIẾT THANH TOÁN CHO CỔ ĐÔNG</b>\n\n"
         )
         
@@ -12943,7 +12971,7 @@ async def tien_nga_payment_shareholder_callback(client, callback_query):
         # Daily Payment details
         total_payout = sum(d['payment'] for d in payment_details)
         msg += (
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>PHIẾU CHI - DAILY PAYMENT ({len(payment_details)} phiếu)</b>\n\n"
         )
 
@@ -12961,7 +12989,7 @@ async def tien_nga_payment_shareholder_callback(client, callback_query):
 
         msg += (
             f"<b>Tổng Số Tiền Chi:</b> <code>{fmt_vn(total_payout)}</code>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
         )
 
         if profit <= 0:
@@ -13079,7 +13107,7 @@ async def tien_nga_confirm_payment_sh_callback(client, callback_query):
         # Build success message
         success_msg = (
             f"✅ <b>THANH TOÁN QUỸ CỔ ĐÔNG THÀNH CÔNG</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>Quỹ:</b> {investment.name} (<code>{investment.investment_code or 'N/A'}</code>)\n"
             f"<b>Ngày:</b> {today.strftime('%d/%m/%Y')}\n\n"
         )
@@ -13093,7 +13121,7 @@ async def tien_nga_confirm_payment_sh_callback(client, callback_query):
             )
 
         success_msg += (
-            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"\n{'━' * 15}\n"
             f"<b>TỔNG CHI THANH TOÁN:</b> <code>{fmt_vn(total_paid)}</code>\n"
             f"<b>Số phiếu chi đã tạo:</b> {sum(1 for d in payment_details if d['payment'] > 0)}\n"
             f"<b>Trạng Thái Phiếu:</b> APPROVED\n\n"
@@ -13129,7 +13157,7 @@ async def tien_nga_confirm_payment_sh_callback(client, callback_query):
 
                 notify_msg = (
                     f"<b>THÔNG BÁO THANH TOÁN QUỸ CỔ ĐÔNG</b>\n"
-                    f"━━━━━━━━━━━━━━━━━━\n\n"
+                    f"{'━' * 15}\n\n"
                     f"<b>Quỹ Đầu Tư:</b> {investment.name}\n"
                     f"<b>Mã Cổ Đông:</b> <code>{d['shareholder_code']}</code>\n"
                     f"<b>Tên Cổ Đông:</b> {d['fullname']}\n"
@@ -13170,6 +13198,7 @@ async def tien_nga_confirm_payment_sh_callback(client, callback_query):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_daily_product_handler(client, message: Message) -> None:
     from datetime import datetime, timedelta
     text = message.text.strip()
@@ -13623,14 +13652,14 @@ async def tien_nga_check_history_transaction_handler(client, message: Message) -
         # ------------------------------------------------------------------
         msg = (
             f"<b>LỊCH SỬ GIAO DỊCH CỔ ĐÔNG</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Mã Cổ Đông:</b> <code>{sh_code}</code>\n"
             f"<b>Tên Cổ Đông:</b> {sh_name}\n"
             f"<b>Quỹ Đầu Tư:</b> {inv_name} (<code>{inv_code}</code>)\n"
             f"<b>Vốn Góp:</b> <code>{fmt_vn(sh_invest_amount)}</code>\n"
             f"<b>Cổ Phần:</b> <b>{share_pct:.1f}%</b>\n"
             f"<b>Khoảng thời gian:</b> {period_label}\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
         )
 
         if not payments:
@@ -13671,7 +13700,7 @@ async def tien_nga_check_history_transaction_handler(client, message: Message) -
 
             # Summary
             msg += (
-                f"━━━━━━━━━━━━━━━━━━\n"
+                f"{'━' * 15}\n"
                 f"<b>TỔNG KẾT</b>\n\n"
                 f"Tổng Thu: <code>{fmt_vn(total_thu)}</code>\n"
                 f"Tổng Chi: <code>{fmt_vn(total_chi)}</code>\n"
@@ -13713,6 +13742,7 @@ async def tien_nga_check_history_transaction_handler(client, message: Message) -
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_report_summary_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_export_report_summary", "tien_nga_xuat_bc_tong_hop"])
     if args is None: return
@@ -13913,7 +13943,7 @@ async def rpt_sum_cb(client, callback_query: CallbackQuery):
 
         text = (
             f"<b>BÁO CÁO TỔNG HỢP TÀI CHÍNH</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>THÔNG TIN QUỸ ĐẦU TƯ</b>\n"
             f"  Tên Quỹ: <b>{inv.name or '—'}</b>\n"
             f"  Mã Quỹ: <code>{inv.investment_code or '—'}</code>\n"
@@ -13929,9 +13959,9 @@ async def rpt_sum_cb(client, callback_query: CallbackQuery):
             text += f"  Ghi chú: {inv.notes}\n"
 
         text += (
-            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"\n{'━' * 15}\n"
             f"<b>KỲ BÁO CÁO:</b> {period_label}\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>TỔNG HỢP GIAO DỊCH</b>\n"
             f"  Tổng số giao dịch: <b>{len(payments)}</b>\n"
             f"  Số phiếu thu: <b>{thu_count}</b>\n"
@@ -13952,7 +13982,7 @@ async def rpt_sum_cb(client, callback_query: CallbackQuery):
 
         # Thông tin tổng hợp từ bảng Investment (toàn thời gian)
         text += (
-            f"\n━━━━━━━━━━━━━━━━━━\n"
+            f"\n{'━' * 15}\n"
             f"<b>SỐ LIỆU TÍCH LŨY (TOÀN THỜI GIAN)</b>\n"
             f"  Tổng thu tích lũy: <code>{fmt_vn(inv.total_income or 0)}</code>\n"
             f"  Tổng chi tích lũy: <code>{fmt_vn(inv.total_expense or 0)}</code>\n"
@@ -14196,6 +14226,7 @@ SL Cây Đang Trồng: {land.planting_trees or 0}</pre>"""
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_delete_agricultural_land_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) < 2:
@@ -14365,12 +14396,12 @@ async def tien_nga_check_agricultural_land_handler(client, message: Message) -> 
 
         text = (
             f"<b>THÔNG TIN ĐẤT TRỒNG TRỌT</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Mã Đất:</b> <code>{land.land_code}</code>\n"
             f"<b>Tên Đất:</b> {land.land_name or '—'}\n"
             f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
             f"<b>Loại Cây Trồng:</b> {land.crop_type or '—'}\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>DIỆN TÍCH</b>\n"
             f"  Tổng: <b>{land.total_area}</b> ha\n"
             f"  Đang thu hoạch: <b>{land.harvest_area}</b> ha\n"
@@ -14536,6 +14567,7 @@ async def tien_nga_check_harvest_handler(client, message: Message) -> None:
 
 _HARVEST_LAND_PAGE_SIZE = 12
 
+@command_timeout(auto_delete_cmd=True)
 async def _send_harvest_land_buttons(target, lands, page=0, edit=False):
     total = len(lands)
     start = page * _HARVEST_LAND_PAGE_SIZE
@@ -15121,6 +15153,7 @@ async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("member")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST, CustomTitle.MEMBER_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_daily_harvest_handler(client, message: Message) -> None:
     from datetime import datetime
     from app.models.business import Households, AgriculturalLand, DailyHarvest
@@ -15592,6 +15625,7 @@ async def tien_nga_check_daily_harvest_handler(client, message: Message) -> None
 
 _DH_LAND_PAGE_SIZE = 12
 
+@command_timeout(auto_delete_cmd=True)
 async def _send_dh_land_buttons(target, lands, page=0, edit=False):
     total = len(lands)
     start = page * _DH_LAND_PAGE_SIZE
@@ -16102,6 +16136,7 @@ async def _do_check_daily_harvest(client, message, start_date, end_date, land_co
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_household_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -16385,6 +16420,7 @@ Ngân Hàng: {hh.bank_name or ''}</pre>"""
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_delete_household_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) < 2:
@@ -16451,6 +16487,7 @@ async def del_hh_callback(client, callback_query) -> None:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_rubber_tree_handler(client, message: Message) -> None:
     # Nếu message có nhiều dòng -> đây là form submission, chuyển sang form handler
     lines = (message.text or "").strip().split("\n")
@@ -16683,6 +16720,7 @@ async def tien_nga_rubber_tree_form_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_rubber_tree_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_check_rubber_tree", "tien_nga_kt_cay_cao_su"])
     if args is None: return
@@ -16746,13 +16784,13 @@ async def rt_check_callback(client, callback_query: CallbackQuery):
 
         text = (
             f"<b>THÔNG TIN CÂY CAO SU</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
+            f"{'━' * 15}\n"
             f"<b>Đất:</b> {land.land_name or land.land_code} (<code>{land.land_code}</code>)\n"
             f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
             f"<b>Cây thu hoạch:</b> {land.harvesting_trees or 0}\n"
             f"<b>Cây đang trồng:</b> {land.planting_trees or 0}\n"
             f"<b>Tổng cây hiện có:</b> {(land.harvesting_trees or 0) + (land.planting_trees or 0)}\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
         )
 
         # Thống kê tổng
@@ -16817,6 +16855,7 @@ async def rt_check_callback(client, callback_query: CallbackQuery):
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_durian_tree_handler(client, message: Message) -> None:
     lines = (message.text or "").strip().split("\n")
     if len(lines) >= 2:
@@ -17042,6 +17081,7 @@ async def tien_nga_durian_tree_form_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_durian_tree_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_kt_cay_sau_rieng"])
     if args is None: return
@@ -17102,15 +17142,15 @@ async def sr_check_callback(client, callback_query: CallbackQuery):
 
         text = (
             f"<b>KIỂM TRA CÂY SẦU RIÊNG</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>Đất:</b> {land.land_name or land.land_code} (<code>{land.land_code}</code>)\n"
             f"<b>Địa Chỉ:</b> {land.address or '—'}\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>SỐ LƯỢNG CÂY:</b>\n"
             f"<b>Cây thu hoạch:</b> {land.harvesting_trees or 0}\n"
             f"<b>Cây đang trồng:</b> {land.planting_trees or 0}\n"
             f"<b>Tổng cây hiện có:</b> {(land.harvesting_trees or 0) + (land.planting_trees or 0)}\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
         )
 
         text += (
@@ -17307,6 +17347,7 @@ Khối Lượng (Kg): 0
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("member")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST, CustomTitle.MEMBER_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_durian_harvest_member_handler(client, message: Message) -> None:
     """Thu hoạch sầu riêng hàng ngày — member gửi, main xác nhận."""
     from datetime import datetime as dt_cls
@@ -17922,6 +17963,7 @@ _TITLE_LABELS = {
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_member_group_handler(client, message: Message) -> None:
     from app.models.telegram import TelegramProjectMember
     from app.models.business import Projects
@@ -18274,6 +18316,7 @@ async def execute_tien_nga_truy_xuat_tt_thu_mua(message_or_query, hoursehold_id:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_truy_xuat_tt_thu_mua_handler(client, message: Message) -> None:
     args = message.text.strip().split()
     
@@ -18874,7 +18917,7 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
                     f"📢 <b>THÔNG BÁO ỨNG TIỀN</b>\n\n"
                     f"<b>Mã Hộ:</b> <code>{customer.hoursehold_id}</code>\n"
                     f"<b>Tên KH:</b> {customer.fullname}\n"
-                    f"{'━' * 20}\n"
+                    f"{'━' * 15}\n"
                     f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
                     f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(customer.cash_advance)}</code>"
                 )
@@ -18917,6 +18960,7 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_khau_tru_tien_ung"])
     if args is None: return
@@ -18987,7 +19031,7 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
             f"<b>KHẤU TRỪ TIỀN ỨNG</b>\n\n"
             f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
             f"<b>Tên KH:</b> {customer.fullname}\n"
-            f"{'━' * 20}\n"
+            f"{'━' * 15}\n"
             f"<b>Số tiền ứng hiện tại:</b> <code>{fmt_money(cash_adv)}</code>\n"
             f"<b>Số tiền khấu trừ:</b> <code>{fmt_money(deducted_amount)}</code>\n"
             f"<b>→ Số tiền ứng sau khấu trừ:</b> <code>{fmt_money(new_cash_advance)}</code>\n\n"
@@ -19051,10 +19095,10 @@ async def kttu_confirm_callback(client, callback_query):
             f"✅ <b>KHẤU TRỪ TIỀN ỨNG THÀNH CÔNG</b>\n\n"
             f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
             f"<b>Tên KH:</b> {customer.fullname}\n"
-            f"{'━' * 20}\n"
+            f"{'━' * 15}\n"
             f"<b>Số tiền đã khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
             f"<b>Số tiền ứng còn lại:</b> <code>{fmt_money(customer.cash_advance)}</code>\n"
-            f"{'━' * 20}\n"
+            f"{'━' * 15}\n"
             f"<i>Thực hiện bởi: {callback_query.from_user.first_name or ''} "
             f"(@{callback_query.from_user.username or 'N/A'})</i>"
         )
@@ -19076,7 +19120,7 @@ async def kttu_confirm_callback(client, callback_query):
                     f"📢 <b>THÔNG BÁO KHẤU TRỪ TIỀN ỨNG</b>\n\n"
                     f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
                     f"<b>Tên KH:</b> {customer.fullname}\n"
-                    f"{'━' * 20}\n"
+                    f"{'━' * 15}\n"
                     f"<b>Số tiền đã khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
                     f"<b>Số tiền ứng còn lại:</b> <code>{fmt_money(customer.cash_advance)}</code>"
                 )
@@ -19129,6 +19173,7 @@ async def kttu_cancel_callback(client, callback_query):
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_danh_sach_ung_tien_handler(client, message: Message) -> None:
     db = SessionLocal()
     try:
@@ -19484,7 +19529,7 @@ async def tien_nga_confirmed_handler(client, message: Message) -> None:
                     f"📢 <b>THÔNG BÁO ỨNG TIỀN VƯỢT HẠN MỨC (ĐÃ PHÊ DUYỆT)</b>\n\n"
                     f"<b>Mã Hộ:</b> <code>{customer.hoursehold_id}</code>\n"
                     f"<b>Tên KH:</b> {customer.fullname}\n"
-                    f"{'━' * 20}\n"
+                    f"{'━' * 15}\n"
                     f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
                     f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(customer.cash_advance)}</code>\n"
                     f"<b>Người phê duyệt:</b> Owner (@{message.from_user.username or message.from_user.id})"
@@ -19611,7 +19656,7 @@ async def tien_nga_thong_ke_cong_no_handler(client, message: Message) -> None:
             f"<i>Ngày: {datetime.now().strftime('%d/%m/%Y %H:%M')}</i>\n\n"
             f"<b>TỔNG CÔNG NỢ:</b> <code>{fmt_vn(grand_total)}</code>\n"
             f"<b>TỔNG SỐ KHÁCH HÀNG:</b> <code>{grand_count}</code>\n"
-            f"{'━' * 20}\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>CHI TIẾT THEO ĐIỂM THU MUA:</b>\n\n"
         )
 
@@ -19812,6 +19857,7 @@ async def tien_nga_thong_ke_cong_no_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_loss_statistics_handler(client, message: Message) -> None:
     """Thống kê hao hụt: hiển thị button chọn khoảng thời gian hoặc nhập ngày trực tiếp."""
     args = message.text.strip().split(None, 1)
@@ -20449,6 +20495,7 @@ Ghi Chú: </pre>
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_delete_supplies_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) < 2:

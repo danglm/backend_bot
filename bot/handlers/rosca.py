@@ -2,7 +2,7 @@ from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode
 from bot.utils.bot import bot
-from bot.utils.utils import check_command_target, require_user_type, require_group_role, require_project_name
+from bot.utils.utils import check_command_target, require_user_type, require_group_role, require_project_name, command_timeout
 from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
@@ -244,6 +244,7 @@ Vai Trò (Owner/Player): {user.role or 'Player'}
 @bot.on_message(filters.command(["hui_xoa_nguoi_choi", "rosca_delete_user"]) | filters.regex(r"^@\w+\s+/(hui_xoa_nguoi_choi|rosca_delete_user)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delete_user_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_xoa_nguoi_choi", "rosca_delete_user"])
     if args is None: return
@@ -693,6 +694,7 @@ Ghi Chú: {rosca.note or ''}
 @bot.on_message(filters.command(["hui_xoa_day_hui", "roscas_delete_roscas"]) | filters.regex(r"^@\w+\s+/(hui_xoa_day_hui|roscas_delete_roscas)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delete_roscas_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_xoa_day_hui", "roscas_delete_roscas"])
     if args is None: return
@@ -775,6 +777,7 @@ async def rosca_delete_rosca_cancel_callback(client, callback_query: CallbackQue
 @bot.on_message(filters.command(["hui_tao_chan_hui", "roscas_create_member"]) | filters.regex(r"^@\w+\s+/(hui_tao_chan_hui|roscas_create_member)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_create_member_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_tao_chan_hui", "roscas_create_member"])
     if args is None: return
@@ -1138,6 +1141,7 @@ Ghi Chú: {member.note or ''}
 @bot.on_message(filters.command(["hui_xoa_chan_hui", "roscas_delete_member"]) | filters.regex(r"^@\w+\s+/(hui_xoa_chan_hui|roscas_delete_member)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delete_member_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_xoa_chan_hui", "roscas_delete_member"])
     if args is None: return
@@ -1404,7 +1408,7 @@ async def rosca_check_contributions_handler(client, message: Message) -> None:
             simulated_profit = total_withdrawn_amount - min_receive
             
             sim_text = (
-                f"{'━' * 20}\n"
+                f"{'━' * 15}\n"
                 f"- <b>Lợi nhuận giả lập:</b> <b>{fmt_vn(simulated_profit)}</b>\n"
                 f"  <i>(Tiền bỏ hụi giả định: {fmt_vn(upcoming_bid)})</i>\n"
                 f"  <i>(Tổng hốt hụi giả định: {fmt_vn(total_withdrawn_amount)})</i>\n"
@@ -1412,7 +1416,7 @@ async def rosca_check_contributions_handler(client, message: Message) -> None:
             )
         else:
             sim_text = (
-                f"{'━' * 20}\n"
+                f"{'━' * 15}\n"
                 f"- <b>Lợi nhuận giả lập:</b> N/A <i>(Chưa có kỳ đóng hụi nào được ghi nhận hoặc chân hụi đã hốt)</i>\n"
             )
 
@@ -1431,7 +1435,7 @@ async def rosca_check_contributions_handler(client, message: Message) -> None:
             f"- Ngày bắt đầu: <b>{start_date_str}</b>\n"
             f"- Ngày kết thúc: <b>{end_date_str}</b>\n"
             f"{sim_text}"
-            f"{'━' * 20}\n\n"
+            f"{'━' * 15}\n\n"
         )
 
         for idx, c in enumerate(contributions, start=1):
@@ -1449,7 +1453,7 @@ async def rosca_check_contributions_handler(client, message: Message) -> None:
 
         # Summary
         text += (
-            f"\n{'━' * 20}\n"
+            f"\n{'━' * 15}\n"
             f"<b>TỔNG KẾT:</b>\n"
             f"- Số kỳ đã đóng: <b>{count_paid}</b>\n"
             f"- Số kỳ chưa đóng: <b>{count_unpaid}</b>\n"
@@ -1489,6 +1493,7 @@ async def rosca_check_contributions_handler(client, message: Message) -> None:
 # --- Rosca: Pay Contribution (Đóng Tiền Chân Hụi) ---
 @bot.on_message(filters.command(["hui_dong_tien_chan_hui", "roscas_pay_contribution"]) | filters.regex(r"^@\w+\s+/(hui_dong_tien_chan_hui|roscas_pay_contribution)\b"))
 @require_group_role("member", "main")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_pay_contribution_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_dong_tien_chan_hui", "roscas_pay_contribution"])
     if args is None: return
@@ -1742,7 +1747,34 @@ async def rosca_pay_contribution_confirm_callback(client, callback_query: Callba
         db.commit()
 
         round_info = f"\n- Kỳ thu hụi: <b>Kỳ {data['round_number']}</b>" if data.get('round_number') else ""
-        msg_text = f"✅ Đã ghi nhận đóng hụi thành công!\n- Mã GD: <code>{new_contribution.id}</code>\n- Dây hụi: <b>{data['rosca_code']}</b>{round_info}\n- Chân hụi: <b>{data['member_id']}</b>\n- Số tiền: <b>{data['amount']:,.0f} VNĐ</b>\n\n<i>Lưu ý: Bạn có thể Reply tin nhắn này kèm lệnh /hui_huy_dong_tien để hủy giao dịch.</i>"
+        
+        from app.models.rosca import Rosca
+        from bot.utils.utils import fmt_vn
+        from sqlalchemy import func
+
+        rosca = db.query(Rosca).filter(Rosca.id == data["rosca_id"]).first()
+        paid_rounds_count = db.query(func.count(RoscaContribution.id)).filter(
+            RoscaContribution.member_id == member.id,
+            RoscaContribution.status == "Paid"
+        ).scalar() or 0
+
+        total_parts = rosca.total_parts if (rosca and rosca.total_parts) else None
+        if total_parts:
+            rem_rounds = max(0, total_parts - paid_rounds_count)
+            rem_str = f"<b>{rem_rounds}</b> kỳ (Đã đóng {paid_rounds_count}/{total_parts})"
+        else:
+            rem_str = f"<b>N/A</b> (Đã đóng {paid_rounds_count} kỳ)"
+
+        msg_text = (
+            f"✅ Đã ghi nhận đóng hụi thành công!\n"
+            f"- Mã GD: <code>{new_contribution.id}</code>\n"
+            f"- Dây hụi: <b>{data['rosca_code']}</b>{round_info}\n"
+            f"- Chân hụi: <b>{data['member_id']}</b>\n"
+            f"- Số tiền: <b>{data['amount']:,.0f} VNĐ</b>\n"
+            f"- Tổng tiền đã đóng: <b>{fmt_vn(member.total_contributed or 0)}</b>\n"
+            f"- Còn lại: {rem_str}\n\n"
+            f"<i>Lưu ý: Bạn có thể Reply tin nhắn này kèm lệnh /hui_huy_dong_tien để hủy giao dịch.</i>"
+        )
         await callback_query.message.edit_text(msg_text, parse_mode=ParseMode.HTML)
         LogInfo(f"[RoscaContribution] Member {data['member_id']} paid {data['amount']} in rosca {data['rosca_code']} (Round {data.get('round_number')}) by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
         
@@ -1846,6 +1878,7 @@ async def rosca_cancel_contribution_handler(client, message: Message) -> None:
 # --- Rosca: Rút Dây Hụi (Hốt Hụi) ---
 @bot.on_message(filters.command(["hui_rut_day_hui", "roscas_withdraw"]) | filters.regex(r"^@\w+\s+/(hui_rut_day_hui|roscas_withdraw)\b"))
 @require_group_role("main", "member")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_withdraw_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_rut_day_hui", "roscas_withdraw"])
     if args is None: return
@@ -2482,6 +2515,7 @@ _rosca_report_cache = {}
 
 @bot.on_message(filters.command(["hui_bao_cao_hui"]) | filters.regex(r"^@\w+\s+/hui_bao_cao_hui\b"))
 @require_group_role("main", "member")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_bao_cao_hui_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_bao_cao_hui"])
     if args is None: return
@@ -2604,7 +2638,7 @@ async def rosca_bao_cao_hui_handler(client, message: Message) -> None:
             f"<b>BÁO CÁO HỤI NĂM {year}</b>\n"
             f"Cập nhật: {now.strftime('%d/%m/%Y %H:%M')}\n"
             f"Người chơi: <b>{user.full_name}</b> ({user.id})\n"
-            f"{'━' * 10}\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>1. Tổng quan</b>\n"
             f"  • Tổng số chân hụi: <b>{total_chan}</b>\n"
             f"  • Tổng số chân lời: <b>{total_loi}</b>\n"

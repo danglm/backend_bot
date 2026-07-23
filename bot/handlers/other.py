@@ -3,7 +3,7 @@ from bot.utils.enums import CustomTitle
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode
 from bot.utils.bot import bot
-from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_group_role, require_custom_title
+from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_group_role, require_custom_title, command_timeout
 from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
@@ -1105,14 +1105,14 @@ async def check_log_device_handler(client, message: Message) -> None:
 
             file_content = (
                 f"LỊCH SỬ NHẬN/TRẢ THIẾT BỊ\n"
-                f"{'='*40}\n"
+                f"{'━' * 15}\n"
                 f"Loại: {device_type.upper()}\n"
                 f"Tên: {device_name}\n"
                 f"Mã: {device.id}\n"
                 f"{device_detail}\n"
                 f"Trạng thái hiện tại: {device.status}\n"
                 f"Tổng lượt nhận: {total_assignments}\n"
-                f"{'='*40}\n\n"
+                f"{'━' * 15}\n\n"
             )
 
             for idx, log in enumerate(reversed(all_logs), 1):
@@ -1126,7 +1126,7 @@ async def check_log_device_handler(client, message: Message) -> None:
                     f"  Ngày trả:    {returned_date}\n"
                     f"  TT ban đầu:  {log.initial_condition or 'N/A'}\n"
                     f"  TT khi trả:  {log.final_condition or 'N/A'}\n"
-                    f"{'-'*40}\n"
+                    f"{'━' * 15}\n"
                 )
 
             import os
@@ -1159,7 +1159,7 @@ async def check_log_device_handler(client, message: Message) -> None:
             f"<b>Mã:</b> <code>{device.id}</code>\n"
             f"<b>{device_detail}</b>\n"
             f"<b>Trạng thái hiện tại:</b> {device.status}\n"
-            f"-------------------\n\n"
+            f"{'━' * 15}\n\n"
         )
 
         for log in reversed(logs):
@@ -1172,7 +1172,7 @@ async def check_log_device_handler(client, message: Message) -> None:
                 f"<b>Ngày trả:</b> {returned_date}\n"
                 f"<b>TT ban đầu:</b> {log.initial_condition or 'N/A'}\n"
                 f"<b>TT khi trả:</b> {log.final_condition or 'N/A'}\n"
-                f"-------------------\n"
+                f"{'━' * 15}\n"
             )
 
         if len(response) > 4096:
@@ -2099,9 +2099,9 @@ async def list_device_handler(client, message: Message) -> None:
             import os
             file_content = (
                 f"DANH SÁCH THIẾT BỊ\n"
-                f"{'='*50}\n"
+                f"{'━' * 15}\n"
                 f"Tổng: {total_devices} thiết bị ({len(smartphones)} ĐT, {len(laptops)} Laptop, {len(screens)} MH, {len(cameras)} Cam, {len(other_devices)} TB khác)\n"
-                f"{'='*50}\n\n"
+                f"{'━' * 15}\n\n"
             )
 
             for idx, e in enumerate(entries, 1):
@@ -2114,7 +2114,7 @@ async def list_device_handler(client, message: Message) -> None:
                     f"  Phụ kiện:   {e['accessories']}\n"
                     f"  SIM:        {e['sim']}\n"
                     f"  Ứng dụng:   {e['apps']}\n"
-                    f"{'-'*50}\n"
+                    f"{'━' * 15}\n"
                 )
 
             file_name = f"list_device_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -2136,7 +2136,7 @@ async def list_device_handler(client, message: Message) -> None:
         response = (
             f"<b>DANH SÁCH THIẾT BỊ</b>\n"
             f"Tổng: {total_devices} thiết bị ({len(smartphones)} ĐT, {len(laptops)} Laptop, {len(screens)} MH, {len(cameras)} Cam, {len(other_devices)} TB khác)\n"
-            f"-------------------\n\n"
+            f"{'━' * 15}\n\n"
         )
 
         for e in entries:
@@ -2151,7 +2151,7 @@ async def list_device_handler(client, message: Message) -> None:
                 response += f"<b>SIM:</b> {e['sim']}\n"
             response += (
                 f"<b>Ứng dụng:</b> {e['apps']}\n"
-                f"-------------------\n"
+                f"{'━' * 15}\n"
             )
 
         if len(response) > 4096:
@@ -2315,6 +2315,7 @@ async def check_device_handler(client, message: Message) -> None:
 @require_project_name("Other")
 @require_group_role("main")
 @require_custom_title(CustomTitle.MAIN_DEVICE)
+@command_timeout(auto_delete_cmd=True)
 async def sync_app_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_sync_app", "other_dong_bo_ung_dung"])
     if args is None: return
@@ -2795,6 +2796,7 @@ async def delete_laptop_handler(client, message: Message) -> None:
 @require_project_name("Other")
 @require_group_role("main")
 @require_custom_title(CustomTitle.MAIN_DEVICE)
+@command_timeout(auto_delete_cmd=True)
 async def create_device_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_create_device", "other_tao_thiet_bi"])
     if args is None: return
@@ -4430,7 +4432,7 @@ async def other_receive_vehicle_handler(client, message: Message) -> None:
                     f"<b>Loại xe:</b> {v.vehicle_type or 'N/A'}\n"
                     f"<b>Màu:</b> {v.color or 'N/A'}\n"
                     f"<b>Biển số:</b> <code>{v.license_plate}</code>\n"
-                    f"-------------------\n"
+                    f"{'━' * 15}\n"
                 )
             await message.reply_text(f"{instruction}\n\n{vehicle_list}", parse_mode=ParseMode.HTML)
         except Exception as e:
@@ -4657,14 +4659,14 @@ async def other_check_log_vehicle_handler(client, message: Message) -> None:
 
             file_content = (
                 f"LỊCH SỬ HOẠT ĐỘNG XE\n"
-                f"{'='*40}\n"
+                f"{'━' * 15}\n"
                 f"Biển số: {vehicle.license_plate}\n"
                 f"Loại xe: {vehicle.vehicle_type or 'N/A'}\n"
                 f"Thương hiệu: {vehicle.brand or 'N/A'} {vehicle.model or ''}\n"
                 f"Chủ xe: {vehicle.owner_name or 'N/A'}\n"
                 f"Trạng thái hiện tại: {status_display}\n"
                 f"Tổng lượt nhận xe: {total_receive}\n"
-                f"{'='*40}\n\n"
+                f"{'━' * 15}\n\n"
             )
 
             for idx, log in enumerate(reversed(all_receive_logs), 1):
@@ -4683,7 +4685,7 @@ async def other_check_log_vehicle_handler(client, message: Message) -> None:
                     f"  Tài xế:   @{log.telegram_username}\n"
                     f"  Nhận xe:  {receive_time}\n"
                     f"  Trả xe:   {return_time}\n"
-                    f"{'-'*40}\n"
+                    f"{'━' * 15}\n"
                 )
 
             import os
@@ -4716,7 +4718,7 @@ async def other_check_log_vehicle_handler(client, message: Message) -> None:
             f"<b>Thương hiệu:</b> {vehicle.brand or 'N/A'} {vehicle.model or ''}\n"
             f"<b>Chủ xe:</b> {vehicle.owner_name or 'N/A'}\n"
             f"<b>Trạng thái hiện tại:</b> {status_display}\n"
-            f"-------------------\n\n"
+            f"{'━' * 15}\n\n"
         )
 
         for log in reversed(receive_logs):
@@ -4734,7 +4736,7 @@ async def other_check_log_vehicle_handler(client, message: Message) -> None:
                 f"<b>Tài xế:</b> @{log.telegram_username}\n"
                 f"<b>Nhận xe:</b> {receive_time}\n"
                 f"<b>Trả xe:</b> {return_time}\n"
-                f"-------------------\n"
+                f"{'━' * 15}\n"
             )
 
         if len(response) > 4096:
@@ -4782,7 +4784,7 @@ async def list_vehicle_handler(client, message: Message) -> None:
 
         response = f"<b>DANH SÁCH PHƯƠNG TIỆN</b>\n"
         response += f"Tổng cộng: <b>{len(vehicles)}</b> phương tiện\n"
-        response += f"--------------------\n\n"
+        response += f"{'━' * 15}\n\n"
 
         for status_key in ["activited", "inactivity"]:
             v_list = grouped.get(status_key, [])
@@ -4821,7 +4823,7 @@ async def list_vehicle_handler(client, message: Message) -> None:
                 )
                 if v.status == "activited":
                     response += f"<b>Tài xế hiện tại:</b> {holder}\n"
-                response += f"-------------------\n"
+                response += f"{'━' * 15}\n"
 
             response += "\n"
 
@@ -5118,6 +5120,7 @@ Nội Dung Nhắc Nhở: Tin nhắn tùy chỉnh gửi lên Telegram khi đến 
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def update_document_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_update_document", "other_cap_nhat_giay_to"])
     if args is None: return
@@ -5272,6 +5275,7 @@ def build_reminders_pagination_keyboard(db, page: int = 1, limit: int = 10):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def update_reminder_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_update_reminder", "other_cap_nhat_lich_hen"])
     if args is None: return
@@ -5481,6 +5485,7 @@ def build_reminders_delete_pagination_keyboard(db, page: int = 1, limit: int = 1
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def delete_document_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_delete_document", "other_xoa_giay_to"])
     if args is None: return
@@ -5540,6 +5545,7 @@ async def delete_document_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Other")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def delete_reminder_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_delete_reminder", "other_xoa_lich_hen"])
     if args is None: return
@@ -5620,6 +5626,7 @@ def build_documents_list_keyboard(page_docs: list, total_docs: int, page: int = 
 @bot.on_message(filters.command(["other_list_documents", "other_danh_sach_giay_to"]) | filters.regex(r"^@\w+\s+/(other_list_documents|other_danh_sach_giay_to)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Other")
+@command_timeout(auto_delete_cmd=True)
 async def list_documents_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_list_documents", "other_danh_sach_giay_to"])
     if args is None: return
@@ -6006,7 +6013,7 @@ async def view_doc_sel_cb(client, callback_query: CallbackQuery):
 
         response = (
             f"📁 <b>CHI TIẾT GIẤY TỜ & HỒ SƠ</b> 📁\n"
-            f"━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>Tên giấy tờ:</b> {doc.title}\n"
             f"<b>Chủ sở hữu:</b> {doc.owner_name or 'N/A'}\n"
             f"<b>Số hiệu:</b> <code>{doc.document_code or 'N/A'}</code>\n"
@@ -6015,7 +6022,7 @@ async def view_doc_sel_cb(client, callback_query: CallbackQuery):
             f"<b>Hạn dùng:</b> <b>{expiry_str}</b>{days_left_text}\n"
             f"<b>Ghi chú/Mô tả:</b> {doc.description or 'Không có'}\n"
             f"<b>Mã Giấy Tờ:</b> <code>{doc.id}</code>\n\n"
-            f"━━━━━━━━━━\n\n"
+            f"{'━' * 15}\n\n"
         )
 
         rems = db.query(DocumentReminder).filter(
@@ -6061,6 +6068,7 @@ async def view_doc_sel_cb(client, callback_query: CallbackQuery):
 @require_project_name("Other")
 @require_group_role("main")
 @require_custom_title(CustomTitle.MAIN_DEVICE)
+@command_timeout(auto_delete_cmd=True)
 async def update_device_unified_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_update_device", "other_cap_nhat_thiet_bi"])
     if args is None: return
@@ -6328,6 +6336,7 @@ async def update_device_unified_cb_handler(client, callback_query: CallbackQuery
 @require_project_name("Other")
 @require_group_role("main")
 @require_custom_title(CustomTitle.MAIN_DEVICE)
+@command_timeout(auto_delete_cmd=True)
 async def delete_device_unified_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["other_delete_device", "other_xoa_thiet_bi"])
     if args is None: return

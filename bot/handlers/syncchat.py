@@ -2,7 +2,7 @@ from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode, ChatMemberStatus
 from bot.utils.bot import bot
-from bot.utils.utils import check_command_target, require_user_type, require_group_role
+from bot.utils.utils import check_command_target, require_user_type, require_group_role, command_timeout
 from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
@@ -12,6 +12,7 @@ import datetime
 
 # --- Step 1: Request Project Selection ---
 @bot.on_message(filters.command("syncchat") | filters.regex(r"^@\w+\s+/syncchat\b"))
+@command_timeout(auto_delete_cmd=True)
 async def syncchat_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, "syncchat")
     if args is None: return
@@ -584,6 +585,7 @@ async def sync_cancel_callback(client, callback_query: CallbackQuery):
 # --- Get Info Customer ---
 @bot.on_message(filters.command("get_info_customer") | filters.regex(r"^@\w+\s+/get_info_customer\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
+@command_timeout(auto_delete_cmd=True)
 async def get_info_customer_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, "get_info_customer")
     if args is None: return

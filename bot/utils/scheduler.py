@@ -1131,7 +1131,7 @@ async def interest_payment_notification_worker():
                                     f"<b>Liên hệ:</b> {customer.contact_info}\n"
                                     f"<b>Mã Hợp Đồng:</b> <code>{contract.contract_id}</code>\n"
                                     f"<b>Số tiền lãi cần đóng:</b> <b>{current_interest_debt:,} VND</b>\n"
-                                    f"--------------------\n"
+                                    f"{'━' * 15}\n"
                                     f"<i>Quý khách vui lòng thanh toán đúng hạn. Cảm ơn Quý Khách Hàng.</i>\n"
                                     f"<i>Sau khi Quý Khách Hàng đã thanh toán, vui lòng gửi lại biên lai thanh toán để Admin được xác nhận.</i>\n"
                                     f"<i>Admin vui lòng nhập <pre>/credit_payment_confirmed [Số tiền thanh toán]</pre> để xác nhận thanh toán.</i>\n"
@@ -1293,7 +1293,7 @@ async def rental_payment_notification_worker():
                                 f"<b>Tiền thuê cần đóng:</b> <b>{monthly:,} VNĐ</b>\n"
                                 # f"<b>Công nợ hiện tại:</b> <b>{debt:,} VNĐ</b>\n"
                                 f"<b>Thời gian thuê:</b> {fmt_dt(contract.start_rental)} - {fmt_dt(contract.end_rental)}\n"
-                                f"--------------------\n"
+                                f"{'━' * 15}\n"
                                 f"<i>Quý khách vui lòng thanh toán đúng hạn. Cảm ơn Quý Khách Hàng.</i>\n"
                                 f"<i>Sau khi Quý Khách Hàng đã thanh toán, vui lòng gửi lại biên lai thanh toán để Admin được xác nhận.</i>\n"
                                 f"<i>Admin vui lòng nhập <pre>/rental_payment_confirmed [Số tiền thanh toán]</pre> để xác nhận thanh toán.</i>"
@@ -1346,7 +1346,7 @@ async def rental_payment_notification_worker():
                                             f"<b>Mã BĐS:</b> {contract.real_estate_id or 'N/A'}\n"
                                             f"<b>Tiền thuê / tháng:</b> <b>{monthly:,} VNĐ</b>\n"
                                             # f"<b>Công nợ hiện tại:</b> <b>{debt:,} VNĐ</b>\n"
-                                            f"--------------------\n"
+                                            f"{'━' * 15}\n"
                                             f"<i>Hệ thống đã nhắc nhở 7 ngày liên tục nhưng khách hàng vẫn chưa thanh toán.\n"
                                             f"Vui lòng liên hệ trực tiếp để xử lý.</i>"
                                         )
@@ -1574,7 +1574,7 @@ async def send_factory_purchase_report(db, project_id, current_date, client, spe
             
         report_text = f"<b>TỔNG HỢP MUA MỦ - {cp_name.upper()}</b>\n"
         report_text += f"<b>Ngày:</b> {current_date.strftime('%d/%m/%Y')}\n"
-        report_text += f"--------------------\n"
+        report_text += f"{'━' * 15}\n"
         
         total_all_amount = 0
         
@@ -1601,7 +1601,7 @@ async def send_factory_purchase_report(db, project_id, current_date, client, spe
             report_text += f" Giá thu mua trung bình: <b>{fmt_money_vn(avg_total_price)} VNĐ</b>\n"
             report_text += f" Tổng thành tiền: <b>{fmt_money_vn(t_amount)} VNĐ</b>\n\n"
             
-        report_text += f"--------------------\n"
+        report_text += f"{'━' * 15}\n"
         report_text += f"<b>TỔNG THÀNH TIỀN: {fmt_money_vn(total_all_amount)} VNĐ</b>\n\n"
         report_text += f"<b>Nhắc nhở:</b> Admin vui lòng thực hiện lệnh <code>/tien_nga_kiem_soat_hao_hut</code> nếu đã thấy ok. Nếu chưa thấy ok thì hãy làm các lệnh liên quan để hoàn thiện rồi nhấn vào nút <b>Tạo lại báo cáo</b>."
         
@@ -2042,7 +2042,7 @@ async def generate_and_send_inventory_report(client, target_date: datetime.date 
                 
             report_text = f"<b>TỔNG HỢP KẾT QUẢ XUẤT/NHẬP KHO - {inv_name.upper()}</b>\n"
             report_text += f"<b>Ngày:</b> {target_date.strftime('%d/%m/%Y')}\n"
-            report_text += f"--------------------\n"
+            report_text += f"{'━' * 15}\n"
             report_text += f" Tổng nhập kho: <b>{total_import:,.2f} Kg</b>\n"
             report_text += f" Tổng xuất kho: <b>{total_export:,.2f} Kg</b>\n"
             report_text += f" Số lượng Tồn kho: <b>{current_stock:,.2f} Kg</b>\n"
@@ -2210,7 +2210,7 @@ async def send_harvest_summary_report(db, project_id, current_date, client, spec
 
         report_text = f"<b>TỔNG HỢP KẾT QUẢ THU HOẠCH CAO SU - {aff.upper()}</b>\n"
         report_text += f"<b>Ngày:</b> {current_date.strftime('%d/%m/%Y')}\n"
-        report_text += f"--------------------\n"
+        report_text += f"{'━' * 15}\n"
         report_text += f" Tổng số lượng cây thu hoạch: <b>{total_trees:,.0f} cây</b>\n"
         report_text += f" Tổng tiền trả cạo mủ: <b>{fmt_money_vn(total_harvest_amount)} VNĐ</b>\n"
         report_text += f" Tổng SL Mủ nước thu mua: <b>{total_actual_weight:,.2f} kg</b>\n"
@@ -2592,7 +2592,12 @@ async def rosca_payment_notification_worker():
                                             f"<b>Kỳ đóng:</b> Ngày {rosca.payment_day} hàng tháng\n"
                                             f"<b>Mức bỏ hụi tối thiểu:</b> {min_bid:,.0f} VNĐ\n"
                                             f"<b>Mức bỏ hụi tối đa:</b> {max_bid:,.0f} VNĐ\n\n"
-                                            f"<i>Vui lòng nộp tiền hụi đúng hạn và thực hiện bỏ thăm nếu có nhu cầu hốt hụi kỳ này!</i>"
+                                            f"<i>Vui lòng nộp tiền hụi đúng hạn và thực hiện bỏ thăm nếu có nhu cầu hốt hụi kỳ này!</i>\n\n"
+                                            f"💡 <b>GỢI Ý LỆNH THAO TÁC:</b>\n"
+                                            f"🔹 <b>Đóng tiền chân hụi:</b> <code>/hui_dong_tien_chan_hui</code>\n"
+                                            f"  <i>(Gõ lệnh để chọn dây hụi hoặc điền form thông tin đóng hụi)</i>\n"
+                                            f"🔹 <b>Rút dây hụi / Hốt hụi:</b> <code>/hui_rut_day_hui [Mã_Chân_Hụi] [Số_Tiền_Hốt]</code>\n"
+                                            f"  <i>(Ví dụ: <code>/hui_rut_day_hui AT001 50000000</code>)</i>"
                                         )
                                         await client.send_message(
                                             chat_id=target_chat_id,

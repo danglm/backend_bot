@@ -3,13 +3,13 @@ import asyncio
 import re
 from bot.utils.logger import LogType, LogInfo, LogError
 from pyrogram import filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.enums import ParseMode
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ChatMemberUpdated
+from pyrogram.enums import ParseMode, ChatMemberStatus
 from bot.utils.bot import bot
 from bot.utils.db_logger import log_member_activity
 from bot.utils.enums import UserType
 from bot.utils.states import request_tracker
-from bot.utils.utils import get_best_match, require_user_type, require_group_role, check_command_target
+from bot.utils.utils import get_best_match, require_user_type, require_group_role, check_command_target, command_timeout
 from app.db.session import SessionLocal
 from app.models.finance import Attendance
 from app.crud.attendance import get_attendance
@@ -229,52 +229,122 @@ async def clearchat_handler(bot, message: Message) -> None:
         LogError(f"Error in clearchat_handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
 
+async def handle_left_member_notification(
+    client,
+    chat_id: int,
+    chat_title: str,
+    left_member,
+    actor=None,
+    is_kicked: bool = False
+) -> None:
+    if not left_member or left_member.is_self:
+        return
+
+    name = left_member.first_name or ""
+    if left_member.last_name:
+        name += f" {left_member.last_name}"
+    name = name.strip() or "Thành viên"
+
+    actor_name = ""
+    actor_username = ""
+    if actor and actor.id != left_member.id:
+        is_kicked = True
+        actor_name = actor.first_name or ""
+        if actor.last_name:
+            actor_name += f" {actor.last_name}"
+        actor_name = actor_name.strip()
+        actor_username = f" (@{actor.username})" if actor.username else ""
+
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        member_group = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(chat_id),
+            TelegramProjectMember.role == "member"
+        ).first()
+        if not member_group:
+            LogInfo(f"[HR] Left member event ignored: chat_id {chat_id} is not registered as role='member' in DB.", LogType.MEMBER_LOG)
+            return
+
+        main_group = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.project_id == member_group.project_id,
+            TelegramProjectMember.role == "main"
+        ).first()
+        if not main_group:
+            LogInfo(f"[HR] Left member event ignored: project {member_group.project_id} has no role='main' group in DB.", LogType.MEMBER_LOG)
+            return
+
+        username = left_member.username
+        username_str = f" (@{username})" if username else ""
+        
+        if is_kicked:
+            by_str = f"Admin <b>{actor_name}</b>{actor_username} " if actor_name else ""
+            action_text = f"bị {by_str}<b>xóa (kick) khỏi nhóm</b>"
+        else:
+            action_text = "vừa <b>tự rời khỏi nhóm</b>"
+
+        notify_text = (
+            f"⚠️ <b>THÔNG BÁO NHÂN SỰ:</b>\n"
+            f"Tài khoản <b>{name}</b>{username_str} {action_text} Member <b>{chat_title}</b>."
+        )
+        try:
+            await client.send_message(
+                chat_id=int(main_group.chat_id),
+                text=notify_text,
+                parse_mode=ParseMode.HTML
+            )
+            LogInfo(f"[HR] Sent left member notification for user {left_member.id} to main group {main_group.chat_id}", LogType.MEMBER_LOG)
+        except Exception as ex:
+            LogError(f"Failed to notify main group {main_group.chat_id}: {ex}", LogType.MEMBER_LOG)
+    except Exception as e:
+        LogError(f"Error in handle_left_member_notification: {e}", LogType.SYSTEM_STATUS)
+    finally:
+        db.close()
+
 @bot.on_message(filters.left_chat_member)
 async def left_chat_member_handler(client, message: Message) -> None:
     """
-    Handler to track and notify when a member voluntarily leaves the group or is removed.
+    Handler for standard service message left_chat_member.
     """
     left_member = message.left_chat_member
-    
-    if left_member.is_self:
-        return
-        
-    name = left_member.first_name
-    if left_member.last_name:
-        name += f" {left_member.last_name}"
-        
-    db = SessionLocal()
-    try:
-        # --- Cross-group notification for Project Member/Main ---
-        from app.models.telegram import TelegramProjectMember
-        member_group = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.chat_id == str(message.chat.id),
-            TelegramProjectMember.role == "member"
-        ).first()
-        if member_group:
-            main_group = db.query(TelegramProjectMember).filter(
-                TelegramProjectMember.project_id == member_group.project_id,
-                TelegramProjectMember.role == "main"
-            ).first()
-            if main_group:
-                username = left_member.username
-                notify_text = (
-                    f"⚠️ <b>THÔNG BÁO NHÂN SỰ:</b>\n"
-                    f"Tài khoản <b>{name}</b> (@{username or 'N/A'}) vừa rời khỏi nhóm Member <b>{message.chat.title}</b>."
-                )
-                try:
-                    await client.send_message(
-                        chat_id=int(main_group.chat_id),
-                        text=notify_text,
-                        parse_mode=ParseMode.HTML
-                    )
-                except Exception as ex:
-                    LogError(f"Failed to notify main group {main_group.chat_id}: {ex}", LogType.MEMBER_LOG)
-        # ---------------------------------------------------------
-    except Exception as e:
-         LogError(f"Error in left_chat_member_handler: {e}", LogType.SYSTEM_STATUS)
-    finally:
-         db.close()
+    actor = message.from_user
+    is_kicked = bool(actor and left_member and actor.id != left_member.id)
+    await handle_left_member_notification(
+        client=client,
+        chat_id=message.chat.id,
+        chat_title=message.chat.title or "Nhóm",
+        left_member=left_member,
+        actor=actor,
+        is_kicked=is_kicked
+    )
+
+@bot.on_chat_member_updated()
+async def chat_member_updated_handler(client, event: ChatMemberUpdated) -> None:
+    """
+    Handler for Supergroup ChatMemberUpdated events (catches Kick/Remove/Ban by Admin).
+    """
+    old = event.old_chat_member
+    new = event.new_chat_member
+
+    old_status = old.status if old else None
+    new_status = new.status if new else None
+
+    # Check if user was in group and is now BANNED or LEFT
+    was_in = old_status in [ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]
+    is_out = new_status in [ChatMemberStatus.BANNED, ChatMemberStatus.LEFT]
+
+    if was_in and is_out:
+        target_user = old.user if old else (new.user if new else None)
+        actor = event.from_user
+        is_kicked = (new_status == ChatMemberStatus.BANNED) or bool(actor and target_user and actor.id != target_user.id)
+        await handle_left_member_notification(
+            client=client,
+            chat_id=event.chat.id,
+            chat_title=event.chat.title or "Nhóm",
+            left_member=target_user,
+            actor=actor,
+            is_kicked=is_kicked
+        )
 
 @bot.on_message(filters.command(["accepted", "confirmed", "denied"]))
 async def approval_reply_handler(client, message: Message) -> None:
@@ -1045,6 +1115,7 @@ _LAG_PAGE_SIZE = 10  # Số nhóm hiển thị mỗi trang
 
 
 @bot.on_message(filters.command(["list_all_group", "danh_sach_nhom"]) | filters.regex(r"^@\w+\s+/(list_all_group|danh_sach_nhom)\b"))
+@command_timeout(auto_delete_cmd=True)
 async def list_all_group_handler(client, message: Message) -> None:
     """
     /list_all_group (/danh_sach_nhom) — Chỉ hoạt động trong nhóm Chat_ID_Main.
@@ -1110,7 +1181,7 @@ def _build_lag_group_page(project_name, groups_data, page, page_size, total_page
     text = (
         f"<b>DANH SÁCH NHÓM — {project_name}</b>\n"
         f"<i>Tổng: {total} nhóm · Trang {page + 1}/{total_pages}</i>\n"
-        f"{'━' * 30}\n\n"
+        f"{'━' * 15}\n\n"
     )
 
     for idx, g in enumerate(page_groups, start=start + 1):
@@ -1364,6 +1435,7 @@ async def create_project_handler(client, message: Message) -> None:
 
 
 @bot.on_message(filters.regex(r"^/(create_project|tao_du_an)\n") & filters.group)
+@command_timeout(auto_delete_cmd=True)
 async def create_project_form_handler(client, message: Message) -> None:
     """Xử lý form tạo dự án khi người dùng gửi multi-line."""
     from bot.core.config import settings as bot_settings
@@ -1425,7 +1497,7 @@ async def create_project_form_handler(client, message: Message) -> None:
 
         confirm_text = (
             "<b>XÁC NHẬN TẠO DỰ ÁN</b>\n"
-            f"{'━' * 20}\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>Tên Dự Án:</b> {project_name}\n\n"
             f"Bạn có chắc chắn muốn tạo dự án này?"
         )
@@ -1489,7 +1561,7 @@ async def cp_confirm_callback(client, callback_query):
 
         await callback_query.message.edit_text(
             f"✅ <b>TẠO DỰ ÁN THÀNH CÔNG!</b>\n"
-            f"{'━' * 20}\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>Tên Dự Án:</b> {project_name}\n"
             f"<b>ID:</b> <code>{new_project.id}</code>\n\n"
             f"<i>Dự án đã được lưu vào hệ thống.</i>",
@@ -1521,6 +1593,7 @@ async def cp_cancel_callback(client, callback_query):
 # =========================================================================================
 
 @bot.on_message(filters.command(["delete_project", "xoa_du_an"]) | filters.regex(r"^@\w+\s+/(delete_project|xoa_du_an)\b"))
+@command_timeout(auto_delete_cmd=True)
 async def delete_project_handler(client, message: Message) -> None:
     """
     /delete_project (/xoa_du_an) — Chỉ hoạt động trong nhóm Chat_ID_Main.
@@ -1610,7 +1683,7 @@ async def dp_select_callback(client, callback_query):
 
         confirm_text = (
             "<b>XÁC NHẬN XÓA DỰ ÁN</b>\n"
-            f"{'━' * 20}\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>Tên Dự Án:</b> {project.project_name}\n"
             f"<b>ID:</b> <code>{project.id}</code>\n"
             f"<b>Số nhóm liên quan:</b> {group_count}\n"
@@ -1665,7 +1738,7 @@ async def dp_confirm_callback(client, callback_query):
 
         await callback_query.message.edit_text(
             f"✅ <b>ĐÃ XÓA DỰ ÁN THÀNH CÔNG!</b>\n"
-            f"{'━' * 20}\n\n"
+            f"{'━' * 15}\n\n"
             f"<b>Tên Dự Án:</b> {project_name}\n"
             f"<b>ID:</b> <code>{project_id}</code>\n\n"
             f"<i>Dự án đã được xóa khỏi hệ thống.</i>",
@@ -1693,6 +1766,7 @@ async def dp_cancel_callback(client, callback_query):
 
 
 @bot.on_message(filters.command("kick_user") | filters.regex(r"^@\w+\s+/kick_user\b"))
+@command_timeout(auto_delete_cmd=True)
 async def kick_user_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, "kick_user")
     if args is None: return

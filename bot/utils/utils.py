@@ -341,6 +341,135 @@ def require_custom_title(*allowed_titles):
         return wrapper
     return decorator
 
+import asyncio
+
+async def _auto_expire_menu_task(client, sent_msg, cmd_name: str, limit: int, auto_delete_cmd: bool, user_cmd_msg=None):
+    """Background task to automatically expire/remove inline keyboard menus after timeout limit."""
+    await asyncio.sleep(limit)
+    try:
+        chat_id = sent_msg.chat.id
+        msg_id = sent_msg.id
+        
+        # Check current message state from Telegram
+        current_msg = await client.get_messages(chat_id, msg_id)
+        if current_msg and current_msg.reply_markup:
+            expired_text = f"⏱ <b>Hệ thống:</b> Menu lệnh <code>{cmd_name}</code> đã hết hạn do không có tương tác sau {limit}s."
+            await client.edit_message_text(
+                chat_id=chat_id,
+                message_id=msg_id,
+                text=expired_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=None
+            )
+            from bot.utils.logger import LogInfo
+            LogInfo(f"[MenuExpire] Auto-expired inline menu for {cmd_name} in chat {chat_id} after {limit}s", LogType.SYSTEM_STATUS)
+
+            if auto_delete_cmd and user_cmd_msg and hasattr(user_cmd_msg, "delete"):
+                try:
+                    await user_cmd_msg.delete()
+                except Exception:
+                    pass
+
+            # Auto-delete the expired notification message after 5 seconds to keep chat clean
+            await asyncio.sleep(5)
+            try:
+                await client.delete_messages(chat_id, msg_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def command_timeout(timeout_seconds: Optional[int] = None, auto_delete_cmd: bool = False, auto_expire_menu: bool = True):
+    """
+    Decorator to wrap async Telegram command handlers with execution timeout & menu auto-expiration.
+    - Limits handler execution time via asyncio.wait_for.
+    - Automatically schedules menu expiration for any Inline Keyboard messages sent by the handler.
+    - Default timeout limit is read from appsettings.json -> Telegram -> Command_Timeout_Seconds (or 600s).
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(client, update, *args, **kwargs):
+            limit = timeout_seconds
+            if limit is None:
+                try:
+                    from bot.core.config import settings
+                    limit = getattr(settings, "COMMAND_TIMEOUT_SECONDS", 600)
+                except Exception:
+                    limit = 600
+
+            is_callback = hasattr(update, "message") and update.message is not None
+            user_cmd_msg = update.message if is_callback else update
+
+            sent_menus = []
+            original_reply = getattr(user_cmd_msg, "reply_text", None) if user_cmd_msg else None
+
+            if user_cmd_msg and original_reply:
+                async def custom_reply(*r_args, **r_kwargs):
+                    res = await original_reply(*r_args, **r_kwargs)
+                    if res and hasattr(res, "reply_markup") and res.reply_markup:
+                        sent_menus.append(res)
+                    return res
+                setattr(user_cmd_msg, "reply_text", custom_reply)
+
+            try:
+                result = await asyncio.wait_for(func(client, update, *args, **kwargs), timeout=limit)
+                
+                if result and hasattr(result, "reply_markup") and result.reply_markup:
+                    sent_menus.append(result)
+
+                if auto_expire_menu and limit > 0:
+                    cmd_name = "Thao tác"
+                    if user_cmd_msg and hasattr(user_cmd_msg, "text") and user_cmd_msg.text:
+                        parts = user_cmd_msg.text.split()
+                        if parts:
+                            cmd_name = parts[0]
+
+                    for sent_msg in sent_menus:
+                        asyncio.create_task(_auto_expire_menu_task(
+                            client=client,
+                            sent_msg=sent_msg,
+                            cmd_name=cmd_name,
+                            limit=limit,
+                            auto_delete_cmd=auto_delete_cmd,
+                            user_cmd_msg=user_cmd_msg
+                        ))
+
+                return result
+            except asyncio.TimeoutError:
+                cmd_name = "Thao tác"
+                if user_cmd_msg and hasattr(user_cmd_msg, "text") and user_cmd_msg.text:
+                    parts = user_cmd_msg.text.split()
+                    if parts:
+                        cmd_name = parts[0]
+
+                from bot.utils.logger import LogError
+                LogError(f"[Timeout] Command {cmd_name} timed out after {limit}s", LogType.SYSTEM_STATUS)
+
+                timeout_text = f"⏱ <b>Hệ thống:</b> Lệnh <code>{cmd_name}</code> đã vượt quá thời gian xử lý cho phép ({limit}s) và đã tự động bị hủy."
+
+                try:
+                    if is_callback:
+                        await update.answer(f"⏱ Thao tác đã quá thời gian ({limit}s) và bị hủy.", show_alert=True)
+                    else:
+                        await send_reply(user_cmd_msg, timeout_text, parse_mode=ParseMode.HTML)
+                except Exception:
+                    pass
+
+                if auto_delete_cmd and user_cmd_msg and hasattr(user_cmd_msg, "delete"):
+                    try:
+                        await user_cmd_msg.delete()
+                    except Exception:
+                        pass
+
+                return None
+            finally:
+                if user_cmd_msg and original_reply:
+                    setattr(user_cmd_msg, "reply_text", original_reply)
+
+        return wrapper
+    return decorator
+
 def generate_payment_code(length: int = 6) -> str:
     """
     Generate a random payment code with the following requirements:

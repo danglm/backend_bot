@@ -31,6 +31,7 @@ class Settings:
     WEBHOOK_URL = telegram_config.get("Webhook_URL", "")
     API_ID = int(telegram_config.get("API_ID", 0)) if telegram_config.get("API_ID") else 0
     API_HASH = telegram_config.get("API_HASH", "")
+    COMMAND_TIMEOUT_SECONDS = int(telegram_config.get("Command_Timeout_Seconds", 600))
 
     # Read Scheduler config from appsettings.json -> "Scheduler"
     scheduler_config = app_config.get("Scheduler", {})
