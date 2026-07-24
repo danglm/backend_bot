@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Optional
 from datetime import datetime
 import uuid
@@ -170,11 +171,25 @@ def get_rosca_members(
         query = query.filter(RoscaMember.status == status)
 
     results = query.all()
+
+    # Calculate paid_rounds_count for each member based on paid contribution transactions
+    paid_counts = (
+        db.query(
+            RoscaContribution.member_id,
+            func.count(RoscaContribution.id).label("paid_count")
+        )
+        .filter(RoscaContribution.status == "Paid")
+        .group_by(RoscaContribution.member_id)
+        .all()
+    )
+    paid_map = {m_id: count for m_id, count in paid_counts}
+
     data = []
     for member, player_name, rosca_code in results:
         member_dict = {c.name: getattr(member, c.name) for c in member.__table__.columns}
         member_dict["player_name"] = player_name
         member_dict["rosca_code"] = rosca_code
+        member_dict["paid_rounds_count"] = paid_map.get(member.id, 0)
         data.append(member_dict)
     return data
 

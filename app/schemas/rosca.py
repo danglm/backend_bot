@@ -82,6 +82,7 @@ class RoscaMemberResponse(RoscaMemberBase):
     id: str
     player_name: Optional[str] = None
     rosca_code: Optional[str] = None
+    paid_rounds_count: Optional[int] = 0
 
     class Config:
         from_attributes = True
