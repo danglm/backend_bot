@@ -42,7 +42,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 # ── Import all models so Base.metadata is fully populated ───────────────────
 from app.db.base import Base
 from app.models import business, credit, device, document, employee, finance
-from app.models import inventory, rental, rosca, task, telegram, vehicle, notification
+from app.models import inventory, rental, rosca, task, telegram, vehicle, notification, chat
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -73,13 +73,15 @@ def load_db_url_from_settings() -> str:
 
 def map_column_type(col) -> str:
     """Map SQLAlchemy column type to PostgreSQL DDL type string."""
-    from sqlalchemy import Integer, String, Float, Boolean, Date, DateTime, Text
+    from sqlalchemy import Integer, BigInteger, String, Float, Boolean, Date, DateTime, Text
     from sqlalchemy.dialects.postgresql import UUID
 
     col_type = col.type
 
     if isinstance(col_type, UUID):
         return "UUID"
+    elif isinstance(col_type, BigInteger):
+        return "BIGINT"
     elif isinstance(col_type, Integer):
         return "INTEGER"
     elif isinstance(col_type, Float):

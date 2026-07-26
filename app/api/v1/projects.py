@@ -386,3 +386,123 @@ async def delete_telegram_project_members_api(
         LogInfo(f"[Projects API] Error in delete-telegram-project-members: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.delete("/delete-user-telegram", response_model=List[SchemaTelegramProjectMember])
+async def delete_user_telegram_api(
+    member_ids: List[UUID],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("project"))
+):
+    """
+    Xóa người dùng khỏi nhóm Telegram thực tế (kick = ban + unban),
+    nếu thành công (hoặc người dùng không còn trong nhóm) thì xóa bản ghi tương ứng trong CSDL.
+    """
+    LogInfo(f"[Projects API] delete-user-telegram. Count: {len(member_ids)}")
+    try:
+        if len(member_ids) != len(set(member_ids)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate member IDs found in the request input."
+            )
+            
+        existing_members = db.query(DBTelegramProjectMember).filter(DBTelegramProjectMember.id.in_(member_ids)).all()
+        existing_ids = {m.id for m in existing_members}
+        
+        missing_ids = [mid for mid in member_ids if mid not in existing_ids]
+        if missing_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Telegram project members with IDs {missing_ids} not found in the database."
+            )
+            
+        from bot.utils.bot import bot
+        from pyrogram.errors import UserNotParticipant, FloodWait
+
+        if not bot.is_connected:
+            raise HTTPException(
+                status_code=500,
+                detail="Telegram bot is not connected. Cannot kick user from Telegram."
+            )
+
+        deleted_members = []
+        failed_kicks = []
+
+        for member in existing_members:
+            chat_id = None
+            try:
+                chat_id = int(member.chat_id)
+            except (ValueError, TypeError):
+                pass
+
+            target_uid = member.user_id or member.user_name
+            if target_uid and str(target_uid).isdigit():
+                target_uid = int(target_uid)
+
+            if not chat_id or not target_uid:
+                LogError(f"[Projects API] Invalid chat_id ({member.chat_id}) or user_id ({target_uid}) for member {member.id}")
+                failed_kicks.append(f"Member {member.id}: Invalid chat_id or user_id")
+                continue
+
+            # Kick logic
+            kick_success = False
+            try:
+                await bot.ban_chat_member(chat_id, target_uid)
+                await bot.unban_chat_member(chat_id, target_uid)
+                kick_success = True
+            except UserNotParticipant:
+                # Member is already not in the group -> Kick condition is satisfied
+                LogInfo(f"[Projects API] User {target_uid} is not a participant in chat {chat_id}. Proceeding to delete DB record.")
+                kick_success = True
+            except FloodWait as e:
+                LogError(f"[Projects API] FloodWait hit when kicking {target_uid} from {chat_id}: sleeping {e.value}s")
+                await asyncio.sleep(e.value + 1)
+                try:
+                    await bot.ban_chat_member(chat_id, target_uid)
+                    await bot.unban_chat_member(chat_id, target_uid)
+                    kick_success = True
+                except Exception as retry_ex:
+                    LogError(f"[Projects API] Retry failed kicking {target_uid} from {chat_id}: {retry_ex}")
+                    failed_kicks.append(f"Member {member.id} (@{member.user_name or member.user_id}): {retry_ex}")
+            except Exception as ex:
+                LogError(f"[Projects API] Error kicking user {target_uid} from chat {chat_id}: {ex}")
+                failed_kicks.append(f"Member {member.id} (@{member.user_name or member.user_id}): {ex}")
+
+            if kick_success:
+                deleted_members.append(member)
+                delete_project_member(db, member_id=member.id)
+
+        LogInfo(f"[Projects API] Successfully kicked and deleted {len(deleted_members)} telegram project members. Failed: {len(failed_kicks)}")
+
+        if failed_kicks and not deleted_members:
+            # All failed
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to kick user(s) from Telegram: {'; '.join(failed_kicks)}"
+            )
+
+        # Send Telegram notification for successfully deleted members
+        if deleted_members:
+            try:
+                performer = current_user.employee_id or current_user.username or "unknown"
+                details = "Đã kick và xóa thành viên Telegram khỏi nhóm:\n" + "\n".join(
+                    [f"- Username: {m.user_name or m.user_id} - Chat ID: {m.chat_id} - Dự án ID: {m.project_id}" for m in deleted_members]
+                )
+                await notify_telegram_group(
+                    db=db,
+                    action="DELETE",
+                    module_key="telegram_members",
+                    details=details,
+                    performer=performer
+                )
+            except Exception as err:
+                LogError(f"[Projects API] Failed to send Telegram notification: {err}")
+
+        return deleted_members
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[Projects API] Error in delete-user-telegram: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+

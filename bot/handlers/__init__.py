@@ -6,3 +6,4 @@ from . import other
 from . import tien_nga
 from . import ggomoosin
 from . import rosca
+from . import chat_logger

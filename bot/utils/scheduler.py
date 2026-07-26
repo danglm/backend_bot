@@ -2195,7 +2195,8 @@ async def send_harvest_summary_report(db, project_id, current_date, client, spec
         total_purchase_amount = sum(p.total_amount or 0 for p in purchases)
 
         # Skip nếu không có dữ liệu thu hoạch và thu mua trong ngày
-        if total_trees == 0 and total_harvest_amount == 0 and total_purchase_amount == 0:
+        # if total_trees == 0 and total_harvest_amount == 0 and total_purchase_amount == 0:
+        if total_purchase_amount == 0:
             LogInfo(f"Harvest '{aff}': Không có dữ liệu thu hoạch/thu mua trong ngày {current_date}, bỏ qua.", LogType.SYSTEM_STATUS)
             continue
         

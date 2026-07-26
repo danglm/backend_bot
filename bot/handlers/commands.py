@@ -238,7 +238,11 @@ async def handle_left_member_notification(
     is_kicked: bool = False
 ) -> None:
     if not left_member or left_member.is_self:
+        LogInfo(f"[HR] handle_left_member_notification skipped: left_member is None or is_self.", LogType.MEMBER_LOG)
         return
+
+    left_uid = left_member.id
+    LogInfo(f"[HR Event Received] chat_id={chat_id} ('{chat_title}'), left_user={left_uid} (@{left_member.username}), actor={actor.id if actor else 'None'}, is_kicked={is_kicked}", LogType.MEMBER_LOG)
 
     name = left_member.first_name or ""
     if left_member.last_name:
@@ -258,20 +262,63 @@ async def handle_left_member_notification(
     db = SessionLocal()
     try:
         from app.models.telegram import TelegramProjectMember
-        member_group = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.chat_id == str(chat_id),
-            TelegramProjectMember.role == "member"
+        current_group = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(chat_id)
         ).first()
-        if not member_group:
-            LogInfo(f"[HR] Left member event ignored: chat_id {chat_id} is not registered as role='member' in DB.", LogType.MEMBER_LOG)
+
+        if not current_group:
+            LogInfo(f"[HR] Left member event ignored: chat_id {chat_id} is not registered in TelegramProjectMember DB.", LogType.MEMBER_LOG)
             return
 
-        main_group = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.project_id == member_group.project_id,
-            TelegramProjectMember.role == "main"
-        ).first()
-        if not main_group:
-            LogInfo(f"[HR] Left member event ignored: project {member_group.project_id} has no role='main' group in DB.", LogType.MEMBER_LOG)
+        LogInfo(f"[HR DB Group Found] chat_id={chat_id}, role={current_group.role}, project_id={current_group.project_id}, parent_id={current_group.parent_id}, custom_title={current_group.custom_title}", LogType.MEMBER_LOG)
+
+        target_chat_id = None
+        role_label = "Member"
+
+        if current_group.role == "member":
+            # Member group -> notify in specific parent main group if linked via parent_id
+            main_group = None
+            if current_group.parent_id:
+                main_group = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.chat_id == str(current_group.parent_id),
+                    TelegramProjectMember.role == "main"
+                ).first()
+
+            # Fallback if parent_id is missing or main_group not found
+            if not main_group:
+                main_group = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.project_id == current_group.project_id,
+                    TelegramProjectMember.role == "main"
+                ).first()
+
+            if main_group:
+                target_chat_id = int(main_group.chat_id)
+            elif current_group.parent_id:
+                try:
+                    target_chat_id = int(current_group.parent_id)
+                except ValueError:
+                    pass
+
+            if not target_chat_id:
+                LogInfo(f"[HR] Left member event ignored: project {current_group.project_id} has no valid main group in DB.", LogType.MEMBER_LOG)
+                return
+        elif current_group.role == "main":
+            role_label = "Main"
+            # Main group event -> notify in super_main group if exists, or send directly to the Main group itself
+            super_main = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == current_group.project_id,
+                TelegramProjectMember.role == "main",
+                TelegramProjectMember.custom_title == "super_main"
+            ).first()
+            if super_main and str(super_main.chat_id) != str(chat_id):
+                target_chat_id = int(super_main.chat_id)
+                LogInfo(f"[HR Main Group] Forwarding notification to super_main group: {target_chat_id}", LogType.MEMBER_LOG)
+            else:
+                target_chat_id = int(chat_id)
+                LogInfo(f"[HR Main Group] Sending notification directly to Main group itself: {target_chat_id}", LogType.MEMBER_LOG)
+
+        if not target_chat_id:
+            LogInfo(f"[HR] Left member event ignored: target_chat_id could not be determined.", LogType.MEMBER_LOG)
             return
 
         username = left_member.username
@@ -285,17 +332,30 @@ async def handle_left_member_notification(
 
         notify_text = (
             f"⚠️ <b>THÔNG BÁO NHÂN SỰ:</b>\n"
-            f"Tài khoản <b>{name}</b>{username_str} {action_text} Member <b>{chat_title}</b>."
+            f"Tài khoản <b>{name}</b>{username_str} {action_text} {role_label} <b>{chat_title}</b>."
         )
+        LogInfo(f"[HR] Attempting to send message to target_chat_id={target_chat_id}: {notify_text}", LogType.MEMBER_LOG)
         try:
             await client.send_message(
-                chat_id=int(main_group.chat_id),
+                chat_id=target_chat_id,
                 text=notify_text,
                 parse_mode=ParseMode.HTML
             )
-            LogInfo(f"[HR] Sent left member notification for user {left_member.id} to main group {main_group.chat_id}", LogType.MEMBER_LOG)
+            LogInfo(f"[HR Success] Sent left member notification for user {left_member.id} to chat {target_chat_id}", LogType.MEMBER_LOG)
         except Exception as ex:
-            LogError(f"Failed to notify main group {main_group.chat_id}: {ex}", LogType.MEMBER_LOG)
+            LogError(f"[HR Error] Failed to notify group {target_chat_id}: {ex}", LogType.MEMBER_LOG)
+            # Fallback: If sending to target_chat_id (e.g. super_main) failed, fallback to sending directly to current chat_id
+            if target_chat_id != int(chat_id):
+                LogInfo(f"[HR Fallback] Retrying send notification directly to Main group itself ({chat_id})...", LogType.MEMBER_LOG)
+                try:
+                    await client.send_message(
+                        chat_id=int(chat_id),
+                        text=notify_text,
+                        parse_mode=ParseMode.HTML
+                    )
+                    LogInfo(f"[HR Success] Sent left member notification fallback to chat {chat_id}", LogType.MEMBER_LOG)
+                except Exception as fallback_ex:
+                    LogError(f"[HR Error] Fallback to chat {chat_id} also failed: {fallback_ex}", LogType.MEMBER_LOG)
     except Exception as e:
         LogError(f"Error in handle_left_member_notification: {e}", LogType.SYSTEM_STATUS)
     finally:
@@ -309,6 +369,7 @@ async def left_chat_member_handler(client, message: Message) -> None:
     left_member = message.left_chat_member
     actor = message.from_user
     is_kicked = bool(actor and left_member and actor.id != left_member.id)
+    LogInfo(f"[Handler Triggered] left_chat_member_handler in chat {message.chat.id} ('{message.chat.title}') for user {left_member.id if left_member else 'None'}", LogType.MEMBER_LOG)
     await handle_left_member_notification(
         client=client,
         chat_id=message.chat.id,
@@ -332,6 +393,8 @@ async def chat_member_updated_handler(client, event: ChatMemberUpdated) -> None:
     # Check if user was in group and is now BANNED or LEFT
     was_in = old_status in [ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]
     is_out = new_status in [ChatMemberStatus.BANNED, ChatMemberStatus.LEFT]
+
+    LogInfo(f"[Handler Triggered] chat_member_updated_handler in chat {event.chat.id} ('{event.chat.title}'). old={old_status}, new={new_status}, was_in={was_in}, is_out={is_out}", LogType.MEMBER_LOG)
 
     if was_in and is_out:
         target_user = old.user if old else (new.user if new else None)

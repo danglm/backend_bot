@@ -32,6 +32,8 @@ class Settings:
     API_ID = int(telegram_config.get("API_ID", 0)) if telegram_config.get("API_ID") else 0
     API_HASH = telegram_config.get("API_HASH", "")
     COMMAND_TIMEOUT_SECONDS = int(telegram_config.get("Command_Timeout_Seconds", 600))
+    ENABLE_AUTO_SAVE_CHAT_LOGS = bool(telegram_config.get("Enable_Auto_Save_Chat_Logs", True))
+    MEDIA_STORAGE_PATH = telegram_config.get("Media_Storage_Path", "uploads/chat_media")
 
     # Read Scheduler config from appsettings.json -> "Scheduler"
     scheduler_config = app_config.get("Scheduler", {})

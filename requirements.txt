@@ -13,3 +13,4 @@ python-multipart
 openpyxl
 playwright
 pydantic[email]
+websockets

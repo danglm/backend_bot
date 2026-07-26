@@ -19,16 +19,24 @@ async def syncchat_handler(client, message: Message) -> None:
 
     # Check permission directly from Telegram (not DB) since this is the bootstrap command
     try:
-        member = await client.get_chat_member(message.chat.id, message.from_user.id)
-        if member.status not in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR):
-            await message.reply_text("⚠️ Chỉ <b>Owner</b> và <b>Admin</b> mới được sử dụng lệnh này.", parse_mode=ParseMode.HTML)
+        if message.from_user:
+            member = await client.get_chat_member(message.chat.id, message.from_user.id)
+            if member.status not in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR):
+                await message.reply_text("⚠️ Chỉ <b>Owner</b> và <b>Admin</b> mới được sử dụng lệnh này.", parse_mode=ParseMode.HTML)
+                return
+        elif message.sender_chat and message.sender_chat.id == message.chat.id:
+            # Anonymous admin posting on behalf of the group
+            pass
+        else:
+            await message.reply_text("⚠️ Không thể xác định người dùng. Chỉ <b>Owner</b> và <b>Admin</b> mới được sử dụng lệnh này.", parse_mode=ParseMode.HTML)
             return
     except Exception as e:
         LogError(f"[SyncChat] Error checking permission: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Không thể kiểm tra quyền hạn của bạn.")
         return
 
-    LogInfo(f"[SyncChat] Started by @{message.from_user.username or message.from_user.id} in {message.chat.title}", LogType.SYSTEM_STATUS)
+    user_identifier = message.from_user.username or message.from_user.id if message.from_user else (message.sender_chat.title if message.sender_chat else "Anonymous")
+    LogInfo(f"[SyncChat] Started by @{user_identifier} in {message.chat.title}", LogType.SYSTEM_STATUS)
     
     db = SessionLocal()
     try:
