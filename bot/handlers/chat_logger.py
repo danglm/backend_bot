@@ -203,8 +203,22 @@ async def chat_message_logger_handler(client, message: Message) -> None:
         db.refresh(new_chat_msg)
 
         # Lưu media đính kèm nếu có
+        attachments_list = []
         if has_media:
             await _save_media_attachment(client, message, new_chat_msg.id)
+            att_records = db.query(TelegramChatAttachment).filter(
+                TelegramChatAttachment.message_db_id == new_chat_msg.id
+            ).all()
+            for att in att_records:
+                attachments_list.append({
+                    "id": str(att.id),
+                    "file_type": att.file_type,
+                    "file_id": att.file_id,
+                    "file_name": att.file_name,
+                    "file_size": att.file_size,
+                    "mime_type": att.mime_type,
+                    "download_url": f"/api/v1/telegram/chat/media/{att.id}" if att.local_path else None
+                })
 
         # Broadcast event WebSocket real-time cho Web Frontend
         msg_dict = {
@@ -222,6 +236,7 @@ async def chat_message_logger_handler(client, message: Message) -> None:
             "text_content": new_chat_msg.text_content,
             "reply_to_message_id": new_chat_msg.reply_to_message_id,
             "has_media": new_chat_msg.has_media,
+            "attachments": attachments_list,
             "date": new_chat_msg.date.isoformat() if new_chat_msg.date else None,
             "created_at": new_chat_msg.created_at.isoformat() if new_chat_msg.created_at else None
         }
@@ -401,6 +416,23 @@ async def log_bot_outgoing_message(message: Message, db=None) -> None:
         db.commit()
         db.refresh(new_msg)
 
+        attachments_list = []
+        if has_media:
+            await _save_media_attachment(bot, message, new_msg.id)
+            att_records = db.query(TelegramChatAttachment).filter(
+                TelegramChatAttachment.message_db_id == new_msg.id
+            ).all()
+            for att in att_records:
+                attachments_list.append({
+                    "id": str(att.id),
+                    "file_type": att.file_type,
+                    "file_id": att.file_id,
+                    "file_name": att.file_name,
+                    "file_size": att.file_size,
+                    "mime_type": att.mime_type,
+                    "download_url": f"/api/v1/telegram/chat/media/{att.id}" if att.local_path else None
+                })
+
         msg_dict = {
             "id": str(new_msg.id),
             "message_id": new_msg.message_id,
@@ -416,6 +448,7 @@ async def log_bot_outgoing_message(message: Message, db=None) -> None:
             "text_content": new_msg.text_content,
             "reply_to_message_id": new_msg.reply_to_message_id,
             "has_media": has_media,
+            "attachments": attachments_list,
             "date": new_msg.date.isoformat() if new_msg.date else None,
             "created_at": new_msg.created_at.isoformat() if new_msg.created_at else None
         }

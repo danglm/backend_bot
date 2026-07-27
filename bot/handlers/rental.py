@@ -1335,15 +1335,43 @@ async def generate_rental_revenue_report(client, message, project_id, start_date
             
         total_collected = sum([p.payment_amount or 0 for p in valid_payments])
         
-        active_rentals = [c for c in all_rentals if c.status in [RentalStatus.ACTIVE.value, RentalStatus.EXPIRED.value]]
-        total_outstanding_debt = sum([c.rental_debt or 0 for c in active_rentals])
+        active_rentals = [c for c in all_rentals if c.status != RentalStatus.CANCELLED.value]
+        total_remaining = sum([max(0.0, c.rental_debt or 0.0) for c in active_rentals])
+        total_receivable = total_collected + total_remaining
+        
+        rate = (total_collected / total_receivable * 100) if total_receivable > 0 else 0.0
+        rate_str = f"{rate:.2f}".replace(".", ",")
+        
+        today = datetime.date.today()
+        paid_contracts = 0
+        unpaid_contracts = 0
+        overdue_contracts = 0
+        
+        for c in active_rentals:
+            debt = c.rental_debt or 0.0
+            if debt <= 0:
+                paid_contracts += 1
+            else:
+                is_overdue = (c.status in [RentalStatus.EXPIRED.value, RentalStatus.BAD_DEBT.value]) or (c.end_rental and c.end_rental < today)
+                if is_overdue:
+                    overdue_contracts += 1
+                else:
+                    unpaid_contracts += 1
         
         report_lines = [
-            f"<b>BÁO CÁO DOANH THU THUÊ NHÀ</b>",
-            f"<i>(Thời gian lọc: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})</i>",
+            "<b>BÁO CÁO DOANH THU THUÊ NHÀ</b>",
+            f"<i>Thời gian: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}</i>",
             f"{'━' * 15}",
-            f"<b>Tổng Tiền Thuê Đã Thu:</b> <b>{fmt_vn(total_collected)}</b>", 
-            # f"<b>Tổng Tiền Thanh Toán HD Của Khách Hàng:</b> {fmt_vn(total_outstanding_debt)}",
+            "<b>Doanh thu</b>",
+            f"• Tổng tiền thuê phải thu: {fmt_vn(total_receivable)}",
+            f"• Tổng tiền thuê đã thu: {fmt_vn(total_collected)}",
+            f"• Còn phải thu: {fmt_vn(total_remaining)}",
+            f"• Tỷ lệ thu tiền: {rate_str}%",
+            "",
+            "<b>Thanh toán</b>",
+            f"• Đã thanh toán: {paid_contracts} hợp đồng",
+            f"• Chưa thanh toán: {unpaid_contracts} hợp đồng",
+            f"• Quá hạn: {overdue_contracts} hợp đồng",
         ]
         
         await message.reply_text("\n".join(report_lines), parse_mode=ParseMode.HTML)

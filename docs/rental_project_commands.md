@@ -136,7 +136,7 @@ Các lệnh dưới đây được áp dụng khi người dùng ở trong nhóm
 *   **Cách thức hoạt động:**
     - Người dùng có thể gõ trực tiếp khoảng thời gian lọc (ví dụ: `/rental_revenue 01/01/2026 - 31/01/2026`).
     - Nếu gõ không kèm tham số: Bot hiển thị menu nút nhấn chọn nhanh khoảng thời gian lọc (7 ngày qua, 14 ngày qua, 21 ngày qua, 1 tháng qua, 1 quý qua, năm nay, năm trước).
-    - Bot truy vấn các bản ghi đóng tiền thuê (`RentalPayment`) phát sinh trong khoảng thời gian đã chọn và hiển thị: Tổng Tiền Thuê Thực Tế Đã Thu được của dự án.
+    - Bot truy vấn các bản ghi đóng tiền thuê (`RentalPayment`) và hợp đồng trong khoảng thời gian đã chọn để hiển thị chi tiết: Doanh thu (Tổng tiền phải thu, Tổng tiền đã thu, Còn phải thu, Tỷ lệ thu tiền) và Thống kê thanh toán hợp đồng (Đã thanh toán, Chưa thanh toán, Quá hạn).
 
 ---
 
