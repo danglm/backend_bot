@@ -1060,6 +1060,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_them_vat_tu", "Thêm chi phí vật tư"),
                     BotCommand("tien_nga_kt_vat_tu", "Báo cáo chi phí vật tư"),
                     BotCommand("tien_nga_xoa_vat_tu", "Xóa chi phí vật tư"),
+                    BotCommand("tien_nga_loi_nhuan_thu_hoach", "Lợi nhuận thu hoạch"),
                 ]
             elif custom_title in ("member_harvest",):
                 label = "Thu Hoạch (Member)"

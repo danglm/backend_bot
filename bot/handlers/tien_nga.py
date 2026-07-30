@@ -21596,3 +21596,466 @@ async def tien_nga_balance_sheet_handler(client, message: Message) -> None:
         await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
     finally:
         db.close()
+
+
+# =========================================================================================
+# LỢI NHUẬN THU HOẠCH
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_loi_nhuan_thu_hoach"]) | filters.regex(r"^@\w+\s+/tien_nga_loi_nhuan_thu_hoach\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+async def tien_nga_loi_nhuan_thu_hoach_handler(client, message: Message) -> None:
+    args = message.text.strip().split(maxsplit=1)
+
+    if len(args) >= 2:
+        raw = args[1].strip()
+
+        # --- Shortcut: all_cao_su / all_sau_rieng / [Mã rẫy] dd/mm/yyyy - dd/mm/yyyy ---
+        import re as _re
+        date_match = _re.search(r'(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})', raw)
+        if not date_match:
+            await message.reply_text(
+                "⚠️ Định dạng không hợp lệ.\n"
+                "VD: <code>/tien_nga_loi_nhuan_thu_hoach all_cao_su 01/01/2026 - 30/06/2026</code>\n"
+                "Hoặc: <code>/tien_nga_loi_nhuan_thu_hoach D001 01/01/2026 - 30/06/2026</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        prefix = raw[:date_match.start()].strip()
+
+        try:
+            start_date = datetime.strptime(date_match.group(1).strip(), "%d/%m/%Y").date()
+            end_date = datetime.strptime(date_match.group(2).strip(), "%d/%m/%Y").date()
+        except Exception:
+            await message.reply_text(
+                "⚠️ Định dạng ngày không hợp lệ.\n"
+                "VD: <code>/tien_nga_loi_nhuan_thu_hoach all_cao_su 01/01/2026 - 30/06/2026</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        # Determine crop_type and land_code from prefix
+        prefix_lower = prefix.lower()
+        if prefix_lower == "all_cao_su":
+            crop_type = "cao_su"
+            land_code = "ALL"
+        elif prefix_lower == "all_sau_rieng":
+            crop_type = "sau_rieng"
+            land_code = "ALL"
+        elif prefix:
+            # Specific land code - detect crop_type from AgriculturalLand
+            from app.models.business import AgriculturalLand
+            db = SessionLocal()
+            try:
+                land = db.query(AgriculturalLand).filter(
+                    AgriculturalLand.land_code == prefix.upper(),
+                    AgriculturalLand.status == "ACTIVE"
+                ).first()
+                if not land:
+                    await message.reply_text(
+                        f"⚠️ Không tìm thấy rẫy với mã <b>{prefix.upper()}</b>.",
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
+                crop_type = land.crop_type or "cao_su"
+                land_code = land.land_code
+            finally:
+                db.close()
+        else:
+            await message.reply_text(
+                "⚠️ Vui lòng chỉ định mã rẫy hoặc all_cao_su / all_sau_rieng.\n"
+                "VD: <code>/tien_nga_loi_nhuan_thu_hoach all_cao_su 01/01/2026 - 30/06/2026</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        await _do_profit_calculation(client, message, crop_type, land_code, start_date, end_date)
+        return
+
+    # --- No args: show crop type selection buttons ---
+    buttons = [
+        [InlineKeyboardButton("Sầu riêng", callback_data="tn_lnth_crop|sau_rieng")],
+        [InlineKeyboardButton("Cao su", callback_data="tn_lnth_crop|cao_su")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_lnth_cancel")],
+    ]
+
+    import datetime as _dt
+    today_str = _dt.datetime.now().strftime('%d/%m/%Y')
+    first_day_str = _dt.datetime.now().replace(day=1).strftime('%d/%m/%Y')
+
+    text = (
+        "<b>LỢI NHUẬN THU HOẠCH</b>\n\n"
+        "Chọn loại cây trồng:\n\n"
+        "<i>Hoặc nhập tay:</i>\n"
+        f"<i>• <code>/tien_nga_loi_nhuan_thu_hoach all_cao_su {first_day_str} - {today_str}</code></i>\n"
+        f"<i>• <code>/tien_nga_loi_nhuan_thu_hoach all_sau_rieng {first_day_str} - {today_str}</code></i>\n"
+        f"<i>• <code>/tien_nga_loi_nhuan_thu_hoach [Mã rẫy] {first_day_str} - {today_str}</code></i>"
+    )
+    await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+
+
+# --- Callback: chọn loại cây ---
+_LNTH_LAND_PAGE_SIZE = 10
+
+@bot.on_callback_query(filters.regex(r"^tn_lnth_crop\|(cao_su|sau_rieng)$"))
+async def _lnth_select_crop(client, callback_query):
+    crop_type = callback_query.matches[0].group(1)
+
+    from app.models.business import AgriculturalLand
+    db = SessionLocal()
+    try:
+        lands = db.query(AgriculturalLand).filter(
+            AgriculturalLand.status == "ACTIVE",
+            AgriculturalLand.crop_type == crop_type
+        ).order_by(AgriculturalLand.land_code).all()
+
+        await _send_lnth_land_buttons(callback_query.message, crop_type, lands, page=0, edit=True)
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in _lnth_select_crop: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống", show_alert=True)
+    finally:
+        db.close()
+
+
+async def _send_lnth_land_buttons(target, crop_type, lands, page=0, edit=False):
+    crop_label = "Sầu riêng" if crop_type == "sau_rieng" else "Cao su"
+    total = len(lands)
+    start = page * _LNTH_LAND_PAGE_SIZE
+    end = start + _LNTH_LAND_PAGE_SIZE
+    page_lands = lands[start:end]
+
+    buttons = []
+    buttons.append([InlineKeyboardButton("Tất cả", callback_data=f"tn_lnth_land|{crop_type}|ALL")])
+
+    for land in page_lands:
+        label = f"{land.land_code} - {land.land_name or land.address or ''}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"tn_lnth_land|{crop_type}|{land.land_code}")])
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("Trước", callback_data=f"tn_lnth_pg|{crop_type}|{page - 1}"))
+    if end < total:
+        nav_row.append(InlineKeyboardButton("Sau", callback_data=f"tn_lnth_pg|{crop_type}|{page + 1}"))
+    if nav_row:
+        buttons.append(nav_row)
+
+    buttons.append([
+        InlineKeyboardButton("Quay lại", callback_data="tn_lnth_back_crop"),
+        InlineKeyboardButton("Hủy", callback_data="tn_lnth_cancel"),
+    ])
+
+    page_info = f" (Trang {page + 1})" if total > _LNTH_LAND_PAGE_SIZE else ""
+    text = (
+        f"<b>LỢI NHUẬN THU HOẠCH</b>\n"
+        f"Loại cây: <b>{crop_label}</b>\n\n"
+        f"Chọn rẫy cần xem:{page_info}"
+    )
+
+    markup = InlineKeyboardMarkup(buttons)
+    if edit:
+        await target.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    else:
+        await target.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lnth_pg\|(cao_su|sau_rieng)\|(\d+)$"))
+async def _lnth_page(client, callback_query):
+    crop_type = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    from app.models.business import AgriculturalLand
+    db = SessionLocal()
+    try:
+        lands = db.query(AgriculturalLand).filter(
+            AgriculturalLand.status == "ACTIVE",
+            AgriculturalLand.crop_type == crop_type
+        ).order_by(AgriculturalLand.land_code).all()
+
+        await _send_lnth_land_buttons(callback_query.message, crop_type, lands, page=page, edit=True)
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error paging lnth lands: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi", show_alert=True)
+    finally:
+        db.close()
+
+
+
+# --- Callback: quay lại chọn loại cây ---
+@bot.on_callback_query(filters.regex(r"^tn_lnth_back_crop$"))
+async def _lnth_back_crop(client, callback_query):
+    buttons = [
+        [InlineKeyboardButton("Sầu riêng", callback_data="tn_lnth_crop|sau_rieng")],
+        [InlineKeyboardButton("Cao su", callback_data="tn_lnth_crop|cao_su")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_lnth_cancel")],
+    ]
+
+    import datetime as _dt
+    today_str = _dt.datetime.now().strftime('%d/%m/%Y')
+    first_day_str = _dt.datetime.now().replace(day=1).strftime('%d/%m/%Y')
+
+    text = (
+        "<b>LỢI NHUẬN THU HOẠCH</b>\n\n"
+        "Chọn loại cây trồng:\n\n"
+        "<i>Hoặc nhập tay:</i>\n"
+        f"<i>• <code>/tien_nga_loi_nhuan_thu_hoach all_cao_su {first_day_str} - {today_str}</code></i>\n"
+        f"<i>• <code>/tien_nga_loi_nhuan_thu_hoach all_sau_rieng {first_day_str} - {today_str}</code></i>\n"
+        f"<i>• <code>/tien_nga_loi_nhuan_thu_hoach [Mã rẫy] {first_day_str} - {today_str}</code></i>"
+    )
+    await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+    await callback_query.answer()
+
+
+# --- Callback: chọn rẫy → hiển thị buttons thời gian ---
+@bot.on_callback_query(filters.regex(r"^tn_lnth_land\|(cao_su|sau_rieng)\|(.+)$"))
+async def _lnth_select_land(client, callback_query):
+    crop_type = callback_query.matches[0].group(1)
+    land_code = callback_query.matches[0].group(2)
+
+    crop_label = "Sầu riêng" if crop_type == "sau_rieng" else "Cao su"
+    land_label = "Tất cả" if land_code == "ALL" else land_code
+
+    buttons = [
+        [InlineKeyboardButton("1 ngày", callback_data=f"tn_lnth_period|{crop_type}|{land_code}|1d")],
+        [InlineKeyboardButton("1 tuần", callback_data=f"tn_lnth_period|{crop_type}|{land_code}|1w")],
+        [InlineKeyboardButton("1 tháng", callback_data=f"tn_lnth_period|{crop_type}|{land_code}|1m")],
+        [InlineKeyboardButton("3 tháng", callback_data=f"tn_lnth_period|{crop_type}|{land_code}|3m")],
+        [InlineKeyboardButton("6 tháng", callback_data=f"tn_lnth_period|{crop_type}|{land_code}|6m")],
+        [InlineKeyboardButton("1 năm", callback_data=f"tn_lnth_period|{crop_type}|{land_code}|1y")],
+        [
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_lnth_crop|{crop_type}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_lnth_cancel"),
+        ],
+    ]
+
+    import datetime as _dt
+    today_str = _dt.datetime.now().strftime('%d/%m/%Y')
+    first_day_str = _dt.datetime.now().replace(day=1).strftime('%d/%m/%Y')
+
+    land_cmd = f"{land_code} " if land_code != "ALL" else f"all_{crop_type} "
+    text = (
+        f"<b>LỢI NHUẬN THU HOẠCH</b>\n"
+        f"Loại cây: <b>{crop_label}</b>\n"
+        f"Rẫy: <b>{land_label}</b>\n\n"
+        f"Chọn khoảng thời gian:\n\n"
+        f"<i>Hoặc nhập tay: <code>/tien_nga_loi_nhuan_thu_hoach {land_cmd}{first_day_str} - {today_str}</code></i>"
+    )
+
+    await callback_query.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=ParseMode.HTML
+    )
+    await callback_query.answer()
+
+
+# --- Callback: chọn thời gian → tính toán ---
+@bot.on_callback_query(filters.regex(r"^tn_lnth_period\|(cao_su|sau_rieng)\|(.+)\|(1d|1w|1m|3m|6m|1y)$"))
+async def _lnth_select_period(client, callback_query):
+    crop_type = callback_query.matches[0].group(1)
+    land_code = callback_query.matches[0].group(2)
+    period = callback_query.matches[0].group(3)
+
+    import datetime as _dt
+    today = _dt.date.today()
+
+    if period == "1d":
+        start_date, end_date = today, today
+    elif period == "1w":
+        start_date = today - _dt.timedelta(days=6)
+        end_date = today
+    elif period == "1m":
+        start_date = today.replace(day=1)
+        end_date = today
+    elif period == "3m":
+        month = today.month - 2
+        year = today.year
+        if month <= 0:
+            month += 12
+            year -= 1
+        start_date = _dt.date(year, month, 1)
+        end_date = today
+    elif period == "6m":
+        month = today.month - 5
+        year = today.year
+        if month <= 0:
+            month += 12
+            year -= 1
+        start_date = _dt.date(year, month, 1)
+        end_date = today
+    else:  # 1y
+        start_date = today.replace(month=1, day=1)
+        end_date = today
+
+    crop_label = "Sầu riêng" if crop_type == "sau_rieng" else "Cao su"
+    land_label = "Tất cả" if land_code == "ALL" else land_code
+
+    await callback_query.message.edit_text(
+        f"⏳ Đang tính toán lợi nhuận...\n"
+        f"Loại cây: <b>{crop_label}</b> | Rẫy: <b>{land_label}</b>\n"
+        f"Từ <b>{start_date.strftime('%d/%m/%Y')}</b> đến <b>{end_date.strftime('%d/%m/%Y')}</b>",
+        parse_mode=ParseMode.HTML
+    )
+    await callback_query.answer()
+
+    lc = None if land_code == "ALL" else land_code
+    await _do_profit_calculation(client, callback_query.message, crop_type, land_code, start_date, end_date)
+
+
+# --- Callback: hủy ---
+@bot.on_callback_query(filters.regex(r"^tn_lnth_cancel$"))
+async def _lnth_cancel(client, callback_query):
+    await callback_query.message.delete()
+    await callback_query.answer("Đã hủy.")
+
+
+# --- Hàm tính toán lợi nhuận ---
+async def _do_profit_calculation(client, message, crop_type, land_code, start_date, end_date):
+    """
+    Tính lợi nhuận thu hoạch:
+      Lợi nhuận = Tổng thu hoạch (daily_purchases) - Tổng chi phí (supplies_expenses)
+
+    Args:
+        crop_type: "cao_su" or "sau_rieng"
+        land_code: specific land code or "ALL"
+        start_date, end_date: date range
+    """
+    from app.models.business import AgriculturalLand, Households, DailyPurchases, SuppliesExpense
+    from sqlalchemy import func, or_
+
+    db = SessionLocal()
+    try:
+        # 1. Get relevant land_codes based on crop_type and land_code filter
+        if land_code == "ALL":
+            lands = db.query(AgriculturalLand).filter(
+                AgriculturalLand.status == "ACTIVE",
+                AgriculturalLand.crop_type == crop_type
+            ).all()
+            land_codes = [l.land_code for l in lands]
+            land_label = "Tất cả"
+        else:
+            land = db.query(AgriculturalLand).filter(
+                AgriculturalLand.land_code == land_code,
+                AgriculturalLand.status == "ACTIVE"
+            ).first()
+            if not land:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy rẫy với mã <b>{land_code}</b>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            land_codes = [land_code]
+            land_label = f"{land.land_code} - {land.land_name or land.address or ''}"
+
+        if not land_codes:
+            crop_label = "Sầu riêng" if crop_type == "sau_rieng" else "Cao su"
+            await message.reply_text(
+                f"⚠️ Không tìm thấy rẫy <b>{crop_label}</b> nào trong hệ thống.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        # 2. Get households linked to these lands
+        hh_query = db.query(Households).filter(Households.status == "ACTIVE")
+        if land_code != "ALL":
+            # Specific land: filter by land_code or household_code
+            hh_query = hh_query.filter(
+                or_(Households.land_code.in_(land_codes), Households.household_code.in_(land_codes))
+            )
+        else:
+            # "ALL": include all active households (land_code may be NULL)
+            # Optionally filter by land_code if populated, but also include NULL
+            if land_codes:
+                hh_query = hh_query.filter(
+                    or_(
+                        Households.land_code.in_(land_codes),
+                        Households.land_code.is_(None)
+                    )
+                )
+        households = hh_query.all()
+
+        purchase_codes = [h.purchase_code for h in households if h.purchase_code]
+
+        # 3. Calculate total harvest revenue from daily_purchases
+        total_harvest_amount = 0
+        total_harvest_weight = 0
+        harvest_count = 0
+
+        if purchase_codes:
+            result = db.query(
+                func.coalesce(func.sum(DailyPurchases.total_amount), 0).label("total_amount"),
+                func.coalesce(func.sum(DailyPurchases.actual_weight), 0).label("total_weight"),
+                func.count(DailyPurchases.id).label("count")
+            ).filter(
+                DailyPurchases.hoursehold_id.in_(purchase_codes),
+                DailyPurchases.day >= start_date,
+                DailyPurchases.day <= end_date
+            ).first()
+
+            if result:
+                total_harvest_amount = float(result.total_amount or 0)
+                total_harvest_weight = float(result.total_weight or 0)
+                harvest_count = int(result.count or 0)
+
+        # 4. Calculate total expenses from supplies_expenses
+        expense_query = db.query(
+            func.coalesce(func.sum(SuppliesExpense.total_amount), 0).label("total_expense")
+        ).filter(
+            SuppliesExpense.day >= start_date,
+            SuppliesExpense.day <= end_date,
+            SuppliesExpense.land_code.in_(land_codes)
+        )
+        # Include expenses with matching crop_type or "chung" (shared expenses)
+        expense_query = expense_query.filter(
+            or_(
+                SuppliesExpense.crop_type == crop_type,
+                SuppliesExpense.crop_type == "chung",
+                SuppliesExpense.crop_type.is_(None)
+            )
+        )
+        expense_result = expense_query.first()
+        total_expense = float(expense_result.total_expense or 0) if expense_result else 0
+
+        # 5. Calculate profit
+        total_profit = total_harvest_amount - total_expense
+
+        # 6. Format and send result
+        crop_label = "Sầu riêng" if crop_type == "sau_rieng" else "Cao su"
+
+        profit_emoji = "📈" if total_profit >= 0 else "📉"
+        profit_sign = "+" if total_profit >= 0 else ""
+
+        text = (
+            f"<b>BÁO CÁO LỢI NHUẬN THU HOẠCH</b>\n\n"
+            f"<b>Loại cây:</b> {crop_label}\n"
+            f"<b>Rẫy:</b> {land_label}\n"
+            f"<b>Từ:</b> {start_date.strftime('%d/%m/%Y')} <b>đến</b> {end_date.strftime('%d/%m/%Y')}\n"
+            f"{'━' * 15}\n"
+            f"<b>Tổng Thu hoạch:</b>\n"
+            f"  • Số lượng mủ: <code>{fmt_weight(total_harvest_weight)}</code>\n"
+
+            f"  • Số giao dịch: <code>{fmt_num(harvest_count)}</code>\n"
+            f"  • Thành tiền: <code>{fmt_money(total_harvest_amount)}</code>\n\n"
+            f"<b>Tổng Chi phí:</b> <code>{fmt_money(total_expense)}</code>\n\n"
+            f"<b>{profit_emoji} Tổng Lợi nhuận: <code>{profit_sign}{fmt_money(total_profit)}</code></b>\n"
+            f"{'━' * 15}\n"
+            f"<i>Số rẫy: {len(land_codes)} | Số hộ dân: {len(households)}</i>\n"
+            f"<i>  ├ Liên kết rẫy: {sum(1 for h in households if h.land_code)}</i>\n"
+            f"<i>  └ Chưa liên kết: {sum(1 for h in households if not h.land_code)}</i>"
+        )
+
+        await message.reply_text(text, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        LogError(f"Error in _do_profit_calculation: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
+        await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
