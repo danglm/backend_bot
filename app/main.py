@@ -38,7 +38,8 @@ async def lifespan(app: FastAPI):
         daily_harvest_summary_worker,
         auto_attendance_worker,
         rosca_payment_notification_worker,
-        document_reminder_worker
+        document_reminder_worker,
+        unified_scheduled_notify_worker
     )
     asyncio.create_task(checkin_reminder_worker())
     asyncio.create_task(monthly_attendance_report_worker())
@@ -55,6 +56,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(auto_attendance_worker())
     asyncio.create_task(rosca_payment_notification_worker())
     asyncio.create_task(document_reminder_worker())
+    asyncio.create_task(unified_scheduled_notify_worker())
 
     yield
     
@@ -130,6 +132,9 @@ app.include_router(other.router, prefix="/api/v1/other", tags=["other"])
 app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
 app.include_router(rosca.router, prefix="/api/v1/rosca", tags=["rosca"])
 app.include_router(chat.router, prefix="/api/v1/telegram", tags=["telegram"])
+
+from app.api.v1 import scheduled_notification
+app.include_router(scheduled_notification.router, prefix="/api/v1/scheduled-notifications", tags=["scheduled-notifications"])
 
 
 

@@ -2563,16 +2563,34 @@ async def rosca_payment_notification_worker():
 
                             members = db.query(RoscaMember).filter(
                                 RoscaMember.rosca_id == rosca.id,
-                                RoscaMember.status.in_(["Playing", "Dead"])
+                                RoscaMember.status.in_(["Playing", "Dead", "Active"])
                             ).all()
                             LogInfo(f"[Rosca Worker] Found {len(members)} playing members in rosca {rosca.code} to notify.", LogType.SYSTEM_STATUS)
 
-                            groups_to_notify = set()
+                            from app.models.rosca import RoscaContribution, RoscaRound
                             for m in members:
-                                if m.telegram_group:
-                                    groups_to_notify.add(m.telegram_group.strip())
+                                player = db.query(UserRosca).filter(UserRosca.id == m.user_id).first()
+                                player_name = player.full_name if player else m.id
+                                member_st = "Hụi sống" if m.status == "Playing" else ("Hụi chết" if m.status == "Dead" else m.status or "N/A")
 
-                            for tg_group in groups_to_notify:
+                                paid_count = db.query(RoscaContribution).filter(
+                                    RoscaContribution.member_id == m.id,
+                                    RoscaContribution.amount < 0,
+                                    RoscaContribution.status == "Paid"
+                                ).count()
+
+                                won_count = db.query(RoscaContribution).filter(
+                                    RoscaContribution.member_id == m.id,
+                                    RoscaContribution.amount > 0,
+                                    RoscaContribution.status == "Paid"
+                                ).count()
+
+                                current_round = paid_count + won_count + 1
+
+                                tg_group = (m.telegram_group or "").strip()
+                                if not tg_group:
+                                    continue
+
                                 tpm = db.query(TelegramProjectMember).filter(
                                     TelegramProjectMember.group_name == tg_group
                                 ).first()
@@ -2588,26 +2606,29 @@ async def rosca_payment_notification_worker():
                                         max_bid = rosca.max_bid_amount or 0
                                         msg_text = (
                                             f"🔔 <b>THÔNG BÁO ĐÓNG HỤI HÀNG KỲ</b> 🔔\n\n"
+                                            f"<b>Mã chân hụi:</b> <code>{m.id}</code>\n"
+                                            f"<b>Người chơi:</b> {player_name} ({m.parts_count or 1} chân)\n"
+                                            f"<b>Tình trạng:</b> {member_st}\n"
                                             f"<b>Dây hụi:</b> {rosca.code}\n"
                                             f"<b>Chủ hụi:</b> {owner_name}\n"
-                                            f"<b>Kỳ đóng:</b> Ngày {rosca.payment_day} hàng tháng\n"
+                                            f"<b>Kỳ đóng:</b> Kỳ {current_round} (Hạn đóng: Ngày {rosca.payment_day} hàng tháng)\n"
                                             f"<b>Mức bỏ hụi tối thiểu:</b> {min_bid:,.0f} VNĐ\n"
                                             f"<b>Mức bỏ hụi tối đa:</b> {max_bid:,.0f} VNĐ\n\n"
                                             f"<i>Vui lòng nộp tiền hụi đúng hạn và thực hiện bỏ thăm nếu có nhu cầu hốt hụi kỳ này!</i>\n\n"
                                             f"💡 <b>GỢI Ý LỆNH THAO TÁC:</b>\n"
                                             f"🔹 <b>Đóng tiền chân hụi:</b> <code>/hui_dong_tien_chan_hui</code>\n"
                                             f"  <i>(Gõ lệnh để chọn dây hụi hoặc điền form thông tin đóng hụi)</i>\n"
-                                            f"🔹 <b>Rút dây hụi / Hốt hụi:</b> <code>/hui_rut_day_hui [Mã_Chân_Hụi] [Số_Tiền_Hốt]</code>\n"
-                                            f"  <i>(Ví dụ: <code>/hui_rut_day_hui AT001 50000000</code>)</i>"
+                                            f"🔹 <b>Rút dây hụi / Hốt hụi:</b> <code>/hui_rut_day_hui {m.id} [Số_Tiền_Hốt]</code>\n"
+                                            f"  <i>(Ví dụ: <code>/hui_rut_day_hui {m.id} 50000000</code>)</i>"
                                         )
                                         await client.send_message(
                                             chat_id=target_chat_id,
                                             text=msg_text,
                                             parse_mode=ParseMode.HTML
                                         )
-                                        LogInfo(f"Sent rosca payment notification for {rosca.code} to {target_chat_id}", LogType.SYSTEM_STATUS)
+                                        LogInfo(f"Sent rosca payment notification for {m.id} to {target_chat_id}", LogType.SYSTEM_STATUS)
                                     except Exception as e:
-                                        LogError(f"Error sending rosca notification to {tg_group}: {e}", LogType.SYSTEM_STATUS)
+                                        LogError(f"Error sending rosca notification for {m.id} to {tg_group}: {e}", LogType.SYSTEM_STATUS)
 
             except Exception as e:
                 LogError(f"Error in rosca_payment_notification_worker logic: {e}", LogType.SYSTEM_STATUS)
@@ -2840,3 +2861,235 @@ async def document_reminder_worker():
             LogError(f"Critical error in document_reminder_worker: {e}", LogType.SYSTEM_STATUS)
             await asyncio.sleep(30)
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# UNIFIED SCHEDULED NOTIFICATION WORKER
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def unified_scheduled_notify_worker():
+    """
+    Worker duy nhất xử lý tất cả scheduled notifications từ DB config.
+    
+    Mỗi phút:
+      1. Đọc configs đang bật từ DB (scheduled_notify_configs)
+      2. Check schedule match (schedule_evaluator.should_trigger)
+      3. Resolve data (notify_resolvers)
+      4. Build message (hoặc dùng message_template)
+      5. Send → bot.send_message()
+      6. Log result → scheduled_notify_logs
+    """
+    LogInfo("Unified scheduled notify worker started.", LogType.SYSTEM_STATUS)
+    
+    while True:
+        try:
+            now = datetime.datetime.now()
+            
+            # Wait for bot to be ready
+            client = bot
+            if not client.is_connected:
+                await asyncio.sleep(30)
+                continue
+            
+            db = SessionLocal()
+            try:
+                from app.crud.scheduled_notification import (
+                    get_enabled_configs,
+                    create_scheduled_notify_log,
+                    check_already_sent_today,
+                )
+                from bot.utils.schedule_evaluator import should_trigger
+                from bot.utils.notify_resolvers import NOTIFY_RESOLVERS
+                
+                configs = get_enabled_configs(db)
+                
+                for config in configs:
+                    try:
+                        # 1. Check schedule
+                        if not should_trigger(config, now):
+                            continue
+                        
+                        LogInfo(
+                            f"[ScheduledNotify] MATCHED SCHEDULE for config '{config.group_name or config.chat_id}' "
+                            f"(ID: {config.id}, Type: {config.notify_type}, Time: {config.schedule_hour:02d}:{config.schedule_minute:02d})",
+                            LogType.SYSTEM_STATUS
+                        )
+
+                        # 2. Get resolver
+                        resolver = NOTIFY_RESOLVERS.get(config.module_key)
+                        if not resolver:
+                            LogWarning(
+                                f"[ScheduledNotify] No resolver found for module_key='{config.module_key}', skipping config {config.id}",
+                                LogType.SYSTEM_STATUS
+                            )
+                            continue
+                        
+                        # 3. Resolve pending items
+                        items = resolver.get_pending_items(db, config, now.date())
+                        
+                        if items is None:
+                            # Loại tự do → gửi message_template trực tiếp
+                            if not config.message_template:
+                                LogWarning(
+                                    f"[ScheduledNotify] Freeform config {config.id} ({config.notify_type}) has no message_template, skipping.",
+                                    LogType.SYSTEM_STATUS
+                                )
+                                continue
+                            
+                            # Check duplicate
+                            if check_already_sent_today(db, config.id, None, now.date()):
+                                LogInfo(
+                                    f"[ScheduledNotify] Config {config.id} ({config.notify_type}) already sent today, skipping.",
+                                    LogType.SYSTEM_STATUS
+                                )
+                                continue
+                            
+                            message = resolver.build_message(None, config)
+                            
+                            try:
+                                msg = await client.send_message(
+                                    chat_id=int(config.chat_id),
+                                    text=message,
+                                    parse_mode=ParseMode.HTML
+                                )
+                                create_scheduled_notify_log(
+                                    db=db,
+                                    config_id=config.id,
+                                    module_key=config.module_key,
+                                    notify_type=config.notify_type,
+                                    chat_id=config.chat_id,
+                                    group_name=config.group_name,
+                                    reference_id=None,
+                                    reference_name=None,
+                                    message_id=msg.id,
+                                    message_content=message[:500],
+                                    status="SUCCESS",
+                                    scheduled_at=now,
+                                )
+                                LogInfo(
+                                    f"[ScheduledNotify] Sent freeform {config.notify_type} to chat {config.chat_id} (msg_id={msg.id})",
+                                    LogType.SYSTEM_STATUS
+                                )
+                            except Exception as e:
+                                create_scheduled_notify_log(
+                                    db=db,
+                                    config_id=config.id,
+                                    module_key=config.module_key,
+                                    notify_type=config.notify_type,
+                                    chat_id=config.chat_id,
+                                    group_name=config.group_name,
+                                    reference_id=None,
+                                    reference_name=None,
+                                    message_id=None,
+                                    message_content=message[:500] if message else None,
+                                    status="FAILED",
+                                    error_message=str(e),
+                                    scheduled_at=now,
+                                )
+                                LogError(
+                                    f"[ScheduledNotify] Failed to send {config.notify_type} to {config.chat_id}: {e}",
+                                    LogType.SYSTEM_STATUS
+                                )
+                            
+                            await asyncio.sleep(0.5)  # Rate limit
+                            
+                        else:
+                            # Loại Business → gửi 1 message per item
+                            if not items:
+                                LogInfo(
+                                    f"[ScheduledNotify] Config {config.id} ({config.notify_type}) matched schedule but 0 pending items found.",
+                                    LogType.SYSTEM_STATUS
+                                )
+                                continue
+
+                            LogInfo(
+                                f"[ScheduledNotify] Config {config.id} ({config.notify_type}) found {len(items)} items to process.",
+                                LogType.SYSTEM_STATUS
+                            )
+                            
+                            for item_data in items:
+                                reference_id = item_data.get("reference_id")
+                                reference_name = item_data.get("reference_name")
+                                days_late = item_data.get("days_late", 0)
+                                
+                                # Check duplicate
+                                if check_already_sent_today(db, config.id, reference_id, now.date()):
+                                    LogInfo(
+                                        f"[ScheduledNotify] Item '{reference_id}' for config {config.id} already sent today, skipping.",
+                                        LogType.SYSTEM_STATUS
+                                    )
+                                    continue
+                                
+                                message = resolver.build_message(item_data, config, days_late)
+                                if not message:
+                                    LogWarning(
+                                        f"[ScheduledNotify] Empty message built for item '{reference_id}', skipping.",
+                                        LogType.SYSTEM_STATUS
+                                    )
+                                    continue
+                                
+                                try:
+                                    msg = await client.send_message(
+                                        chat_id=int(config.chat_id),
+                                        text=message,
+                                        parse_mode=ParseMode.HTML
+                                    )
+                                    create_scheduled_notify_log(
+                                        db=db,
+                                        config_id=config.id,
+                                        module_key=config.module_key,
+                                        notify_type=config.notify_type,
+                                        chat_id=config.chat_id,
+                                        group_name=config.group_name,
+                                        reference_id=reference_id,
+                                        reference_name=reference_name,
+                                        message_id=msg.id,
+                                        message_content=message[:500],
+                                        status="SUCCESS",
+                                        scheduled_at=now,
+                                    )
+                                    LogInfo(
+                                        f"[ScheduledNotify] Sent business {config.notify_type} for '{reference_id}' to chat {config.chat_id}",
+                                        LogType.SYSTEM_STATUS
+                                    )
+                                except Exception as e:
+                                    create_scheduled_notify_log(
+                                        db=db,
+                                        config_id=config.id,
+                                        module_key=config.module_key,
+                                        notify_type=config.notify_type,
+                                        chat_id=config.chat_id,
+                                        group_name=config.group_name,
+                                        reference_id=reference_id,
+                                        reference_name=reference_name,
+                                        message_id=None,
+                                        message_content=message[:500] if message else None,
+                                        status="FAILED",
+                                        error_message=str(e),
+                                        scheduled_at=now,
+                                    )
+                                    LogError(
+                                        f"[ScheduledNotify] Failed to send {config.notify_type} for '{reference_id}': {e}",
+                                        LogType.SYSTEM_STATUS
+                                    )
+                                
+                                await asyncio.sleep(0.5)  # Rate limit
+                        
+                    except Exception as e:
+                        LogError(f"[ScheduledNotify] Error processing config {config.id}: {e}", LogType.SYSTEM_STATUS)
+                
+            except Exception as e:
+                LogError(f"[ScheduledNotify] Error in unified worker logic: {e}", LogType.SYSTEM_STATUS)
+            finally:
+                db.close()
+            
+            # Wait until next minute
+            next_run = (datetime.datetime.now() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+            sleep_time = (next_run - datetime.datetime.now()).total_seconds()
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                await asyncio.sleep(1)
+        
+        except Exception as e:
+            LogError(f"[ScheduledNotify] Critical error in unified_scheduled_notify_worker: {e}", LogType.SYSTEM_STATUS)
+            await asyncio.sleep(60)
