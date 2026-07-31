@@ -48,7 +48,7 @@ def fmt_num(val):
 class CreditNotifyResolver:
     """Resolve dữ liệu cho module Credit."""
 
-    BUSINESS_TYPES = {"credit_interest", "credit_bad_debt", "credit_maturity"}
+    BUSINESS_TYPES = {"credit_interest", "credit_bad_debt"}
 
     @staticmethod
     def get_pending_items(db: Session, config, current_date: datetime.date, is_test: bool = False) -> Optional[List[dict]]:
@@ -362,7 +362,7 @@ class CreditNotifyResolver:
 class RentalNotifyResolver:
     """Resolve dữ liệu cho module Rental."""
 
-    BUSINESS_TYPES = {"rental_payment", "rental_maintenance", "rental_contract_expiry"}
+    BUSINESS_TYPES = {"rental_payment"}
 
     @staticmethod
     def get_pending_items(db: Session, config, current_date: datetime.date, is_test: bool = False) -> Optional[List[dict]]:
@@ -593,7 +593,7 @@ class RentalNotifyResolver:
 class RoscaNotifyResolver:
     """Resolve dữ liệu cho module Rosca (Hụi)."""
 
-    BUSINESS_TYPES = {"rosca_payment", "rosca_bidding", "rosca_defaulted"}
+    BUSINESS_TYPES = {"rosca_payment"}
 
     @staticmethod
     def get_pending_items(db: Session, config, current_date: datetime.date, is_test: bool = False) -> Optional[List[dict]]:

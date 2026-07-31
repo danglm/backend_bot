@@ -177,203 +177,671 @@ Phân loại gồm: KCredit, PQCredit, QCredit, ...</i>"""
     finally:
         db.close()
 
-# --- Check Customer ---
+# --- Check Customer (Interactive) ---
+def _sid(uuid_val):
+    """Shorten UUID to 32-char hex (no hyphens) for callback_data."""
+    return str(uuid_val).replace("-", "")
+
+
+def _uid(short_hex):
+    """Restore UUID string from 32-char hex."""
+    import uuid as _uuid
+    return str(_uuid.UUID(short_hex))
+
+
+def _build_cxkh_customer_list_keyboard(customers, page, selected_customer_id=None):
+    """Build inline keyboard for customer list with pagination and radio select."""
+    PAGE_SIZE = 10
+    total = len(customers)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * PAGE_SIZE
+    end = min(start + PAGE_SIZE, total)
+    page_customers = customers[start:end]
+
+    sel_hex = _sid(selected_customer_id) if selected_customer_id else None
+
+    buttons = []
+    for c in page_customers:
+        c_hex = _sid(c.id)
+        is_selected = (c_hex == sel_hex) if sel_hex else False
+        prefix = "[x]" if is_selected else "[ ]"
+        label = f"{prefix} {c.customer_id} - {c.customer_name}"
+        # ck_s|<32hex>|<page> = max ~40 chars
+        buttons.append([InlineKeyboardButton(label, callback_data=f"ck_s|{c_hex}|{page}")])
+
+    # Pagination row
+    nav_row = []
+    if page > 0:
+        # ck_p|<page>|<32hex> = max ~41 chars
+        nav_row.append(InlineKeyboardButton("<< Trước", callback_data=f"ck_p|{page - 1}|{sel_hex or ''}"))
+    nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="ck_noop"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Sau >>", callback_data=f"ck_p|{page + 1}|{sel_hex or ''}"))
+    buttons.append(nav_row)
+
+    # Action buttons
+    action_row = []
+    if sel_hex:
+        # ck_uc|<32hex> = max ~38 chars, ck_uhd|<32hex> = max ~39 chars
+        action_row.append(InlineKeyboardButton("Cập nhật KH", callback_data=f"ck_uc|{sel_hex}"))
+        action_row.append(InlineKeyboardButton("Cập nhật HĐ", callback_data=f"ck_uhd|{sel_hex}"))
+    buttons.append(action_row if action_row else [])
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="ck_x")])
+
+    # Remove empty rows
+    buttons = [row for row in buttons if row]
+
+    return InlineKeyboardMarkup(buttons)
+
+
+def _build_cxkh_contract_list_keyboard(contracts, page, customer_hex):
+    """Build inline keyboard for contract list with pagination."""
+    PAGE_SIZE = 10
+    total = len(contracts)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * PAGE_SIZE
+    end = min(start + PAGE_SIZE, total)
+    page_contracts = contracts[start:end]
+
+    buttons = []
+    for c in page_contracts:
+        status_map = {
+            CreditStatus.ACTIVE.value: "Đang vay",
+            CreditStatus.PAID.value: "Tất toán",
+            CreditStatus.BAD_DEBT.value: "Nợ xấu",
+            CreditStatus.CANCELLED.value: "Đã hủy",
+        }
+        status_label = status_map.get(c.credit_status, "N/A")
+        label = f"{c.contract_id} ({status_label})"
+        c_hex = _sid(c.id)
+        # ck_sc|<32hex> = max ~38 chars
+        buttons.append([InlineKeyboardButton(label, callback_data=f"ck_sc|{c_hex}")])
+
+    # Pagination row
+    nav_row = []
+    if page > 0:
+        # ck_cp|<page>|<32hex> = max ~42 chars
+        nav_row.append(InlineKeyboardButton("<< Trước", callback_data=f"ck_cp|{page - 1}|{customer_hex}"))
+    nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="ck_noop"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Sau >>", callback_data=f"ck_cp|{page + 1}|{customer_hex}"))
+    buttons.append(nav_row)
+
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="ck_x")])
+
+    buttons = [row for row in buttons if row]
+    return InlineKeyboardMarkup(buttons)
+
 @bot.on_message(filters.command(["credit_check_customer", "credit_xem_khach_hang"]) | filters.regex(r"^@\w+\s+/(credit_check_customer|credit_xem_khach_hang)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
+@require_group_role("main")
 async def check_customer_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["credit_check_customer", "credit_xem_khach_hang"])
     if args is None: return
 
-    if len(args) < 2:
-        await message.reply_text("⚠️ Vui lòng cung cấp Mã Khách Hàng hoặc Tên Nhóm. Lệnh ví dụ: <pre>/credit_check_customer KH001</pre> hoặc <pre>/credit_check_customer [Tên nhóm khách hàng]</pre>", parse_mode=ParseMode.HTML)
-        return
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Danh sách khách hàng", callback_data="ck_list|0")],
+        [InlineKeyboardButton("Hủy", callback_data="ck_x")]
+    ])
+    await message.reply_text(
+        "<b>XEM KHÁCH HÀNG TÍN DỤNG</b>\n\nVui lòng chọn thao tác:",
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML
+    )
 
-    lookup_key = args[1]
+
+@bot.on_callback_query(filters.regex(r"^ck_noop$"))
+async def ck_noop_callback(client, callback_query: CallbackQuery):
+    await callback_query.answer()
+
+
+@bot.on_callback_query(filters.regex(r"^ck_x$"))
+async def ck_cancel_callback(client, callback_query: CallbackQuery):
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^ck_list\|(\d+)$"))
+async def ck_show_list_callback(client, callback_query: CallbackQuery):
+    page = int(callback_query.matches[0].group(1))
     db = SessionLocal()
     try:
-        chat_id = str(message.chat.id)
-        current_project_member = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.chat_id == chat_id
-        ).first()
+        customers = db.query(CreditCustomer).order_by(CreditCustomer.customer_name).all()
 
-        if not current_project_member:
-            await message.reply_text("⚠️ Nhóm này chưa được đồng bộ vào dự án nào. Vui lòng sử dụng lệnh /syncchat trước.")
+        if not customers:
+            await callback_query.message.edit_text("ℹ️ Không có khách hàng nào trong dự án này.")
             return
 
-        project_id = current_project_member.project_id
+        keyboard = _build_cxkh_customer_list_keyboard(customers, page)
+        await callback_query.message.edit_text(
+            "<b>DANH SÁCH KHÁCH HÀNG</b>\n\nChọn khách hàng để xem / thao tác:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in ck_show_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
 
-        valid_members = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member"
-        ).all()
 
-        valid_groups = []
-        for m in valid_members:
-            if m.group_name:
-                valid_groups.append(m.group_name)
-            
-        from sqlalchemy import or_
-        customer = db.query(CreditCustomer).filter(
-            or_(CreditCustomer.customer_id == lookup_key, CreditCustomer.group_name == lookup_key)
-        ).first()
+@bot.on_callback_query(filters.regex(r"^ck_s\|([a-f0-9]{32})\|(\d+)$"))
+async def ck_sel_callback(client, callback_query: CallbackQuery):
+    selected_hex = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+    selected_uuid = _uid(selected_hex)
+    db = SessionLocal()
+    try:
+        customers = db.query(CreditCustomer).order_by(CreditCustomer.customer_name).all()
 
-        if not customer:
-            await message.reply_text(f"⚠️ Khách hàng <b>{lookup_key}</b> chưa tồn tại trong hệ thống.", parse_mode=ParseMode.HTML)
+        if not customers:
+            await callback_query.message.edit_text("Không có khách hàng nào.")
             return
 
-        if not customer.group_name or customer.group_name not in valid_groups:
-            await message.reply_text(f"⚠️ Không tìm thấy nhóm <b>{customer.group_name}</b> trong dự án này.", parse_mode=ParseMode.HTML)
+        # Find selected customer for header info
+        selected_cust = None
+        for c in customers:
+            if str(c.id) == selected_uuid:
+                selected_cust = c
+                break
+
+        def fmt_num(val):
+            if val is None: return 0
+            return int(val) if val == int(val) else val
+
+        header = "<b>DANH SÁCH KHÁCH HÀNG</b>\n\n"
+        if selected_cust:
+            header += (
+                f"<b>Đã chọn:</b> {selected_cust.customer_name} ({selected_cust.customer_id})\n"
+                f"Nhóm: {selected_cust.group_name or 'N/A'} | "
+                f"Hạn mức: {fmt_num(selected_cust.total_credit_limit):,} VNĐ\n\n"
+            )
+        header += "Chọn khách hàng để xem / thao tác:"
+
+        keyboard = _build_cxkh_customer_list_keyboard(customers, page, selected_uuid)
+        await callback_query.message.edit_text(
+            header,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in ck_sel_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ck_p\|(\d+)\|(.*)$"))
+async def ck_page_callback(client, callback_query: CallbackQuery):
+    page = int(callback_query.matches[0].group(1))
+    selected_hex = callback_query.matches[0].group(2) or None
+    selected_uuid = _uid(selected_hex) if selected_hex else None
+    db = SessionLocal()
+    try:
+        customers = db.query(CreditCustomer).order_by(CreditCustomer.customer_name).all()
+
+        if not customers:
+            await callback_query.message.edit_text("Không có khách hàng nào.")
             return
 
         def fmt_num(val):
             if val is None: return 0
             return int(val) if val == int(val) else val
 
-        reply_lines = [
-            f"<b>THÔNG TIN KHÁCH HÀNG</b>",
-            f"Mã Khách Hàng: <b>{customer.customer_id or 'N/A'}</b>",
-            f"Phân Loại: <b>{customer.classification or 'N/A'}</b>",
-            f"Tên Nhóm: <b>{customer.group_name or 'N/A'}</b>",
-            f"Tên Khách Hàng: <b>{customer.customer_name}</b>",
-            f"Liên Hệ: <b>{customer.contact_info}</b>",
-            f"{'━' * 15}",
-            f"<b>HẠN MỨC</b>",
-            f"Tổng Hạn Mức Tín Dụng: <b>{fmt_num(customer.total_credit_limit):,} VNĐ</b>",
-            f"Hạn Mức Còn Lại: <b>{fmt_num(customer.remaining_credit_limit):,} VNĐ</b>",
-            f"Tổng Nợ Gốc Hiện Tại: <b>{fmt_num(customer.total_principal_outstanding):,} VNĐ</b>",
-            f"{'━' * 15}",
-            f"<b>DANH SÁCH HỢP ĐỒNG</b>"
-        ]
-
-        from app.models.credit import CreditStatus
-        credits = db.query(Credit).filter(Credit.customer_id == customer.id).all()
-        if not credits:
-            reply_lines.append("<i>Khách hàng chưa có hợp đồng nào.</i>")
-        else:
-            for idx, c in enumerate(credits, 1):
-                if c.credit_status == CreditStatus.ACTIVE.value:
-                    status_emoji = "Đang vay"
-                elif c.credit_status == CreditStatus.PAID.value:
-                    status_emoji = "Đã tất toán khoản vay"
-                elif c.credit_status == CreditStatus.BAD_DEBT.value:
-                    status_emoji = "Nợ xấu (Blacklist)"
-                else:
-                    status_emoji = "Đã huỷ hợp đồng"
-                
-                is_sec = False
-                if c.loan_type:
-                    is_sec = c.loan_type.lower().strip() in ["secured", "thế chấp", "the chap", "collateral"]
-                loan_label = "Thế chấp" if is_sec else "Tín chấp"
-                reply_lines.append(
-                    f"{idx}. {status_emoji} <b>{c.contract_id}</b> ({loan_label}) - Gốc: {fmt_num(c.initial_principal):,} - Còn nợ: {fmt_num(c.remaining_principal):,}"
+        header = "<b>DANH SÁCH KHÁCH HÀNG</b>\n\n"
+        if selected_uuid:
+            selected_cust = None
+            for c in customers:
+                if str(c.id) == selected_uuid:
+                    selected_cust = c
+                    break
+            if selected_cust:
+                header += (
+                    f"<b>Đã chọn:</b> {selected_cust.customer_name} ({selected_cust.customer_id})\n"
+                    f"Nhóm: {selected_cust.group_name or 'N/A'} | "
+                    f"Hạn mức: {fmt_num(selected_cust.total_credit_limit):,} VNĐ\n\n"
                 )
+        header += "Chọn khách hàng để xem / thao tác:"
 
-        await message.reply_text("\n".join(reply_lines), parse_mode=ParseMode.HTML)
-
+        keyboard = _build_cxkh_customer_list_keyboard(customers, page, selected_uuid)
+        await callback_query.message.edit_text(
+            header,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
     except Exception as e:
-        LogError(f"Error in check_customer_handler: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Có lỗi xảy ra trong quá trình truy xuất khách hàng.")
+        LogError(f"Error in ck_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
     finally:
         db.close()
 
-# --- Check Contract ---
+
+@bot.on_callback_query(filters.regex(r"^ck_uc\|([a-f0-9]{32})$"))
+async def ck_update_customer_callback(client, callback_query: CallbackQuery):
+    """Show update customer form for the selected customer."""
+    customer_hex = callback_query.matches[0].group(1)
+    customer_uuid = _uid(customer_hex)
+    db = SessionLocal()
+    try:
+        customer = db.query(CreditCustomer).filter(CreditCustomer.id == customer_uuid).first()
+        if not customer:
+            await callback_query.answer("⚠️ Không tìm thấy khách hàng.", show_alert=True)
+            return
+
+        def fmt_num(val):
+            if val is None: return 0
+            return int(val) if val == int(val) else val
+
+        form_template = f"""<b>FORM CẬP NHẬT KHÁCH HÀNG TÍN DỤNG</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin và gửi lại:
+
+<pre>/credit_update_customer {customer.customer_id}
+Mã Khách Hàng: {customer.customer_id or ""}
+Tên Nhóm: {customer.group_name or ""}
+Tên Khách Hàng: {customer.customer_name or ""}
+Liên Hệ Khách Hàng: {customer.contact_info or ""}
+Tổng Hạn Mức Tín Dụng: {fmt_num(customer.total_credit_limit)}
+Hạn Mức Còn Lại: {fmt_num(customer.remaining_credit_limit)}
+Tổng Nợ Gốc Hiện Tại: {fmt_num(customer.total_principal_outstanding)}
+Phân Loại: {customer.classification or ""}
+</pre>"""
+        form_msg = await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(callback_query.message.chat.id, "credit_update_customer", customer.customer_id, form_msg.id)
+        await callback_query.message.delete()
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in ck_update_customer_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ck_uhd\|([a-f0-9]{32})$"))
+async def ck_show_contract_list_callback(client, callback_query: CallbackQuery):
+    """Show list of contracts for the selected customer."""
+    customer_hex = callback_query.matches[0].group(1)
+    customer_uuid = _uid(customer_hex)
+    db = SessionLocal()
+    try:
+        customer = db.query(CreditCustomer).filter(CreditCustomer.id == customer_uuid).first()
+        if not customer:
+            await callback_query.answer("⚠️ Không tìm thấy khách hàng.", show_alert=True)
+            return
+
+        contracts = db.query(Credit).filter(Credit.customer_id == customer.id).all()
+        if not contracts:
+            await callback_query.answer("ℹ️ Khách hàng chưa có hợp đồng nào.", show_alert=True)
+            return
+
+        keyboard = _build_cxkh_contract_list_keyboard(contracts, 0, customer_hex)
+        await callback_query.message.edit_text(
+            f"<b>DANH SÁCH HỢP ĐỒNG</b>\n"
+            f"Khách hàng: <b>{customer.customer_name}</b> ({customer.customer_id})\n\n"
+            f"Chọn hợp đồng để cập nhật:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in ck_show_contract_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ck_cp\|(\d+)\|([a-f0-9]{32})$"))
+async def ck_contract_page_callback(client, callback_query: CallbackQuery):
+    """Paginate contract list."""
+    page = int(callback_query.matches[0].group(1))
+    customer_hex = callback_query.matches[0].group(2)
+    customer_uuid = _uid(customer_hex)
+    db = SessionLocal()
+    try:
+        customer = db.query(CreditCustomer).filter(CreditCustomer.id == customer_uuid).first()
+        if not customer:
+            await callback_query.answer("⚠️ Không tìm thấy khách hàng.", show_alert=True)
+            return
+
+        contracts = db.query(Credit).filter(Credit.customer_id == customer.id).all()
+        if not contracts:
+            await callback_query.answer("ℹ️ Không có hợp đồng.", show_alert=True)
+            return
+
+        keyboard = _build_cxkh_contract_list_keyboard(contracts, page, customer_hex)
+        await callback_query.message.edit_text(
+            f"<b>DANH SÁCH HỢP ĐỒNG</b>\n"
+            f"Khách hàng: <b>{customer.customer_name}</b> ({customer.customer_id})\n\n"
+            f"Chọn hợp đồng để cập nhật:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in ck_contract_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ck_sc\|([a-f0-9]{32})$"))
+async def ck_select_contract_callback(client, callback_query: CallbackQuery):
+    """Show update form for the selected contract."""
+    contract_hex = callback_query.matches[0].group(1)
+    contract_uuid = _uid(contract_hex)
+    db = SessionLocal()
+    try:
+        contract = db.query(Credit).filter(Credit.id == contract_uuid).first()
+        if not contract:
+            await callback_query.answer("⚠️ Không tìm thấy hợp đồng.", show_alert=True)
+            return
+
+        customer = contract.customer
+
+        def fmt_num(val):
+            if val is None: return 0
+            return int(val) if val == int(val) else val
+
+        def fmt_dt(dt):
+            return dt.strftime('%d/%m/%Y') if dt else ""
+
+        total_limit = fmt_num(customer.total_credit_limit) if customer else 0
+        remain_limit = fmt_num(customer.remaining_credit_limit) if customer else 0
+        total_principal = fmt_num(customer.total_principal_outstanding) if customer else 0
+
+        start_date_str = fmt_dt(contract.start_date)
+        due_date_str = fmt_dt(contract.due_date)
+        interest_start_date_str = fmt_dt(contract.interest_start_date)
+        initial_principal = fmt_num(contract.initial_principal)
+        interest_rate = fmt_num(contract.monthly_interest_rate)
+        monthly_amount = fmt_num(contract.monthly_interest_amount)
+        total_paid = fmt_num(contract.total_principal_paid)
+        remaining_principal = fmt_num(contract.remaining_principal)
+        current_interest_debt = fmt_num(contract.interest_debt or 0)
+        send_msg = "Có" if contract.send_message_arise else "Không"
+
+        form_template = f"""<b>FORM CẬP NHẬT HỢP ĐỒNG TÍN DỤNG</b>
+Vui lòng sao chép toàn bộ form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<pre>/credit_update_contract {contract.contract_id}
+Mã Khách Hàng: {customer.customer_id if customer else ""}
+Tên Nhóm: {customer.group_name if customer else ""}
+Tên Khách Hàng: {customer.customer_name if customer else ""}
+Liên Hệ Khách Hàng: {customer.contact_info if customer else ""}
+Tổng Hạn Mức Tín Dụng: {total_limit}
+Hạn Mức Còn Lại: {remain_limit}
+Tổng Nợ Gốc Hiện Tại: {total_principal}
+Mã Hợp Đồng: {contract.contract_id or ""}
+Loại Hợp Đồng: {contract.loan_type or ""}
+Tiền Nợ Gốc (Ban đầu): {initial_principal}
+Ngày Bắt Đầu Vay (dd/mm/yyyy): {start_date_str}
+Ngày Đáo Hạn (dd/mm/yyyy): {due_date_str}
+Ngày Bắt Đầu Thu Lãi (dd/mm/yyyy): {interest_start_date_str}
+Lãi Suất / Tháng (%): {interest_rate}
+Số Tiền Lãi / Tháng: {monthly_amount}
+Tổng Số Tiền Trả Gốc: {total_paid}
+Tiền Nợ Gốc Còn Lại: {remaining_principal}
+Tổng Nợ Lãi: {current_interest_debt}
+Ghi Chú: {contract.notes or ""}
+Gửi Tin Nhắn Phát Sinh (Có/Không): {send_msg}
+Nội Dung Tin Nhắn: {contract.message_content or ""}
+Phân Loại: {contract.classification or ""}
+</pre>"""
+        form_msg = await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(callback_query.message.chat.id, "credit_update_contract", contract.contract_id, form_msg.id)
+        await callback_query.message.delete()
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in ck_select_contract_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+# --- Check Contract (Interactive) ---
+def _build_chd_contract_list_keyboard(contracts, page, selected_contract_id=None):
+    """Build inline keyboard for contract list with radio select and pagination."""
+    PAGE_SIZE = 10
+    total = len(contracts)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * PAGE_SIZE
+    end = min(start + PAGE_SIZE, total)
+    page_contracts = contracts[start:end]
+
+    sel_hex = _sid(selected_contract_id) if selected_contract_id else None
+
+    buttons = []
+    for c in page_contracts:
+        c_hex = _sid(c.id)
+        is_selected = (c_hex == sel_hex) if sel_hex else False
+        prefix = "[x]" if is_selected else "[ ]"
+        status_map = {
+            CreditStatus.ACTIVE.value: "Đang vay",
+            CreditStatus.PAID.value: "Tất toán",
+            CreditStatus.BAD_DEBT.value: "Nợ xấu",
+            CreditStatus.CANCELLED.value: "Đã hủy",
+        }
+        status_label = status_map.get(c.credit_status, "N/A")
+        label = f"{prefix} {c.contract_id} ({status_label})"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"chd_s|{c_hex}|{page}")])
+
+    # Pagination row
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("<< Trước", callback_data=f"chd_p|{page - 1}|{sel_hex or ''}"))
+    nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="ck_noop"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Sau >>", callback_data=f"chd_p|{page + 1}|{sel_hex or ''}"))
+    buttons.append(nav_row)
+
+    # Action buttons
+    action_row = []
+    if sel_hex:
+        action_row.append(InlineKeyboardButton("Cập nhật hợp đồng", callback_data=f"chd_u|{sel_hex}"))
+    buttons.append(action_row if action_row else [])
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="ck_x")])
+
+    buttons = [row for row in buttons if row]
+    return InlineKeyboardMarkup(buttons)
+
+
 @bot.on_message(filters.command(["credit_check_contract", "credit_xem_hop_dong"]) | filters.regex(r"^@\w+\s+/(credit_check_contract|credit_xem_hop_dong)\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
+@require_group_role("main")
 async def check_contract_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["credit_check_contract", "credit_xem_hop_dong"])
     if args is None: return
 
-    if len(args) < 2:
-        await message.reply_text("⚠️ Vui lòng cung cấp mã hợp đồng. Lệnh ví dụ: <pre>/credit_check_contract HD123</pre>", parse_mode=ParseMode.HTML)
-        return
-
-    contract_code = args[1]
     db = SessionLocal()
     try:
-        # Check Project Isolation
-        chat_id = str(message.chat.id)
-        current_project_member = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.chat_id == chat_id
-        ).first()
-
-        if not current_project_member:
-            await message.reply_text("⚠️ Nhóm này chưa được đồng bộ vào dự án nào. Vui lòng sử dụng lệnh /syncchat trước.")
+        contracts = db.query(Credit).all()
+        if not contracts:
+            await message.reply_text("Không có hợp đồng nào trong hệ thống.")
             return
 
-        project_id = current_project_member.project_id
-        valid_members = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member"
-        ).all()
+        keyboard = _build_chd_contract_list_keyboard(contracts, 0)
+        await message.reply_text(
+            "<b>DANH SÁCH HỢP ĐỒNG</b>\n\nChọn hợp đồng để xem / thao tác:",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in check_contract_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("Có lỗi xảy ra.")
+    finally:
+        db.close()
 
-        valid_groups = []
-        for m in valid_members:
-            if m.group_name:
-                valid_groups.append(m.group_name)
-            
-        contract = db.query(Credit).filter(Credit.contract_id == contract_code).first()
-        if not contract:
-            await message.reply_text(f"⚠️ Không tìm thấy hợp đồng <b>{contract_code}</b>.", parse_mode=ParseMode.HTML)
+
+@bot.on_callback_query(filters.regex(r"^chd_s\|([a-f0-9]{32})\|(\d+)$"))
+async def chd_sel_callback(client, callback_query: CallbackQuery):
+    selected_hex = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+    selected_uuid = _uid(selected_hex)
+    db = SessionLocal()
+    try:
+        contracts = db.query(Credit).all()
+        if not contracts:
+            await callback_query.message.edit_text("Không có hợp đồng nào.")
             return
 
-        customer = contract.customer
-        if not customer:
-            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không có khách hàng hợp lệ.", parse_mode=ParseMode.HTML)
-            return
-            
-        if not customer.group_name or customer.group_name not in valid_groups:
-            await message.reply_text(f"⚠️ Hợp đồng <b>{contract_code}</b> không thuộc về nhóm hợp lệ trong dự án hiện tại (Nhóm: {customer.group_name}).", parse_mode=ParseMode.HTML)
+        # Find selected contract for header info
+        selected_ct = None
+        for c in contracts:
+            if str(c.id) == selected_uuid:
+                selected_ct = c
+                break
+
+        def fmt_num(val):
+            if val is None: return 0
+            return int(val) if val == int(val) else val
+
+        header = "<b>DANH SÁCH HỢP ĐỒNG</b>\n\n"
+        if selected_ct:
+            cust = selected_ct.customer
+            cust_name = cust.customer_name if cust else "N/A"
+            header += (
+                f"<b>Đã chọn:</b> {selected_ct.contract_id}\n"
+                f"Khách hàng: {cust_name}\n"
+                f"Còn nợ: {fmt_num(selected_ct.remaining_principal):,} VNĐ\n\n"
+            )
+        header += "Chọn hợp đồng để xem / thao tác:"
+
+        keyboard = _build_chd_contract_list_keyboard(contracts, page, selected_uuid)
+        await callback_query.message.edit_text(
+            header,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in chd_sel_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^chd_p\|(\d+)\|(.*)$"))
+async def chd_page_callback(client, callback_query: CallbackQuery):
+    page = int(callback_query.matches[0].group(1))
+    selected_hex = callback_query.matches[0].group(2) or None
+    selected_uuid = _uid(selected_hex) if selected_hex else None
+    db = SessionLocal()
+    try:
+        contracts = db.query(Credit).all()
+        if not contracts:
+            await callback_query.message.edit_text("Không có hợp đồng nào.")
             return
 
         def fmt_num(val):
             if val is None: return 0
             return int(val) if val == int(val) else val
-            
-        def fmt_dt(dt):
-            if not dt: return "N/A"
-            return dt.strftime('%d/%m/%Y')
 
-        from app.models.credit import CreditStatus
-        if contract.credit_status == CreditStatus.ACTIVE.value:
-            status_emoji = "Đang vay"
-        elif contract.credit_status == CreditStatus.PAID.value:
-            status_emoji = "Đã tất toán khoản vay"
-        elif contract.credit_status == CreditStatus.BAD_DEBT.value:
-            status_emoji = "Nợ xấu (Blacklist)"
-        else:
-            status_emoji = "Đã huỷ hợp đồng"
-        is_sec = False
-        if contract.loan_type:
-            is_sec = contract.loan_type.lower().strip() in ["secured", "thế chấp", "the chap", "collateral"]
-        loan_type_label = "Thế chấp" if is_sec else "Tín chấp"
+        header = "<b>DANH SÁCH HỢP ĐỒNG</b>\n\n"
+        if selected_uuid:
+            selected_ct = None
+            for c in contracts:
+                if str(c.id) == selected_uuid:
+                    selected_ct = c
+                    break
+            if selected_ct:
+                cust = selected_ct.customer
+                cust_name = cust.customer_name if cust else "N/A"
+                header += (
+                    f"<b>Đã chọn:</b> {selected_ct.contract_id}\n"
+                    f"Khách hàng: {cust_name}\n"
+                    f"Còn nợ: {fmt_num(selected_ct.remaining_principal):,} VNĐ\n\n"
+                )
+        header += "Chọn hợp đồng để xem / thao tác:"
 
-        reply_lines = [
-            f"<b>THÔNG TIN HỢP ĐỒNG: {contract.contract_id}</b>",
-            f"Trạng thái: <b>{status_emoji}</b>",
-            f"Loại hợp đồng: <b>{loan_type_label}</b>",
-            f"Phân loại: <b>{contract.classification or 'N/A'}</b>",
-            f"Mã Khách Hàng: <b>{customer.customer_id or 'N/A'}</b>",
-            f"Tên: <b>{customer.customer_name}</b>",
-            f"Liên hệ: <b>{customer.contact_info}</b>",
-            f"Nợ Gốc (Ban đầu): <b>{fmt_num(contract.initial_principal):,}</b>",
-            f"Đã Trả Gốc: <b>{fmt_num(contract.total_principal_paid):,}</b>",
-            f"Còn Nợ Gốc: <b>{fmt_num(contract.remaining_principal):,}</b>",
-            f"Lãi Suất: <b>{fmt_num(contract.monthly_interest_rate)}% / tháng</b>",
-            f"Lãi Tạm Tính Hàng Tháng: <b>{fmt_num(contract.monthly_interest_amount):,}</b>",
-            f"Công Nợ Lãi Hiện Tại: <b>{fmt_num(contract.interest_debt or 0):,}</b>",
-            f"Ngày Vay: <b>{fmt_dt(contract.start_date)}</b>",
-            f"Ngày Đáo Hạn: <b>{fmt_dt(contract.due_date)}</b>",
-            f"Bắt Đầu Tính Lãi Từ: <b>{fmt_dt(contract.interest_start_date)}</b>",
-            f"Ghi chú: {contract.notes or '<i>Không có</i>'}",
-        ]
-
-        await message.reply_text("\n".join(reply_lines), parse_mode=ParseMode.HTML)
-
+        keyboard = _build_chd_contract_list_keyboard(contracts, page, selected_uuid)
+        await callback_query.message.edit_text(
+            header,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.answer()
     except Exception as e:
-        LogError(f"Error in check_contract_handler: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Có lỗi xảy ra trong quá trình truy xuất hợp đồng.")
+        LogError(f"Error in chd_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^chd_u\|([a-f0-9]{32})$"))
+async def chd_update_contract_callback(client, callback_query: CallbackQuery):
+    """Show update form for the selected contract."""
+    contract_hex = callback_query.matches[0].group(1)
+    contract_uuid = _uid(contract_hex)
+    db = SessionLocal()
+    try:
+        contract = db.query(Credit).filter(Credit.id == contract_uuid).first()
+        if not contract:
+            await callback_query.answer("Không tìm thấy hợp đồng.", show_alert=True)
+            return
+
+        customer = contract.customer
+
+        def fmt_num(val):
+            if val is None: return 0
+            return int(val) if val == int(val) else val
+
+        def fmt_dt(dt):
+            return dt.strftime('%d/%m/%Y') if dt else ""
+
+        total_limit = fmt_num(customer.total_credit_limit) if customer else 0
+        remain_limit = fmt_num(customer.remaining_credit_limit) if customer else 0
+        total_principal = fmt_num(customer.total_principal_outstanding) if customer else 0
+
+        start_date_str = fmt_dt(contract.start_date)
+        due_date_str = fmt_dt(contract.due_date)
+        interest_start_date_str = fmt_dt(contract.interest_start_date)
+        initial_principal = fmt_num(contract.initial_principal)
+        interest_rate = fmt_num(contract.monthly_interest_rate)
+        monthly_amount = fmt_num(contract.monthly_interest_amount)
+        total_paid = fmt_num(contract.total_principal_paid)
+        remaining_principal = fmt_num(contract.remaining_principal)
+        current_interest_debt = fmt_num(contract.interest_debt or 0)
+        send_msg = "Có" if contract.send_message_arise else "Không"
+
+        form_template = f"""<b>FORM CẬP NHẬT HỢP ĐỒNG TÍN DỤNG</b>
+Vui lòng sao chép toàn bộ form dưới đây, chỉnh sửa thông tin cần thay đổi và gửi lại:
+
+<pre>/credit_update_contract {contract.contract_id}
+Mã Khách Hàng: {customer.customer_id if customer else ""}
+Tên Nhóm: {customer.group_name if customer else ""}
+Tên Khách Hàng: {customer.customer_name if customer else ""}
+Liên Hệ Khách Hàng: {customer.contact_info if customer else ""}
+Tổng Hạn Mức Tín Dụng: {total_limit}
+Hạn Mức Còn Lại: {remain_limit}
+Tổng Nợ Gốc Hiện Tại: {total_principal}
+Mã Hợp Đồng: {contract.contract_id or ""}
+Loại Hợp Đồng: {contract.loan_type or ""}
+Tiền Nợ Gốc (Ban đầu): {initial_principal}
+Ngày Bắt Đầu Vay (dd/mm/yyyy): {start_date_str}
+Ngày Đáo Hạn (dd/mm/yyyy): {due_date_str}
+Ngày Bắt Đầu Thu Lãi (dd/mm/yyyy): {interest_start_date_str}
+Lãi Suất / Tháng (%): {interest_rate}
+Số Tiền Lãi / Tháng: {monthly_amount}
+Tổng Số Tiền Trả Gốc: {total_paid}
+Tiền Nợ Gốc Còn Lại: {remaining_principal}
+Tổng Nợ Lãi: {current_interest_debt}
+Ghi Chú: {contract.notes or ""}
+Gửi Tin Nhắn Phát Sinh (Có/Không): {send_msg}
+Nội Dung Tin Nhắn: {contract.message_content or ""}
+Phân Loại: {contract.classification or ""}
+</pre>"""
+        form_msg = await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        form_tracker.track(callback_query.message.chat.id, "credit_update_contract", contract.contract_id, form_msg.id)
+        await callback_query.message.delete()
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in chd_update_contract_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("Có lỗi xảy ra.", show_alert=True)
     finally:
         db.close()
 
