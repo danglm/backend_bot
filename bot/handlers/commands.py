@@ -1645,10 +1645,7 @@ async def cp_confirm_callback(client, callback_query):
 @bot.on_callback_query(filters.regex(r"^cp_cancel$"))
 async def cp_cancel_callback(client, callback_query):
     """Hủy tạo dự án."""
-    await callback_query.message.edit_text(
-        "❌ Đã hủy tạo dự án.",
-        parse_mode=ParseMode.HTML
-    )
+    await callback_query.message.delete()
     await callback_query.answer()
 
 
@@ -1822,10 +1819,7 @@ async def dp_confirm_callback(client, callback_query):
 @bot.on_callback_query(filters.regex(r"^dp_cancel$"))
 async def dp_cancel_callback(client, callback_query):
     """Hủy xóa dự án."""
-    await callback_query.message.edit_text(
-        "❌ Đã hủy xóa dự án.",
-        parse_mode=ParseMode.HTML
-    )
+    await callback_query.message.delete()
     await callback_query.answer()
 
 
@@ -2145,4 +2139,4 @@ async def kick_user_project_confirm(client, callback_query):
 
 @bot.on_callback_query(filters.regex(r"^ku_cancel$"))
 async def kick_user_cancel_callback(client, callback_query):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác xóa người dùng.")
+    await callback_query.message.delete()

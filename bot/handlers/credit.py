@@ -2,7 +2,7 @@ from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode
 from bot.utils.bot import bot
-from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_group_role, command_timeout
+from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_group_role, command_timeout, fmt_num, fmt_vn
 from bot.utils.enums import UserType
 from bot.utils.logger import LogInfo, LogError, LogType
 from app.db.session import SessionLocal
@@ -205,7 +205,7 @@ def _build_cxkh_customer_list_keyboard(customers, page, selected_customer_id=Non
     for c in page_customers:
         c_hex = _sid(c.id)
         is_selected = (c_hex == sel_hex) if sel_hex else False
-        prefix = "[x]" if is_selected else "[ ]"
+        prefix = "✅" if is_selected else "⬜"
         label = f"{prefix} {c.customer_id} - {c.customer_name}"
         # ck_s|<32hex>|<page> = max ~40 chars
         buttons.append([InlineKeyboardButton(label, callback_data=f"ck_s|{c_hex}|{page}")])
@@ -618,7 +618,7 @@ def _build_chd_contract_list_keyboard(contracts, page, selected_contract_id=None
     for c in page_contracts:
         c_hex = _sid(c.id)
         is_selected = (c_hex == sel_hex) if sel_hex else False
-        prefix = "[x]" if is_selected else "[ ]"
+        prefix = "✅" if is_selected else "⬜"
         status_map = {
             CreditStatus.ACTIVE.value: "Đang vay",
             CreditStatus.PAID.value: "Tất toán",
@@ -1618,7 +1618,7 @@ async def cancel_contract_confirm_callback(client, callback_query: CallbackQuery
 
 @bot.on_callback_query(filters.regex(r"^cc_exit$"))
 async def cancel_contract_exit_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác.")
+    await callback_query.message.delete()
 
 
 # --- Credit: List Contracts ---
@@ -1925,7 +1925,7 @@ async def paid_interest_confirm_callback(client, callback_query: CallbackQuery):
 
 @bot.on_callback_query(filters.regex(r"^pi_cancel$"))
 async def paid_interest_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác thanh toán.")
+    await callback_query.message.delete()
 
 # --- Extend Contract ---
 @bot.on_message(filters.command(["credit_extend_contract", "credit_gia_han_hop_dong"]) | filters.regex(r"^@\w+\s+/(credit_extend_contract|credit_gia_han_hop_dong)\b"))
@@ -2095,7 +2095,7 @@ async def extend_contract_confirm_callback(client, callback_query: CallbackQuery
 
 @bot.on_callback_query(filters.regex(r"^ec_cancel$"))
 async def extend_contract_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác gia hạn.")
+    await callback_query.message.delete()
 
 
 # --- Payment Confirmed ---
@@ -2551,3 +2551,227 @@ async def remind_next_period_handler(client, message: Message) -> None:
         await message.reply_text("❌ Có lỗi xảy ra trong quá trình dời thông báo.")
     finally:
         db.close()
+
+
+# ===================== CREDIT INTEREST NOTIFICATION CALLBACKS =====================
+
+async def _check_admin_or_owner_credit(callback_query: CallbackQuery) -> bool:
+    """Kiểm tra người dùng click callback có phải là OWNER hoặc ADMINISTRATOR không."""
+    user_id = str(callback_query.from_user.id)
+    username = callback_query.from_user.username
+    chat_id = str(callback_query.message.chat.id)
+    
+    db = SessionLocal()
+    try:
+        from app.models.telegram import TelegramProjectMember
+        member = None
+        if username:
+            member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == chat_id,
+                TelegramProjectMember.user_name == username
+            ).first()
+        if not member:
+            member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.chat_id == chat_id,
+                TelegramProjectMember.user_id == user_id
+            ).first()
+            
+        if member and member.member_status in ["OWNER", "ADMINISTRATOR"]:
+            return True
+            
+        # Fallback check across project members
+        if not member:
+            member = db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.user_id == user_id,
+                TelegramProjectMember.member_status.in_(["OWNER", "ADMINISTRATOR"])
+            ).first()
+            if member:
+                return True
+                
+        return False
+    except Exception as e:
+        LogError(f"Error checking admin/owner in credit: {e}", LogType.SYSTEM_STATUS)
+        return False
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^cnt_full_pay\|([^|]+)$"))
+async def cnt_full_pay_callback(client, callback_query: CallbackQuery):
+    """Nút 1: 'Đã nhận thanh toán đủ' -> Ghi nhận thanh toán 100% nợ lãi hiện tại."""
+    if not await _check_admin_or_owner_credit(callback_query):
+        await callback_query.answer("⚠️ Thao tác này chỉ dành cho Admin và Owner!", show_alert=True)
+        return
+        
+    contract_code = callback_query.matches[0].group(1)
+    db = SessionLocal()
+    try:
+        from app.models.credit import Credit, CreditStatus, CreditInterest
+        
+        contract = db.query(Credit).filter(Credit.contract_id == contract_code).first()
+        if not contract:
+            await callback_query.answer(f"❌ Không tìm thấy hợp đồng {contract_code}.", show_alert=True)
+            return
+            
+        paid_amount = contract.interest_debt or 0.0
+        if paid_amount <= 0:
+            await callback_query.answer("⚠️ Hợp đồng này hiện không có nợ lãi cần thanh toán.", show_alert=True)
+            return
+            
+        now = datetime.datetime.now()
+        new_interest = CreditInterest(
+            contract_id=contract.contract_id,
+            interest_payment_date=now.date(),
+            payment_time=now,
+            interest_amount=paid_amount
+        )
+        db.add(new_interest)
+        
+        if contract.credit_status == CreditStatus.BAD_DEBT.value:
+            contract.credit_status = CreditStatus.ACTIVE.value
+            if contract.notes and "[BLACKLIST]" in contract.notes:
+                contract.notes = contract.notes.replace("[BLACKLIST]", "").strip()
+                
+        contract.interest_debt = 0.0
+        db.commit()
+        
+        amount_fmt = fmt_num(paid_amount)
+        date_str = now.strftime('%d/%m/%Y %H:%M')
+        
+        reply_msg = (
+            f"✅ <b>XÁC NHẬN ĐÃ NHẬN THANH TOÁN ĐỦ TIỀN LÃI</b>\n\n"
+            f"- Mã hợp đồng: <code>{contract_code}</code>\n"
+            f"- Số tiền đã thu: <b>{amount_fmt} VNĐ</b>\n"
+            f"- Nợ lãi còn lại: <b>0 VNĐ</b>\n"
+            f"- Thời gian: <b>{date_str}</b>"
+        )
+        await callback_query.message.edit_text(reply_msg, parse_mode=ParseMode.HTML)
+        LogInfo(f"[CntFullPay] Contract {contract_code} paid full interest {amount_fmt} by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in cnt_full_pay_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi cập nhật thanh toán.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^cnt_pay\|([^|]+)$"))
+async def cnt_pay_callback(client, callback_query: CallbackQuery):
+    """Nút 2: 'Đã nhận thanh toán' -> Hướng dẫn & mẫu lệnh /credit_payment_confirmed."""
+    if not await _check_admin_or_owner_credit(callback_query):
+        await callback_query.answer("⚠️ Thao tác này chỉ dành cho Admin và Owner!", show_alert=True)
+        return
+        
+    contract_code = callback_query.matches[0].group(1)
+    
+    text = (
+        f"💡 <b>XÁC NHẬN THANH TOÁN TIỀN LÃI</b>\n\n"
+        f"Mã hợp đồng: <code>{contract_code}</code>\n\n"
+        f"Vui lòng sao chép và nhập số tiền thanh toán:\n"
+        f"<pre>/credit_payment_confirmed [Số_Tiền_Thanh_Toán]</pre>\n"
+        f"<i>(Ví dụ: <code>/credit_payment_confirmed 5000000</code>)</i>"
+    )
+    await callback_query.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await callback_query.answer()
+
+
+@bot.on_callback_query(filters.regex(r"^cnt_remind\|([^|]+)$"))
+async def cnt_remind_callback(client, callback_query: CallbackQuery):
+    """Nút 3: 'Lưu sổ' -> Thực hiện dời thông báo lãi sang chu kỳ sau (/remind_next_period)."""
+    if not await _check_admin_or_owner_credit(callback_query):
+        await callback_query.answer("⚠️ Thao tác này chỉ dành cho Admin và Owner!", show_alert=True)
+        return
+        
+    contract_code = callback_query.matches[0].group(1)
+    db = SessionLocal()
+    try:
+        from app.models.credit import Credit, CreditStatus
+        contract = db.query(Credit).filter(Credit.contract_id == contract_code).first()
+        if not contract:
+            await callback_query.answer(f"❌ Không tìm thấy hợp đồng {contract_code}.", show_alert=True)
+            return
+            
+        if contract.credit_status != CreditStatus.ACTIVE.value:
+            await callback_query.answer(f"⚠️ Hợp đồng {contract_code} không ở trạng thái ACTIVE.", show_alert=True)
+            return
+            
+        if not contract.interest_start_date:
+            await callback_query.answer(f"⚠️ Hợp đồng {contract_code} không có ngày bắt đầu tính lãi.", show_alert=True)
+            return
+            
+        now = datetime.datetime.now()
+        current_date = now.date()
+        interest_day = contract.interest_start_date.day
+        
+        if current_date.day >= interest_day:
+            due_year, due_month = current_date.year, current_date.month
+        else:
+            due_year, due_month = (current_date.year, current_date.month - 1) if current_date.month > 1 else (current_date.year - 1, 12)
+            
+        skip_tag = f"[SKIP_INTEREST: {due_month:02d}/{due_year}]"
+        
+        if contract.notes and skip_tag in contract.notes:
+            await callback_query.answer(f"⚠️ Hợp đồng {contract_code} đã được dời thông báo cho chu kỳ này trước đó rồi.", show_alert=True)
+            return
+            
+        if contract.notes:
+            contract.notes = f"{contract.notes}\n{skip_tag}"
+        else:
+            contract.notes = skip_tag
+            
+        db.commit()
+        
+        msg_text = (
+            f"✅ <b>ĐÃ LƯU SỔ / DỜI THÔNG BÁO TIỀN LÃI</b>\n\n"
+            f"- Mã hợp đồng: <code>{contract_code}</code>\n\n"
+            f"<i>Lãi của chu kỳ này đã được cộng vào tổng nợ lãi. Bot sẽ tạm ngưng nhắc nhở và không đưa khách hàng vào Nợ Xấu trong chu kỳ này.</i>"
+        )
+        await callback_query.message.edit_text(msg_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[CntRemind] Remind next period applied to {contract_code} by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in cnt_remind_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi dời thông báo.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^cnt_bad\|([^|]+)$"))
+async def cnt_bad_callback(client, callback_query: CallbackQuery):
+    """Nút 4: 'Nợ Xấu' -> Chuyển hợp đồng sang Nợ Xấu (BAD_DEBT)."""
+    if not await _check_admin_or_owner_credit(callback_query):
+        await callback_query.answer("⚠️ Thao tác này chỉ dành cho Admin và Owner!", show_alert=True)
+        return
+        
+    contract_code = callback_query.matches[0].group(1)
+    db = SessionLocal()
+    try:
+        from app.models.credit import Credit, CreditStatus
+        contract = db.query(Credit).filter(Credit.contract_id == contract_code).first()
+        if not contract:
+            await callback_query.answer(f"❌ Không tìm thấy hợp đồng {contract_code}.", show_alert=True)
+            return
+            
+        contract.credit_status = CreditStatus.BAD_DEBT.value
+        if not contract.notes:
+            contract.notes = "[BLACKLIST]"
+        elif "[BLACKLIST]" not in contract.notes:
+            contract.notes = f"{contract.notes}\n[BLACKLIST]"
+            
+        db.commit()
+        
+        msg_text = (
+            f"⚠️ <b>ĐÃ CHUYỂN HỢP ĐỒNG SANG NỢ XẤU</b>\n\n"
+            f"- Mã hợp đồng: <code>{contract_code}</code>\n"
+            f"- Trạng thái mới: <b>BAD_DEBT (Nợ Xấu)</b>\n"
+            f"- Ghi chú: <b>[BLACKLIST]</b>"
+        )
+        await callback_query.message.edit_text(msg_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[CntBad] Contract {contract_code} set to BAD_DEBT by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in cnt_bad_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi chuyển Nợ Xấu.", show_alert=True)
+    finally:
+        db.close()
+

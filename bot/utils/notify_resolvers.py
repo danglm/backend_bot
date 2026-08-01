@@ -79,6 +79,26 @@ class CreditNotifyResolver:
         return config.message_template or "🔔 <b>THÔNG BÁO TÍN DỤNG</b> 🔔"
 
     @staticmethod
+    def build_keyboard(item: Optional[dict], config):
+        """Build InlineKeyboardMarkup cho thông báo Tín dụng (Credit)."""
+        data = item or {}
+        if config.notify_type == "credit_interest":
+            contract_id = data.get("contract_id") or getattr(config, "reference_id", None)
+            if contract_id:
+                from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                return InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("Đã nhận thanh toán đủ", callback_data=f"cnt_full_pay|{contract_id}"),
+                        InlineKeyboardButton("Đã nhận thanh toán", callback_data=f"cnt_pay|{contract_id}")
+                    ],
+                    [
+                        InlineKeyboardButton("Lưu sổ", callback_data=f"cnt_remind|{contract_id}"),
+                        InlineKeyboardButton("Nợ Xấu", callback_data=f"cnt_bad|{contract_id}")
+                    ]
+                ])
+        return None
+
+    @staticmethod
     def _get_interest_items(db: Session, config, current_date: datetime.date, is_test: bool = False) -> List[dict]:
         """Query hợp đồng Credit cần nhắc đóng lãi."""
         from app.models.credit import Credit, CreditCustomer, CreditStatus
@@ -612,10 +632,27 @@ class RoscaNotifyResolver:
             return RoscaNotifyResolver._build_payment_message(data)
         elif config.notify_type == "rosca_bidding":
             return RoscaNotifyResolver._build_bidding_message(data)
-        elif config.notify_type == "rosca_defaulted":
-            return RoscaNotifyResolver._build_defaulted_message(data)
 
-        return config.message_template or "🔔 <b>THÔNG BÁO HỤI HÀNG KỲ</b> 🔔"
+    @staticmethod
+    def build_keyboard(item: Optional[dict], config):
+        """Build InlineKeyboardMarkup cho thông báo Hụi."""
+        data = item or {}
+        if config.notify_type == "rosca_payment":
+            m_id = data.get("member_id") or getattr(config, "reference_id", None)
+            c_rnd = data.get("current_round", 1)
+            if m_id:
+                from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                return InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("Đóng tiền chân Hụi", callback_data=f"rnt_pay|{m_id}|{c_rnd}"),
+                        InlineKeyboardButton("Hốt tiền chân Hụi", callback_data=f"rnt_withdraw|{m_id}")
+                    ],
+                    [
+                        InlineKeyboardButton("Hủy", callback_data=f"rnt_cancel_menu|{m_id}|{c_rnd}")
+                    ]
+                ])
+        return None
+
 
     @staticmethod
     def _get_payment_items(db: Session, config, current_date: datetime.date, is_test: bool = False) -> List[dict]:
@@ -745,7 +782,12 @@ class RoscaNotifyResolver:
             f"<b>Kỳ đóng:</b> Kỳ {current_round} (Hạn đóng: Ngày {payment_day} hàng tháng)\n"
             f"<b>Mức bỏ hụi tối thiểu:</b> {data.get('min_bid', '0')} VNĐ\n"
             f"<b>Mức bỏ hụi tối đa:</b> {data.get('max_bid', '0')} VNĐ\n\n"
-            f"<i>Vui lòng nộp tiền hụi đúng hạn và thực hiện bỏ thăm nếu có nhu cầu hốt hụi kỳ này!</i>"
+            f"<i>Vui lòng nộp tiền hụi đúng hạn và thực hiện bỏ thăm nếu có nhu cầu hốt hụi kỳ này!</i>\n\n"
+            f"💡 <b>GỢI Ý LỆNH THAO TÁC:</b>\n"
+            f"🔹 <b>Đóng tiền chân hụi:</b> <code>/hui_dong_tien_chan_hui</code>\n"
+            f"  <i>(Gõ lệnh để chọn dây hụi hoặc điền form thông tin đóng hụi)</i>\n"
+            f"🔹 <b>Rút dây hụi / Hốt hụi:</b> <code>/hui_rut_day_hui {member_id} [Số_Tiền_Hốt]</code>\n"
+            f"  <i>(Ví dụ: <code>/hui_rut_day_hui {member_id} 50000000</code>)</i>"
         )
 
     @staticmethod

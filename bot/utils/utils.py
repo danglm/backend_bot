@@ -344,7 +344,7 @@ def require_custom_title(*allowed_titles):
 import asyncio
 
 async def _auto_expire_menu_task(client, sent_msg, cmd_name: str, limit: int, auto_delete_cmd: bool, user_cmd_msg=None):
-    """Background task to automatically expire/remove inline keyboard menus after timeout limit."""
+    """Background task to automatically expire/remove response messages after Command_Timeout_Seconds limit."""
     await asyncio.sleep(limit)
     try:
         chat_id = sent_msg.chat.id
@@ -352,40 +352,46 @@ async def _auto_expire_menu_task(client, sent_msg, cmd_name: str, limit: int, au
         
         # Check current message state from Telegram
         current_msg = await client.get_messages(chat_id, msg_id)
-        if current_msg and current_msg.reply_markup:
-            expired_text = f"⏱ <b>Hệ thống:</b> Menu lệnh <code>{cmd_name}</code> đã hết hạn do không có tương tác sau {limit}s."
-            await client.edit_message_text(
-                chat_id=chat_id,
-                message_id=msg_id,
-                text=expired_text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=None
-            )
-            from bot.utils.logger import LogInfo
-            LogInfo(f"[MenuExpire] Auto-expired inline menu for {cmd_name} in chat {chat_id} after {limit}s", LogType.SYSTEM_STATUS)
+        if current_msg:
+            if current_msg.reply_markup:
+                expired_text = f"⏱ <b>Hệ thống:</b> Menu lệnh <code>{cmd_name}</code> đã hết hạn do không có tương tác sau {limit}s."
+                try:
+                    await client.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=msg_id,
+                        text=expired_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=None
+                    )
+                    await asyncio.sleep(2)
+                except Exception:
+                    pass
+                from bot.utils.logger import LogInfo
+                LogInfo(f"[MenuExpire] Auto-expired inline menu for {cmd_name} in chat {chat_id} after {limit}s", LogType.SYSTEM_STATUS)
 
+            # Auto-delete the sent response message from Telegram chat
+            try:
+                await client.delete_messages(chat_id, msg_id)
+            except Exception:
+                pass
+
+            # Auto-delete the original user command message if auto_delete_cmd is True
             if auto_delete_cmd and user_cmd_msg and hasattr(user_cmd_msg, "delete"):
                 try:
                     await user_cmd_msg.delete()
                 except Exception:
                     pass
-
-            # Auto-delete the expired notification message after 5 seconds to keep chat clean
-            await asyncio.sleep(5)
-            try:
-                await client.delete_messages(chat_id, msg_id)
-            except Exception:
-                pass
-    except Exception:
-        pass
+    except Exception as e:
+        from bot.utils.logger import LogError
+        LogError(f"Error in _auto_expire_menu_task: {e}", LogType.SYSTEM_STATUS)
 
 
 def command_timeout(timeout_seconds: Optional[int] = None, auto_delete_cmd: bool = False, auto_expire_menu: bool = True):
     """
-    Decorator to wrap async Telegram command handlers with execution timeout & menu auto-expiration.
+    Decorator to wrap async Telegram command handlers with execution timeout & message auto-deletion.
     - Limits handler execution time via asyncio.wait_for.
-    - Automatically schedules menu expiration for any Inline Keyboard messages sent by the handler.
-    - Default timeout limit is read from appsettings.json -> Telegram -> Command_Timeout_Seconds (or 600s).
+    - Automatically schedules message deletion after Command_Timeout_Seconds for any response messages sent by the handler.
+    - Default timeout limit is read from appsettings.json -> Telegram -> Command_Timeout_Seconds (or 30s).
     """
     def decorator(func):
         @wraps(func)
@@ -394,9 +400,9 @@ def command_timeout(timeout_seconds: Optional[int] = None, auto_delete_cmd: bool
             if limit is None:
                 try:
                     from bot.core.config import settings
-                    limit = getattr(settings, "COMMAND_TIMEOUT_SECONDS", 600)
+                    limit = getattr(settings, "COMMAND_TIMEOUT_SECONDS", 30)
                 except Exception:
-                    limit = 600
+                    limit = 30
 
             is_callback = hasattr(update, "message") and update.message is not None
             user_cmd_msg = update.message if is_callback else update
@@ -407,7 +413,7 @@ def command_timeout(timeout_seconds: Optional[int] = None, auto_delete_cmd: bool
             if user_cmd_msg and original_reply:
                 async def custom_reply(*r_args, **r_kwargs):
                     res = await original_reply(*r_args, **r_kwargs)
-                    if res and hasattr(res, "reply_markup") and res.reply_markup:
+                    if res and hasattr(res, "id"):
                         sent_menus.append(res)
                     return res
                 setattr(user_cmd_msg, "reply_text", custom_reply)
@@ -415,8 +421,9 @@ def command_timeout(timeout_seconds: Optional[int] = None, auto_delete_cmd: bool
             try:
                 result = await asyncio.wait_for(func(client, update, *args, **kwargs), timeout=limit)
                 
-                if result and hasattr(result, "reply_markup") and result.reply_markup:
-                    sent_menus.append(result)
+                if result and hasattr(result, "id"):
+                    if result not in sent_menus:
+                        sent_menus.append(result)
 
                 if auto_expire_menu and limit > 0:
                     cmd_name = "Thao tác"

@@ -895,7 +895,7 @@ async def rental_extend_contract_confirm_callback(client, callback_query: Callba
 
 @bot.on_callback_query(filters.regex(r"^rec_cancel$"))
 async def rental_extend_contract_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác gia hạn.")
+    await callback_query.message.delete()
 
 
 # --- Rental: Cancel Contract ---
@@ -1032,7 +1032,7 @@ async def rental_cancel_contract_confirm_callback(client, callback_query: Callba
 
 @bot.on_callback_query(filters.regex(r"^rcc_exit$"))
 async def rental_cancel_contract_exit_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác.")
+    await callback_query.message.delete()
 
 
 # --- Rental: Payment Confirmed ---
@@ -1886,7 +1886,7 @@ async def rental_bad_debt_confirm_callback(client, callback_query: CallbackQuery
 
 @bot.on_callback_query(filters.regex(r"^rbd_cancel$"))
 async def rental_bad_debt_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác đưa vào Blacklist.")
+    await callback_query.message.delete()
 
 
 # --- Rental: Tạo Phiếu Thu ---

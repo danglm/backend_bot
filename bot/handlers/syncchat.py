@@ -588,7 +588,7 @@ async def sync_back_to_proj_callback(client, callback_query: CallbackQuery):
 
 @bot.on_callback_query(filters.regex(r"^sync_cancel$"))
 async def sync_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy quá trình đồng bộ.")
+    await callback_query.message.delete()
 
 # --- Get Info Customer ---
 @bot.on_message(filters.command("get_info_customer") | filters.regex(r"^@\w+\s+/get_info_customer\b"))
@@ -742,7 +742,7 @@ async def gic_back_callback(client, callback_query: CallbackQuery):
 
 @bot.on_callback_query(filters.regex(r"^gic_cancel$"))
 async def gic_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã đóng danh sách khách hàng.")
+    await callback_query.message.delete()
 
 
 # --- Export Syncchat ---

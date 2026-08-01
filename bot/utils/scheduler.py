@@ -1139,10 +1139,22 @@ async def interest_payment_notification_worker():
                                 )
                                 
                                 try:
+                                    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                                    credit_keyboard = InlineKeyboardMarkup([
+                                        [
+                                            InlineKeyboardButton("Đã nhận thanh toán đủ", callback_data=f"cnt_full_pay|{contract.contract_id}"),
+                                            InlineKeyboardButton("Đã nhận thanh toán", callback_data=f"cnt_pay|{contract.contract_id}")
+                                        ],
+                                        [
+                                            InlineKeyboardButton("Lưu sổ", callback_data=f"cnt_remind|{contract.contract_id}"),
+                                            InlineKeyboardButton("Nợ Xấu", callback_data=f"cnt_bad|{contract.contract_id}")
+                                        ]
+                                    ])
                                     await client.send_message(
                                         chat_id=int(member_chat_id),
                                         text=msg_text,
-                                        parse_mode=ParseMode.HTML
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=credit_keyboard
                                     )
                                     LogInfo(f"Sent interest payment alert for contract {contract.contract_id} to {member_chat_id}", LogType.SYSTEM_STATUS)
                                 except Exception as e:
@@ -2621,10 +2633,21 @@ async def rosca_payment_notification_worker():
                                             f"🔹 <b>Rút dây hụi / Hốt hụi:</b> <code>/hui_rut_day_hui {m.id} [Số_Tiền_Hốt]</code>\n"
                                             f"  <i>(Ví dụ: <code>/hui_rut_day_hui {m.id} 50000000</code>)</i>"
                                         )
+                                        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                                        rosca_keyboard = InlineKeyboardMarkup([
+                                            [
+                                                InlineKeyboardButton("Đóng tiền chân Hụi", callback_data=f"rnt_pay|{m.id}|{current_round}"),
+                                                InlineKeyboardButton("Hốt tiền chân Hụi", callback_data=f"rnt_withdraw|{m.id}")
+                                            ],
+                                            [
+                                                InlineKeyboardButton("Hủy", callback_data=f"rnt_cancel_menu|{m.id}|{current_round}")
+                                            ]
+                                        ])
                                         await client.send_message(
                                             chat_id=target_chat_id,
                                             text=msg_text,
-                                            parse_mode=ParseMode.HTML
+                                            parse_mode=ParseMode.HTML,
+                                            reply_markup=rosca_keyboard
                                         )
                                         LogInfo(f"Sent rosca payment notification for {m.id} to {target_chat_id}", LogType.SYSTEM_STATUS)
                                     except Exception as e:
@@ -2944,12 +2967,14 @@ async def unified_scheduled_notify_worker():
                                 continue
                             
                             message = resolver.build_message(None, config)
+                            reply_markup = resolver.build_keyboard(None, config) if hasattr(resolver, "build_keyboard") else None
                             
                             try:
                                 msg = await client.send_message(
                                     chat_id=int(config.chat_id),
                                     text=message,
-                                    parse_mode=ParseMode.HTML
+                                    parse_mode=ParseMode.HTML,
+                                    reply_markup=reply_markup
                                 )
                                 create_scheduled_notify_log(
                                     db=db,
@@ -3028,10 +3053,13 @@ async def unified_scheduled_notify_worker():
                                     continue
                                 
                                 try:
+                                    reply_markup = resolver.build_keyboard(item_data, config) if hasattr(resolver, "build_keyboard") else None
+
                                     msg = await client.send_message(
                                         chat_id=int(config.chat_id),
                                         text=message,
-                                        parse_mode=ParseMode.HTML
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=reply_markup
                                     )
                                     create_scheduled_notify_log(
                                         db=db,

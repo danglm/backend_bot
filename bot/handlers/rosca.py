@@ -315,7 +315,7 @@ async def rosca_delete_user_confirm_callback(client, callback_query: CallbackQue
 
 @bot.on_callback_query(filters.regex(r"^rosca_deluser_cancel$"))
 async def rosca_delete_user_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác xóa hồ sơ.")
+    await callback_query.message.delete()
 
 
 # --- Rosca: Create Rosca (Dây Hụi) ---
@@ -770,7 +770,7 @@ async def rosca_delete_rosca_confirm_callback(client, callback_query: CallbackQu
 
 @bot.on_callback_query(filters.regex(r"^rosca_delrosca_cancel$"))
 async def rosca_delete_rosca_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác xóa Dây hụi.")
+    await callback_query.message.delete()
 
 
 # --- Rosca: Create Rosca Member (Chân Hụi) ---
@@ -1229,7 +1229,7 @@ async def rosca_delmember_confirm_callback(client, callback_query: CallbackQuery
 
 @bot.on_callback_query(filters.regex(r"^rosca_delmem_cancel$"))
 async def rosca_delete_member_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác xóa Chân hụi.")
+    await callback_query.message.delete()
 
 # --- Rosca: Check Member (Kiểm Tra Chân Hụi) ---
 @bot.on_message(filters.command(["hui_kiem_tra_chan_hui", "roscas_check_member"]) | filters.regex(r"^@\w+\s+/(hui_kiem_tra_chan_hui|roscas_check_member)\b"))
@@ -1793,7 +1793,7 @@ async def rosca_pay_contribution_callback(client, callback_query: CallbackQuery)
     action = callback_query.matches[0].group(1)
     
     if action == "cancel":
-        await callback_query.message.edit_text("❌ Đã hủy thao tác đóng tiền hụi.")
+        await callback_query.message.delete()
         return
 
     rosca_code = action
@@ -1819,7 +1819,7 @@ Ghi Chú:
 
 @bot.on_callback_query(filters.regex(r"^rosca_delmem_cancel$"))
 async def rosca_delmember_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác xóa Chân hụi.")
+    await callback_query.message.delete()
 
 @bot.on_message(filters.command(["hui_huy_dong_tien"]) & filters.reply)
 @require_project_name("Hụi")
@@ -2052,7 +2052,7 @@ async def rosca_withdraw_confirm_callback(client, callback_query: CallbackQuery)
 
 @bot.on_callback_query(filters.regex(r"^cb_rw_cancel$"))
 async def rosca_withdraw_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("❌ Đã hủy thao tác rút/hốt hụi.")
+    await callback_query.message.delete()
 
 
 
@@ -2773,3 +2773,206 @@ async def rbc_rosca_toggle_callback(client, callback_query: CallbackQuery):
     except Exception:
         pass
     await callback_query.answer()
+
+
+# ===================== ROSCA NOTIFICATION BUTTON CALLBACKS =====================
+
+@bot.on_callback_query(filters.regex(r"^rnt_pay\|([^|]+)\|(\d+)$"))
+async def rnt_pay_callback(client, callback_query: CallbackQuery):
+    """Nút 'Đóng tiền chân Hụi' trên thông báo hụi -> Trả về form mẫu /hui_dong_tien_chan_hui."""
+    member_id = callback_query.matches[0].group(1)
+    current_round = callback_query.matches[0].group(2)
+    
+    db = SessionLocal()
+    try:
+        from app.models.rosca import RoscaMember, Rosca
+        member = db.query(RoscaMember).filter(RoscaMember.id == member_id).first()
+        if not member:
+            await callback_query.answer("⚠️ Không tìm thấy chân hụi.", show_alert=True)
+            return
+        
+        rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
+        rosca_code = rosca.code if rosca else ""
+        
+        from datetime import datetime
+        current_time = datetime.now().strftime("%d/%m/%Y %H:%M")
+        
+        form_template = f"""<b>FORM ĐÓNG TIỀN CHÂN HỤI</b>
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/hui_dong_tien_chan_hui
+Mã Dây Hụi: {rosca_code}
+Kỳ Khui Hụi (round_id) (Lưu ý có thể để trống): 
+Kỳ Thu Hụi (Chỉ ghi số, vd: 1, 2...): {current_round}
+Mã Chân Hụi: {member_id}
+Số Tiền Đóng (VNĐ): 
+Ngày Giờ Đóng Tiền (DD/MM/YYYY HH:MM): {current_time}
+Trạng Thái (Unpaid/Paid/Late): Paid
+Ghi Chú: 
+</pre>"""
+        await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in rnt_pay_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^rnt_withdraw\|([^|]+)$"))
+async def rnt_withdraw_callback(client, callback_query: CallbackQuery):
+    """Nút 'Hốt tiền chân Hụi' trên thông báo hụi -> Hướng dẫn & mẫu lệnh /hui_rut_day_hui."""
+    member_id = callback_query.matches[0].group(1)
+    
+    text = (
+        f"💡 <b>RÚT DÂY HỤI / HỐT HỤI</b>\n\n"
+        f"Vui lòng sao chép và nhập số tiền hốt:\n"
+        f"<pre>/hui_rut_day_hui {member_id} [Số_Tiền_Hốt]</pre>\n"
+        f"<i>(Ví dụ: <code>/hui_rut_day_hui {member_id} 50000000</code>)</i>"
+    )
+    await callback_query.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await callback_query.answer()
+
+
+@bot.on_callback_query(filters.regex(r"^rnt_cancel_menu\|([^|]+)\|(\d+)$"))
+async def rnt_cancel_menu_callback(client, callback_query: CallbackQuery):
+    """Nút 'Hủy' trên thông báo hụi -> Hiện 2 nút sub-menu: Hoãn và Bể Hụi."""
+    member_id = callback_query.matches[0].group(1)
+    current_round = callback_query.matches[0].group(2)
+    
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Hoãn", callback_data=f"rnt_delay|{member_id}|{current_round}"),
+            InlineKeyboardButton("Bể Hụi", callback_data=f"rnt_break|{member_id}")
+        ],
+        [
+            InlineKeyboardButton("Quay lại", callback_data=f"rnt_back|{member_id}|{current_round}")
+        ]
+    ])
+    await callback_query.message.edit_reply_markup(reply_markup=kb)
+    await callback_query.answer()
+
+
+@bot.on_callback_query(filters.regex(r"^rnt_back\|([^|]+)\|(\d+)$"))
+async def rnt_back_callback(client, callback_query: CallbackQuery):
+    """Nút 'Quay lại' -> Khôi phục menu ban đầu (Đóng tiền, Hốt tiền, Hủy)."""
+    member_id = callback_query.matches[0].group(1)
+    current_round = callback_query.matches[0].group(2)
+    
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Đóng tiền chân Hụi", callback_data=f"rnt_pay|{member_id}|{current_round}"),
+            InlineKeyboardButton("Hốt tiền chân Hụi", callback_data=f"rnt_withdraw|{member_id}")
+        ],
+        [
+            InlineKeyboardButton("Hủy", callback_data=f"rnt_cancel_menu|{member_id}|{current_round}")
+        ]
+    ])
+    await callback_query.message.edit_reply_markup(reply_markup=kb)
+    await callback_query.answer()
+
+
+@bot.on_callback_query(filters.regex(r"^rnt_delay\|([^|]+)\|(\d+)$"))
+async def rnt_delay_callback(client, callback_query: CallbackQuery):
+    """Nút 3.1 'Hoãn' -> Thực hiện đóng hụi với số tiền 0 VNĐ, trạng thái Unpaid (Chưa đóng)."""
+    member_id = callback_query.matches[0].group(1)
+    current_round_str = callback_query.matches[0].group(2)
+    current_round = int(current_round_str) if current_round_str.isdigit() else 1
+    
+    db = SessionLocal()
+    try:
+        from app.models.rosca import RoscaMember, RoscaContribution, Rosca
+        from datetime import datetime
+        import uuid
+        
+        member = db.query(RoscaMember).filter(RoscaMember.id == member_id).first()
+        if not member:
+            await callback_query.answer("⚠️ Không tìm thấy chân hụi.", show_alert=True)
+            return
+            
+        rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
+        rosca_code = rosca.code if rosca else "N/A"
+        
+        # Check if an unpaid contribution for this round already exists
+        existing = db.query(RoscaContribution).filter(
+            RoscaContribution.member_id == member_id,
+            RoscaContribution.round_number == current_round
+        ).first()
+        
+        if existing:
+            existing.amount = 0.0
+            existing.status = "Unpaid"
+            existing.note = "Hoãn đóng hụi hàng kỳ"
+            existing.actual_payment_date = datetime.now()
+        else:
+            new_contrib = RoscaContribution(
+                id=str(uuid.uuid4()),
+                rosca_id=member.rosca_id,
+                round_number=current_round,
+                member_id=member_id,
+                amount=0.0,
+                actual_payment_date=datetime.now(),
+                status="Unpaid",
+                note="Hoãn đóng hụi hàng kỳ"
+            )
+            db.add(new_contrib)
+            
+        db.commit()
+        
+        msg_text = (
+            f"✅ <b>ĐÃ GHI NHẬN HOÃN ĐÓNG HỤI</b>\n\n"
+            f"- Mã dây hụi: <b>{rosca_code}</b>\n"
+            f"- Mã chân hụi: <b>{member_id}</b>\n"
+            f"- Kỳ thu hụi: <b>Kỳ {current_round}</b>\n"
+            f"- Số tiền đóng: <b>0 VNĐ</b>\n"
+            f"- Trạng thái: <b>Unpaid (Chưa đóng)</b>"
+        )
+        await callback_query.message.edit_text(msg_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[RoscaDelay] Member {member_id} delayed round {current_round} by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in rnt_delay_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi hoãn đóng hụi.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^rnt_break\|([^|]+)$"))
+async def rnt_break_callback(client, callback_query: CallbackQuery):
+    """Nút 3.2 'Bể Hụi' -> Chuyển trạng thái Dây hụi sang Bể Hụi."""
+    member_id = callback_query.matches[0].group(1)
+    
+    db = SessionLocal()
+    try:
+        from app.models.rosca import RoscaMember, Rosca
+        
+        member = db.query(RoscaMember).filter(RoscaMember.id == member_id).first()
+        if not member:
+            await callback_query.answer("⚠️ Không tìm thấy chân hụi.", show_alert=True)
+            return
+            
+        rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
+        if not rosca:
+            await callback_query.answer("⚠️ Không tìm thấy dây hụi tương ứng.", show_alert=True)
+            return
+            
+        rosca.status = "Bể Hụi"
+        member.status = "Defaulted"
+        db.commit()
+        
+        msg_text = (
+            f"⚠️ <b>ĐÃ CHUYỂN TRẠNG THÁI DÂY HỤI SANG BỂ HỤI</b>\n\n"
+            f"- Mã dây hụi: <b>{rosca.code}</b>\n"
+            f"- Chân hụi: <b>{member_id}</b>\n"
+            f"- Trạng thái dây hụi mới: <b>Bể Hụi</b>\n"
+            f"- Trạng thái chân hụi mới: <b>Defaulted (Bể Hụi)</b>"
+        )
+        await callback_query.message.edit_text(msg_text, parse_mode=ParseMode.HTML)
+        LogInfo(f"[RoscaBreak] Rosca {rosca.code} set to Bể Hụi by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in rnt_break_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi cập nhật trạng thái Bể Hụi.", show_alert=True)
+    finally:
+        db.close()
+
