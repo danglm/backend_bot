@@ -883,12 +883,12 @@ async def bad_debt_notification_worker():
                             
                             target_project_id = None
                             parent_main_chat_id = None
-                            for link in member_project_links:
-                                if customer.group_name and link.group_name == customer.group_name:
-                                    target_project_id = link.project_id
-                                    parent_main_chat_id = link.parent_id
-                                    break
-                                    
+                            from app.crud.credit import match_member_link
+                            matched_link = match_member_link(customer, member_project_links)
+                            if matched_link:
+                                target_project_id = matched_link.project_id
+                                parent_main_chat_id = matched_link.parent_id
+
                             if not target_project_id:
                                 continue
                                 
@@ -1062,13 +1062,13 @@ async def interest_payment_notification_worker():
                             target_project_id = None
                             member_chat_id = None
                             parent_main_chat_id = None
-                            for link in customer_links:
-                                if customer.group_name and link.group_name == customer.group_name:
-                                    target_project_id = link.project_id
-                                    member_chat_id = link.chat_id
-                                    parent_main_chat_id = link.parent_id
-                                    break
-                                    
+                            from app.crud.credit import match_member_link
+                            matched_link = match_member_link(customer, customer_links)
+                            if matched_link:
+                                target_project_id = matched_link.project_id
+                                member_chat_id = matched_link.chat_id
+                                parent_main_chat_id = matched_link.parent_id
+
                             if days_late == 7:
                                 # Overdue! Mark as BAD DEBT
                                 contract.credit_status = CreditStatus.BAD_DEBT.value

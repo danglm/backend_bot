@@ -51,7 +51,7 @@ def parse_float_vn(val_str: str) -> float:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
 @require_group_role("main")
-@command_timeout(auto_delete_cmd=True)
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def create_customer_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["credit_create_customer", "credit_tao_khach_hang"])
     if args is None: return
@@ -963,7 +963,7 @@ async def cuk_select_customer_callback(client, callback_query: CallbackQuery):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
 @require_group_role("main")
-@command_timeout(auto_delete_cmd=True)
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def update_customer_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["credit_update_customer", "credit_cap_nhat_khach_hang"])
     if args is None: return
@@ -1251,7 +1251,7 @@ async def cch_select_customer_callback(client, callback_query: CallbackQuery):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
 @require_group_role("main")
-@command_timeout(auto_delete_cmd=True)
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def create_contract_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["credit_create_contract", "credit_tao_hop_dong"])
     if args is None: return
@@ -1580,7 +1580,7 @@ async def cuh_select_contract_callback(client, callback_query: CallbackQuery):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Credit")
 @require_group_role("main")
-@command_timeout(auto_delete_cmd=True)
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def update_contract_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["credit_update_contract", "credit_cap_nhat_hop_dong"])
     if args is None: return
@@ -2674,9 +2674,23 @@ async def extend_contract_confirm_callback(client, callback_query: CallbackQuery
         from app.models.telegram import TelegramProjectMember
         
         contract = db.query(Credit).filter(Credit.id == contract_uuid).first()
-        
+
         if not contract:
             await callback_query.message.edit_text("⚠️ Hợp đồng không tồn tại hoặc đã bị xóa.")
+            return
+
+        if contract.credit_status in [CreditStatus.PAID.value, CreditStatus.CANCELLED.value]:
+            await callback_query.answer(
+                f"Hợp đồng {contract.contract_id} đang ở trạng thái {contract.credit_status}, không thể gia hạn.",
+                show_alert=True
+            )
+            return
+
+        if not contract.due_date:
+            await callback_query.answer(
+                f"Hợp đồng {contract.contract_id} chưa có Ngày Đáo Hạn nên không thể gia hạn.",
+                show_alert=True
+            )
             return
 
         def add_months_to_date(source_date, months):
@@ -2687,32 +2701,51 @@ async def extend_contract_confirm_callback(client, callback_query: CallbackQuery
             day = min(source_date.day, calendar.monthrange(year, month)[1])
             return datetime.date(year, month, day)
 
-        new_due_date = add_months_to_date(contract.due_date, months_to_add)
-        old_due_date_str = contract.due_date.strftime('%d/%m/%Y')
+        old_due_date = contract.due_date
+        new_due_date = add_months_to_date(old_due_date, months_to_add)
+        old_due_date_str = old_due_date.strftime('%d/%m/%Y')
         new_due_date_str = new_due_date.strftime('%d/%m/%Y')
-        
-        contract.due_date = new_due_date
-        
+
+        new_values = {"due_date": new_due_date}
+
         # Reset bad debt back to active
         if contract.credit_status == CreditStatus.BAD_DEBT.value:
-            contract.credit_status = CreditStatus.ACTIVE.value
+            new_values["credit_status"] = CreditStatus.ACTIVE.value
             if contract.notes and "[BLACKLIST]" in contract.notes:
-                contract.notes = contract.notes.replace("[BLACKLIST]", "").strip()
-        
+                new_values["notes"] = contract.notes.replace("[BLACKLIST]", "").strip()
+
+        # Chỉ ghi khi due_date vẫn đúng giá trị vừa đọc -> bấm 2 lần / 2 admin
+        # bấm cùng lúc chỉ gia hạn được 1 lần, không cộng dồn.
+        updated = db.query(Credit).filter(
+            Credit.id == contract_uuid,
+            Credit.due_date == old_due_date
+        ).update(new_values, synchronize_session=False)
+
+        if not updated:
+            db.rollback()
+            await callback_query.answer(
+                f"Hợp đồng {contract.contract_id} vừa được gia hạn bởi thao tác khác. Vui lòng kiểm tra lại.",
+                show_alert=True
+            )
+            return
+
+
         customer = contract.customer
         
         # Cross group announcement to member group
-        customer_group_name = customer.group_name if customer else ""
         member_chat_id = None
-        
-        if customer_group_name:
-            customer_links = db.query(TelegramProjectMember).filter(
-                TelegramProjectMember.role == "member",
-                TelegramProjectMember.group_name == customer_group_name
-            ).first()
-            if customer_links:
-                member_chat_id = customer_links.chat_id
-        
+        if customer:
+            member_chat_id = str(customer.chat_id or "").strip() or None
+            if not member_chat_id and customer.group_name:
+                from app.crud.credit import match_member_link
+                customer_links = db.query(TelegramProjectMember).filter(
+                    TelegramProjectMember.role == "member"
+                ).all()
+                matched_link = match_member_link(customer, customer_links)
+                if matched_link:
+                    member_chat_id = matched_link.chat_id
+
+
         db.commit()
 
         success_text = (
@@ -2828,15 +2861,24 @@ async def payment_confirmed_handler(client, message: Message) -> None:
             contract.credit_status = CreditStatus.ACTIVE.value
             if contract.notes and "[BLACKLIST]" in contract.notes:
                 contract.notes = contract.notes.replace("[BLACKLIST]", "").strip()
-        # Thay vì tính toán từ tin nhắn, trừ trực tiếp trên database
-        contract.interest_debt = (contract.interest_debt or 0.0) - paid_amount
-                
+
+        # Trừ nợ lãi bằng phép tính ngay trên DB (không đọc-sửa-ghi trong Python)
+        # để 2 lần thanh toán đồng thời không ghi đè lẫn nhau. Chặn sàn ở 0 khi trả dư.
+        from sqlalchemy import func as _sa_func
+        db.query(Credit).filter(Credit.id == contract.id).update(
+            {"interest_debt": _sa_func.greatest(
+                _sa_func.coalesce(Credit.interest_debt, 0.0) - paid_amount, 0.0
+            )},
+            synchronize_session=False
+        )
+
         db.commit()
+        db.refresh(contract)
 
         def fmt_num(val):
             if val is None: return 0
             return int(val) if val == int(val) else val
-            
+
         remaining = fmt_num(contract.interest_debt)
         date_str = now.strftime('%d/%m/%Y')
         amount_fmt = fmt_num(paid_amount)
@@ -3568,7 +3610,22 @@ async def cnt_full_pay_callback(client, callback_query: CallbackQuery):
         if paid_amount <= 0:
             await callback_query.answer("⚠️ Hợp đồng này hiện không có nợ lãi cần thanh toán.", show_alert=True)
             return
-            
+
+        # Chỉ về 0 khi nợ lãi vẫn đúng bằng số vừa đọc -> bấm 2 lần / 2 admin bấm
+        # cùng lúc chỉ ghi nhận được 1 lần, không tạo 2 bản ghi thu lãi trùng.
+        cleared = db.query(Credit).filter(
+            Credit.id == contract.id,
+            Credit.interest_debt == paid_amount
+        ).update({"interest_debt": 0.0}, synchronize_session=False)
+
+        if not cleared:
+            db.rollback()
+            await callback_query.answer(
+                "Nợ lãi của hợp đồng vừa được cập nhật bởi thao tác khác. Vui lòng kiểm tra lại.",
+                show_alert=True
+            )
+            return
+
         now = datetime.datetime.now()
         new_interest = CreditInterest(
             contract_id=contract.contract_id,
@@ -3577,15 +3634,18 @@ async def cnt_full_pay_callback(client, callback_query: CallbackQuery):
             interest_amount=paid_amount
         )
         db.add(new_interest)
-        
+
         if contract.credit_status == CreditStatus.BAD_DEBT.value:
-            contract.credit_status = CreditStatus.ACTIVE.value
-            if contract.notes and "[BLACKLIST]" in contract.notes:
-                contract.notes = contract.notes.replace("[BLACKLIST]", "").strip()
-                
-        contract.interest_debt = 0.0
+            db.query(Credit).filter(Credit.id == contract.id).update(
+                {
+                    "credit_status": CreditStatus.ACTIVE.value,
+                    "notes": (contract.notes or "").replace("[BLACKLIST]", "").strip() or None,
+                },
+                synchronize_session=False
+            )
+
         db.commit()
-        
+
         amount_fmt = fmt_num(paid_amount)
         date_str = now.strftime('%d/%m/%Y %H:%M')
         

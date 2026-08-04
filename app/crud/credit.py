@@ -5,6 +5,33 @@ from app.models.credit import Credit, CreditInterest, CreditCustomer
 from app.schemas.credit import CreditCreate, CreditUpdate, CreditInterestCreate, CreditCustomerCreate, CreditCustomerUpdate
 from uuid import UUID
 
+def match_member_link(customer, links):
+    """Tìm bản ghi nhóm member (TelegramProjectMember) của một khách hàng tín dụng.
+
+    Ưu tiên đối chiếu theo `credit_customers.chat_id`. Nếu khách hàng chưa có
+    chat_id thì mới đối chiếu Tên Nhóm, bỏ qua hoa/thường và khoảng trắng thừa
+    (dữ liệu thực tế hay lệch: 'KCredit - KKB' vs 'Kcredit - KKB').
+
+    Trả về link khớp, hoặc None nếu không tìm được.
+    """
+    if customer is None:
+        return None
+
+    cust_chat_id = str(getattr(customer, "chat_id", "") or "").strip()
+    if cust_chat_id:
+        for link in links:
+            if link.chat_id and str(link.chat_id).strip() == cust_chat_id:
+                return link
+
+    group_name = (getattr(customer, "group_name", "") or "").strip().lower()
+    if group_name:
+        for link in links:
+            if link.group_name and link.group_name.strip().lower() == group_name:
+                return link
+
+    return None
+
+
 def create_credit_customer(db: Session, obj_in: CreditCustomerCreate):
     db_obj = CreditCustomer(
         customer_id=obj_in.customer_id,
