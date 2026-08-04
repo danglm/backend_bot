@@ -1,5 +1,6 @@
 from . import commands
 from . import syncchat
+from . import get_chat_id
 from . import credit
 from . import rental
 from . import other
