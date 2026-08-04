@@ -43,6 +43,32 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from app.db.base import Base
 from app.models import business, credit, device, document, employee, finance
 from app.models import inventory, rental, rosca, task, telegram, vehicle, notification, chat, scheduled_notification
+from app.models import pm
+
+
+def import_all_models() -> list[str]:
+    """Nạp mọi module trong app/models để Base.metadata đầy đủ.
+
+    Danh sách import ở trên phải khai báo tay nên rất dễ sót khi thêm model mới
+    (đã từng sót app/models/pm.py -> 8 bảng pm_* không bao giờ được tạo trên Prod).
+    Hàm này quét thêm cả package và trả về các module bị thiếu để cảnh báo.
+    """
+    import importlib
+    import pkgutil
+    import app.models as models_pkg
+
+    missed = []
+    for mod in pkgutil.iter_modules(models_pkg.__path__):
+        if mod.name.startswith("_"):
+            continue
+        full_name = f"app.models.{mod.name}"
+        if full_name not in sys.modules:
+            missed.append(mod.name)
+        try:
+            importlib.import_module(full_name)
+        except Exception as e:
+            print(f"⚠️  Không nạp được model {full_name}: {e}")
+    return missed
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -385,6 +411,13 @@ def main():
     args = parser.parse_args()
 
     print_header()
+
+    # ── Nạp đủ model trước khi so sánh schema ───────────────────────────
+    missed_models = import_all_models()
+    if missed_models:
+        print(f"\n⚠️  Các model chưa có trong danh sách import cố định: {', '.join(missed_models)}")
+        print("   (Đã tự nạp bổ sung. Nên thêm vào phần import đầu file.)")
+    print(f"\n📚 Tổng số bảng trong model: {len(Base.metadata.tables)}")
 
     # ── Resolve DB URL ──────────────────────────────────────────────────
     db_url = args.db_url or load_db_url_from_settings()
