@@ -133,8 +133,9 @@ app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"]
 app.include_router(rosca.router, prefix="/api/v1/rosca", tags=["rosca"])
 app.include_router(chat.router, prefix="/api/v1/telegram", tags=["telegram"])
 
-from app.api.v1 import scheduled_notification
+from app.api.v1 import scheduled_notification, project_management
 app.include_router(scheduled_notification.router, prefix="/api/v1/scheduled-notifications", tags=["scheduled-notifications"])
+app.include_router(project_management.router, prefix="/api/v1/project-management", tags=["project-management"])
 
 
 

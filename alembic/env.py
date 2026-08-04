@@ -35,6 +35,7 @@ from app.models import rosca
 from app.models import document
 from app.models import notification
 from app.models import scheduled_notification
+from app.models import pm
 from app.core.config import settings
 
 config.set_main_option("sqlalchemy.url", settings.DB_Config.SQLALCHEMY_DATABASE_URI.replace('%', '%%'))

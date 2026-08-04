@@ -130,6 +130,7 @@ def compare_schemas(engine: Engine) -> dict:
     Returns a dict with:
       - tables_to_create: list of (table_name, list_of_columns)
       - columns_to_add: list of (table_name, column_name, column_obj)
+      - indexes_to_create: list of (table_name, index_obj)
       - extra_columns: list of (table_name, column_name) — exist in DB but not in models
       - summary: text summary
     """
@@ -140,6 +141,7 @@ def compare_schemas(engine: Engine) -> dict:
     result = {
         "tables_to_create": [],
         "columns_to_add": [],
+        "indexes_to_create": [],
         "extra_columns": [],
         "sql_statements": [],
     }
@@ -148,6 +150,9 @@ def compare_schemas(engine: Engine) -> dict:
         if table_name not in db_tables:
             # ── Entire table is missing ─────────────────────────────────
             result["tables_to_create"].append((table_name, table_obj))
+            # Bảng mới thì index của nó cũng chưa có
+            for ix in table_obj.indexes:
+                result["indexes_to_create"].append((table_name, ix))
         else:
             # ── Table exists, compare columns ───────────────────────────
             db_columns = {c["name"]: c for c in inspector.get_columns(table_name)}
@@ -160,6 +165,16 @@ def compare_schemas(engine: Engine) -> dict:
             for col_name in db_columns:
                 if col_name not in model_columns:
                     result["extra_columns"].append((table_name, col_name))
+
+            # ── Compare indexes (Column(index=True) và Index(...)) ──────
+            try:
+                db_indexes = {ix.get("name") for ix in inspector.get_indexes(table_name)}
+            except Exception:
+                db_indexes = set()
+
+            for ix in table_obj.indexes:
+                if ix.name and ix.name not in db_indexes:
+                    result["indexes_to_create"].append((table_name, ix))
 
     return result
 
@@ -213,6 +228,17 @@ def generate_sql(result: dict) -> list[str]:
 
         statements.append(" ".join(parts) + ";")
 
+    # ── CREATE INDEX statements ─────────────────────────────────────────
+    for table_name, ix in result.get("indexes_to_create", []):
+        col_names = [c.name for c in ix.columns]
+        if not col_names:
+            continue
+        unique = "UNIQUE " if ix.unique else ""
+        cols = ", ".join(f'"{c}"' for c in col_names)
+        statements.append(
+            f'CREATE {unique}INDEX IF NOT EXISTS "{ix.name}" ON "{table_name}" ({cols});'
+        )
+
     return statements
 
 
@@ -230,6 +256,51 @@ def generate_seed_sql() -> list[str]:
         "UPDATE collection_points SET code_prefix = 'DLH' WHERE collection_name LIKE '%Hải%' AND (code_prefix IS NULL OR code_prefix = '');",
         "UPDATE collection_points SET code_prefix = 'DLT' WHERE collection_name LIKE '%Trang%' AND (code_prefix IS NULL OR code_prefix = '');",
         "UPDATE collection_points SET code_prefix = 'DLV' WHERE collection_name LIKE '%Vui%' AND (code_prefix IS NULL OR code_prefix = '');",
+    ]
+
+    # ── Backfill credit_customers.chat_id (khớp alembic a1f2c3d4e5b6 + b2c3d4e5f6a7) ──
+    # Chat ID nhóm member được suy ra từ Tên Nhóm đã đồng bộ, bỏ qua hoa/thường và
+    # khoảng trắng thừa. Chỉ điền vào ô đang NULL nên chạy lại nhiều lần vẫn an toàn.
+    seed_cmds += [
+        "-- Backfill chat_id nhóm member cho khách hàng tín dụng",
+        """UPDATE credit_customers AS cc
+SET chat_id = sub.chat_id
+FROM (
+    SELECT DISTINCT ON (LOWER(TRIM(group_name)))
+           LOWER(TRIM(group_name)) AS gkey, chat_id
+    FROM telegram_project_members
+    WHERE role = 'member'
+      AND group_name IS NOT NULL AND TRIM(group_name) <> ''
+      AND chat_id IS NOT NULL
+    ORDER BY LOWER(TRIM(group_name)), chat_id
+) AS sub
+WHERE cc.chat_id IS NULL
+  AND cc.group_name IS NOT NULL
+  AND LOWER(TRIM(cc.group_name)) = sub.gkey;""",
+        # Vét nốt các Tên Nhóm bị lưu thiếu ký tự cuối (vd: '... (Credit - Khách Hàn'
+        # thay vì '... (Credit - Khách Hàng)'). Chỉ điền khi tiền tố khớp DUY NHẤT
+        # một nhóm member, và tiền tố đủ dài để tránh khớp nhầm.
+        "-- Vét chat_id cho Tên Nhóm bị lưu thiếu ký tự (chỉ khi khớp duy nhất)",
+        """UPDATE credit_customers AS cc
+SET chat_id = (
+    SELECT MIN(m.chat_id)
+    FROM telegram_project_members m
+    WHERE m.role = 'member'
+      AND m.chat_id IS NOT NULL
+      AND m.group_name IS NOT NULL
+      AND LEFT(LOWER(TRIM(m.group_name)), LENGTH(TRIM(cc.group_name))) = LOWER(TRIM(cc.group_name))
+)
+WHERE cc.chat_id IS NULL
+  AND cc.group_name IS NOT NULL
+  AND LENGTH(TRIM(cc.group_name)) >= 8
+  AND (
+    SELECT COUNT(DISTINCT m.chat_id)
+    FROM telegram_project_members m
+    WHERE m.role = 'member'
+      AND m.chat_id IS NOT NULL
+      AND m.group_name IS NOT NULL
+      AND LEFT(LOWER(TRIM(m.group_name)), LENGTH(TRIM(cc.group_name))) = LOWER(TRIM(cc.group_name))
+  ) = 1;""",
     ]
 
     # Dynamically seed telegram group mappings from appsettings.json
@@ -346,7 +417,7 @@ def main():
         seed_sql = generate_seed_sql()
 
     # ── Report ──────────────────────────────────────────────────────────
-    has_changes = bool(result["tables_to_create"] or result["columns_to_add"])
+    has_changes = bool(result["tables_to_create"] or result["columns_to_add"] or result["indexes_to_create"])
 
     if result["tables_to_create"]:
         print(f"📦 Bảng mới cần tạo: {len(result['tables_to_create'])}")
@@ -361,6 +432,12 @@ def main():
         for tname, cname, cobj in result["columns_to_add"]:
             ctype = map_column_type(cobj)
             print(f"   ├── {tname}.{cname} ({ctype})")
+
+    if result["indexes_to_create"]:
+        print(f"\n🔑 Index mới cần tạo: {len(result['indexes_to_create'])}")
+        for tname, ix in result["indexes_to_create"]:
+            cols = ", ".join(c.name for c in ix.columns)
+            print(f"   ├── {ix.name} ON {tname} ({cols}){' UNIQUE' if ix.unique else ''}")
 
     if result["extra_columns"]:
         print(f"\n⚠️  Cột thừa (có trong DB nhưng không trong model): {len(result['extra_columns'])}")
@@ -435,6 +512,7 @@ def main():
     print("\n📊 Tóm tắt:")
     print(f"   • Bảng mới: {len(result['tables_to_create'])}")
     print(f"   • Cột mới: {len(result['columns_to_add'])}")
+    print(f"   • Index mới: {len(result['indexes_to_create'])}")
     print(f"   • Cột thừa (không xóa): {len(result['extra_columns'])}")
     print(f"   • Seed SQL: {len([s for s in seed_sql if not s.startswith('--')])}")
     print()

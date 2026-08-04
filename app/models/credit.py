@@ -19,6 +19,7 @@ class CreditCustomer(Base):
     group_name = Column(String)
     customer_name = Column(String)
     contact_info = Column(String)  # telegram_username / contact_info
+    chat_id = Column(String, nullable=True, index=True)  # Chat ID nhóm Telegram (member) của khách hàng
     total_credit_limit = Column(Float)
     remaining_credit_limit = Column(Float)
     total_principal_outstanding = Column(Float)

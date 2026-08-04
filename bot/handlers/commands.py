@@ -810,8 +810,8 @@ async def register_bot_command_handler(client, message: Message) -> None:
             else:
                 label = "Credit (Member)"
                 commands_to_set = [
-                    BotCommand("credit_xem_khach_hang", "Xem thông tin khách hàng"),
-                    BotCommand("credit_xem_hop_dong", "Xem hợp đồng"),
+                    BotCommand("credit_xem_tt_khach_hang", "Xem thông tin khách hàng"),
+                    BotCommand("credit_xem_tt_hop_dong", "Xem hợp đồng"),
                     BotCommand("credit_xem_cong_no", "Xem công nợ"),
                 ]
 

@@ -120,15 +120,16 @@ async def api_add_credit_interests(
 @router.get("/get-credit-customers", response_model=list[schemas_credit.CreditCustomer])
 async def api_get_credit_customers(
     customer_id: Optional[str] = None,
+    chat_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("credit"))
 ):
     """
     Lấy toàn bộ danh sách khách hàng tín dụng.
     """
-    LogInfo(f"[Credit API] Received get-credit-customers request. Customer ID filter: {customer_id}")
+    LogInfo(f"[Credit API] Received get-credit-customers request. Customer ID filter: {customer_id}, Chat ID filter: {chat_id}")
     try:
-        customers = crud_credit.get_all_credit_customers(db, customer_id=customer_id)
+        customers = crud_credit.get_all_credit_customers(db, customer_id=customer_id, chat_id=chat_id)
         LogInfo(f"[Credit API] Found {len(customers)} credit customers.")
         return customers
     except Exception as e:

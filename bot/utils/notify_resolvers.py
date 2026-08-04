@@ -88,8 +88,8 @@ class CreditNotifyResolver:
                 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                 return InlineKeyboardMarkup([
                     [
-                        InlineKeyboardButton("Đã nhận thanh toán đủ", callback_data=f"cnt_full_pay|{contract_id}"),
-                        InlineKeyboardButton("Đã nhận thanh toán", callback_data=f"cnt_pay|{contract_id}")
+                        InlineKeyboardButton("Đã nhận TT đủ", callback_data=f"cnt_full_pay|{contract_id}"),
+                        InlineKeyboardButton("Đã nhận TT", callback_data=f"cnt_pay|{contract_id}")
                     ],
                     [
                         InlineKeyboardButton("Lưu sổ", callback_data=f"cnt_remind|{contract_id}"),

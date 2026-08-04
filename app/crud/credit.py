@@ -11,6 +11,7 @@ def create_credit_customer(db: Session, obj_in: CreditCustomerCreate):
         group_name=obj_in.group_name,
         customer_name=obj_in.customer_name,
         contact_info=obj_in.contact_info,
+        chat_id=obj_in.chat_id,
         total_credit_limit=obj_in.total_credit_limit,
         remaining_credit_limit=obj_in.remaining_credit_limit,
         total_principal_outstanding=obj_in.total_principal_outstanding,
@@ -78,7 +79,8 @@ def get_credit_interests_detailed(
         CreditCustomer.customer_id.label("customer_code"),
         CreditCustomer.customer_name,
         CreditCustomer.group_name,
-        CreditCustomer.contact_info
+        CreditCustomer.contact_info,
+        CreditCustomer.chat_id
     ).outerjoin(
         Credit, CreditInterest.contract_id == Credit.contract_id
     ).outerjoin(
@@ -97,7 +99,7 @@ def get_credit_interests_detailed(
     data = []
     for (ci, loan_type, initial_principal, remaining_principal, monthly_interest_rate,
          credit_status, contract_start_date, due_date,
-         customer_code, customer_name, group_name, contact_info) in results:
+         customer_code, customer_name, group_name, contact_info, chat_id) in results:
         data.append({
             "id": ci.id,
             "contract_id": ci.contract_id,
@@ -115,6 +117,7 @@ def get_credit_interests_detailed(
             "customer_name": customer_name,
             "group_name": group_name,
             "contact_info": contact_info,
+            "chat_id": chat_id,
         })
     return data
 
@@ -136,7 +139,8 @@ def get_credits_detailed(
         CreditCustomer.customer_id.label("customer_code"),
         CreditCustomer.customer_name,
         CreditCustomer.group_name,
-        CreditCustomer.contact_info
+        CreditCustomer.contact_info,
+        CreditCustomer.chat_id
     ).outerjoin(
         CreditCustomer, Credit.customer_id == CreditCustomer.id
     )
@@ -155,7 +159,7 @@ def get_credits_detailed(
     results = query.all()
 
     data = []
-    for c, customer_code, customer_name, group_name, contact_info in results:
+    for c, customer_code, customer_name, group_name, contact_info, chat_id in results:
         data.append({
             "id": c.id,
             "customer_id": c.customer_id,
@@ -163,6 +167,7 @@ def get_credits_detailed(
             "customer_name": customer_name,
             "group_name": group_name,
             "contact_info": contact_info,
+            "chat_id": chat_id,
             "contract_id": c.contract_id,
             "loan_type": c.loan_type,
             "initial_principal": c.initial_principal,
@@ -187,10 +192,12 @@ def get_credit_interests(db: Session, skip: int = 0, limit: int = 100):
     return db.query(CreditInterest).offset(skip).limit(limit).all()
 
 
-def get_all_credit_customers(db: Session, customer_id: Optional[str] = None):
+def get_all_credit_customers(db: Session, customer_id: Optional[str] = None, chat_id: Optional[str] = None):
     query = db.query(CreditCustomer)
     if customer_id is not None:
         query = query.filter(CreditCustomer.customer_id == customer_id)
+    if chat_id is not None:
+        query = query.filter(CreditCustomer.chat_id == chat_id)
     return query.all()
 
 

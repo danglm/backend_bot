@@ -1142,8 +1142,8 @@ async def interest_payment_notification_worker():
                                     from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                                     credit_keyboard = InlineKeyboardMarkup([
                                         [
-                                            InlineKeyboardButton("Đã nhận thanh toán đủ", callback_data=f"cnt_full_pay|{contract.contract_id}"),
-                                            InlineKeyboardButton("Đã nhận thanh toán", callback_data=f"cnt_pay|{contract.contract_id}")
+                                            InlineKeyboardButton("Đã nhận TT đủ", callback_data=f"cnt_full_pay|{contract.contract_id}"),
+                                            InlineKeyboardButton("Đã nhận TT", callback_data=f"cnt_pay|{contract.contract_id}")
                                         ],
                                         [
                                             InlineKeyboardButton("Lưu sổ", callback_data=f"cnt_remind|{contract.contract_id}"),

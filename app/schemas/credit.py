@@ -8,6 +8,7 @@ class CreditCustomerBase(BaseModel):
     group_name: Optional[str] = None
     customer_name: Optional[str] = None
     contact_info: Optional[str] = None
+    chat_id: Optional[str] = None
     total_credit_limit: Optional[float] = None
     remaining_credit_limit: Optional[float] = None
     total_principal_outstanding: Optional[float] = None
@@ -63,6 +64,7 @@ class CreditResponse(CreditBase):
     customer_name: Optional[str] = None
     group_name: Optional[str] = None
     contact_info: Optional[str] = None
+    chat_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -98,6 +100,7 @@ class CreditInterestResponse(CreditInterestBase):
     customer_name: Optional[str] = None
     group_name: Optional[str] = None
     contact_info: Optional[str] = None
+    chat_id: Optional[str] = None
 
     class Config:
         from_attributes = True
