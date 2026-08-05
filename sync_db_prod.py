@@ -273,7 +273,8 @@ def generate_sql(result: dict) -> list[str]:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def generate_seed_sql() -> list[str]:
-    """Generate SQL to seed code_prefix for existing collection_points and Telegram group mappings."""
+    """Sinh SQL seed: code_prefix điểm thu mua, backfill chat_id (credit + rental),
+    và Telegram group mappings. Mọi câu lệnh đều idempotent (chạy lại vẫn an toàn)."""
     seed_cmds = [
         "-- Seed code_prefix cho các điểm thu mua hiện có",
         "UPDATE collection_points SET code_prefix = 'LT' WHERE collection_name LIKE '%Lạc Tánh%' AND (code_prefix IS NULL OR code_prefix = '');",
@@ -326,6 +327,59 @@ WHERE cc.chat_id IS NULL
       AND m.chat_id IS NOT NULL
       AND m.group_name IS NOT NULL
       AND LEFT(LOWER(TRIM(m.group_name)), LENGTH(TRIM(cc.group_name))) = LOWER(TRIM(cc.group_name))
+  ) = 1;""",
+    ]
+
+    # ── Backfill rental_customers.chat_id (khớp alembic c3d4e5f6a7b8) ────────────
+    # Chỉ lấy nhóm member thuộc dự án Rental để không dính tên nhóm trùng ở dự án
+    # khác. Chỉ điền vào ô đang NULL nên chạy lại nhiều lần vẫn an toàn.
+    seed_cmds += [
+        "-- Backfill chat_id nhóm member cho khách hàng cho thuê",
+        """UPDATE rental_customers AS rc
+SET chat_id = sub.chat_id
+FROM (
+    SELECT DISTINCT ON (LOWER(TRIM(tpm.group_name)))
+           LOWER(TRIM(tpm.group_name)) AS gkey, tpm.chat_id
+    FROM telegram_project_members tpm
+    JOIN projects p ON p.id = tpm.project_id
+    WHERE tpm.role = 'member'
+      AND p.project_name = 'Rental'
+      AND tpm.group_name IS NOT NULL AND TRIM(tpm.group_name) <> ''
+      AND tpm.chat_id IS NOT NULL
+    ORDER BY LOWER(TRIM(tpm.group_name)), tpm.chat_id
+) AS sub
+WHERE rc.chat_id IS NULL
+  AND rc.group_name IS NOT NULL
+  AND LOWER(TRIM(rc.group_name)) = sub.gkey;""",
+        # Vét nốt các Tên Nhóm lệch dấu câu / khoảng trắng (vd: 'Rental - 23' bên
+        # rental_customers vs 'Rental 23' bên Telegram). So khớp sau khi bỏ hết ký
+        # tự không phải chữ/số, và chỉ điền khi khớp DUY NHẤT một nhóm member.
+        "-- Vét chat_id cho Tên Nhóm lệch dấu câu (chỉ khi khớp duy nhất)",
+        """UPDATE rental_customers AS rc
+SET chat_id = (
+    SELECT MIN(tpm.chat_id)
+    FROM telegram_project_members tpm
+    JOIN projects p ON p.id = tpm.project_id
+    WHERE tpm.role = 'member'
+      AND p.project_name = 'Rental'
+      AND tpm.chat_id IS NOT NULL
+      AND tpm.group_name IS NOT NULL
+      AND REGEXP_REPLACE(LOWER(tpm.group_name), '[^a-z0-9]', '', 'g')
+          = REGEXP_REPLACE(LOWER(rc.group_name), '[^a-z0-9]', '', 'g')
+)
+WHERE rc.chat_id IS NULL
+  AND rc.group_name IS NOT NULL
+  AND LENGTH(REGEXP_REPLACE(LOWER(rc.group_name), '[^a-z0-9]', '', 'g')) >= 6
+  AND (
+    SELECT COUNT(DISTINCT tpm.chat_id)
+    FROM telegram_project_members tpm
+    JOIN projects p ON p.id = tpm.project_id
+    WHERE tpm.role = 'member'
+      AND p.project_name = 'Rental'
+      AND tpm.chat_id IS NOT NULL
+      AND tpm.group_name IS NOT NULL
+      AND REGEXP_REPLACE(LOWER(tpm.group_name), '[^a-z0-9]', '', 'g')
+          = REGEXP_REPLACE(LOWER(rc.group_name), '[^a-z0-9]', '', 'g')
   ) = 1;""",
     ]
 

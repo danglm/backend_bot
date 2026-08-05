@@ -358,15 +358,16 @@ async def api_add_rental_customers(
 @router.get("/get-rental-customers", response_model=list[schemas_rental.RentalCustomer])
 async def api_get_rental_customers(
     customer_id: Optional[str] = None,
+    chat_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("rental"))
 ):
     """
     Lấy danh sách các khách hàng thuê.
     """
-    LogInfo(f"[Rental API] Received get-rental-customers request. Customer ID filter: {customer_id}")
+    LogInfo(f"[Rental API] Received get-rental-customers request. Customer ID filter: {customer_id}, Chat ID filter: {chat_id}")
     try:
-        customers = crud_rental.get_all_rental_customers(db, customer_id=customer_id)
+        customers = crud_rental.get_all_rental_customers(db, customer_id=customer_id, chat_id=chat_id)
         LogInfo(f"[Rental API] Found {len(customers)} rental customers.")
         return customers
     except Exception as e:

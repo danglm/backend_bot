@@ -1246,6 +1246,11 @@ async def rental_payment_notification_worker():
                             if not customer:
                                 continue
                             
+                            # Đã bấm "Lưu sổ" cho kỳ này -> không nhắc nữa
+                            skip_tag = f"[SKIP_RENTAL: {due_month:02d}/{due_year}]"
+                            if contract.notes and skip_tag in contract.notes:
+                                continue
+
                             # Day 0: Accumulate monthly rental into debt
                             if days_late == 0:
                                 contract.rental_debt = (contract.rental_debt or 0.0) + (contract.monthly_rental or 0.0)
@@ -1266,12 +1271,11 @@ async def rental_payment_notification_worker():
                                 TelegramProjectMember.role == "member"
                             ).all()
                             
-                            member_chat_id = None
-                            for link in customer_links:
-                                if customer.group_name and link.group_name == customer.group_name:
-                                    member_chat_id = link.chat_id
-                                    break
-                                    
+                            # Ưu tiên chat_id đã gắn cho khách hàng, không có mới đối chiếu Tên Nhóm
+                            from app.crud.rental import match_member_link
+                            matched_link = match_member_link(customer, customer_links)
+                            member_chat_id = matched_link.chat_id if matched_link else None
+
                             if not member_chat_id:
                                 continue
 
@@ -1312,10 +1316,12 @@ async def rental_payment_notification_worker():
                             )
                             
                             try:
+                                from bot.handlers.rental import _rental_payment_notify_keyboard
                                 await client.send_message(
                                     chat_id=int(member_chat_id),
                                     text=msg_text,
-                                    parse_mode=ParseMode.HTML
+                                    parse_mode=ParseMode.HTML,
+                                    reply_markup=_rental_payment_notify_keyboard(contract.contract_id)
                                 )
                                 LogInfo(f"Sent rental payment alert (day {days_late}) for contract {contract.contract_id} to {member_chat_id}", LogType.SYSTEM_STATUS)
                             except Exception as e:

@@ -4,6 +4,9 @@ from typing import Optional
 from datetime import date
 from app.models.rental import RealEstate, RentalCustomer, Rental, RentalPayment
 from app.schemas.rental import RealEstateCreate, RealEstateUpdate, RentalCustomerCreate, RentalCustomerUpdate, RentalCreate, RentalUpdate, RentalPaymentCreate, RentalPaymentUpdate
+# Helper khớp khách hàng với nhóm member: ưu tiên chat_id, không có mới đối chiếu
+# group_name (bỏ qua hoa/thường). Dùng chung với module Credit vì cùng cấu trúc.
+from app.crud.credit import match_member_link  # noqa: F401
 
 
 def create_real_estate(db: Session, obj_in: RealEstateCreate):
@@ -83,7 +86,8 @@ def create_rental_customer(db: Session, obj_in: RentalCustomerCreate):
         group_name=obj_in.group_name,
         customer_name=obj_in.customer_name,
         contact_info=obj_in.contact_info,
-        number_phone=obj_in.number_phone
+        number_phone=obj_in.number_phone,
+        chat_id=obj_in.chat_id
     )
     db.add(db_obj)
     db.commit()
@@ -95,10 +99,12 @@ def get_rental_customers(db: Session, skip: int = 0, limit: int = 100):
     return db.query(RentalCustomer).offset(skip).limit(limit).all()
 
 
-def get_all_rental_customers(db: Session, customer_id: Optional[str] = None):
+def get_all_rental_customers(db: Session, customer_id: Optional[str] = None, chat_id: Optional[str] = None):
     query = db.query(RentalCustomer)
     if customer_id is not None:
         query = query.filter(RentalCustomer.customer_id == customer_id)
+    if chat_id is not None:
+        query = query.filter(RentalCustomer.chat_id == str(chat_id))
     return query.all()
 
 
@@ -139,7 +145,8 @@ def create_rental(db: Session, obj_in: RentalCreate):
         deposit=obj_in.deposit,
         monthly_rental=obj_in.monthly_rental,
         rental_debt=obj_in.rental_debt,
-        status=obj_in.status
+        status=obj_in.status,
+        notes=obj_in.notes
     )
     db.add(db_obj)
     db.commit()
@@ -184,18 +191,19 @@ def get_rentals_detailed(db: Session, status: Optional[str] = None) -> list[dict
         RentalCustomer.customer_name,
         RentalCustomer.group_name,
         RentalCustomer.contact_info,
-        RentalCustomer.number_phone
+        RentalCustomer.number_phone,
+        RentalCustomer.chat_id
     ).outerjoin(
         RentalCustomer, Rental.customer_id == RentalCustomer.id
     )
-    
+
     if status is not None:
         query = query.filter(Rental.status == status)
-        
+
     results = query.all()
-    
+
     data = []
-    for r, customer_code, customer_name, group_name, contact_info, number_phone in results:
+    for r, customer_code, customer_name, group_name, contact_info, number_phone, chat_id in results:
         data.append({
             "id": r.id,
             "customer_id": r.customer_id,
@@ -204,6 +212,7 @@ def get_rentals_detailed(db: Session, status: Optional[str] = None) -> list[dict
             "group_name": group_name,
             "contact_info": contact_info,
             "number_phone": number_phone,
+            "chat_id": chat_id,
             "contract_id": r.contract_id,
             "real_estate_id": r.real_estate_id,
             "type_contract": r.type_contract,
@@ -212,7 +221,8 @@ def get_rentals_detailed(db: Session, status: Optional[str] = None) -> list[dict
             "deposit": r.deposit,
             "monthly_rental": r.monthly_rental,
             "rental_debt": r.rental_debt,
-            "status": r.status
+            "status": r.status,
+            "notes": r.notes
         })
     return data
 
@@ -256,7 +266,8 @@ def get_rental_payments_detailed(
         RentalCustomer.customer_name,
         RentalCustomer.group_name,
         RentalCustomer.contact_info,
-        RentalCustomer.number_phone
+        RentalCustomer.number_phone,
+        RentalCustomer.chat_id
     ).outerjoin(
         Rental, RentalPayment.contract_id == Rental.contract_id
     ).outerjoin(
@@ -276,8 +287,9 @@ def get_rental_payments_detailed(
     
     data = []
     for (
-        rp, real_estate_id, type_contract, start_rental, end_rental, deposit, monthly_rental, 
-        rental_debt, contract_status, customer_code, customer_name, group_name, contact_info, number_phone
+        rp, real_estate_id, type_contract, start_rental, end_rental, deposit, monthly_rental,
+        rental_debt, contract_status, customer_code, customer_name, group_name, contact_info, number_phone,
+        chat_id
     ) in results:
         data.append({
             "id": rp.id,
@@ -301,7 +313,8 @@ def get_rental_payments_detailed(
             "customer_name": customer_name,
             "group_name": group_name,
             "contact_info": contact_info,
-            "number_phone": number_phone
+            "number_phone": number_phone,
+            "chat_id": chat_id
         })
     return data
 

@@ -56,6 +56,7 @@ class RentalCustomerBase(BaseModel):
     customer_name: Optional[str] = None
     contact_info: Optional[str] = None
     number_phone: Optional[str] = None
+    chat_id: Optional[str] = None
 
 
 class RentalCustomerCreate(RentalCustomerBase):
@@ -84,6 +85,7 @@ class RentalBase(BaseModel):
     monthly_rental: Optional[float] = None
     rental_debt: Optional[float] = 0.0
     status: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class RentalCreate(RentalBase):
@@ -109,6 +111,7 @@ class RentalResponse(BaseModel):
     group_name: Optional[str] = None
     contact_info: Optional[str] = None
     number_phone: Optional[str] = None
+    chat_id: Optional[str] = None
     contract_id: Optional[str] = None
     real_estate_id: Optional[str] = None
     type_contract: Optional[str] = None
@@ -118,6 +121,7 @@ class RentalResponse(BaseModel):
     monthly_rental: Optional[float] = None
     rental_debt: Optional[float] = 0.0
     status: Optional[str] = None
+    notes: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -172,6 +176,7 @@ class RentalPaymentResponse(BaseModel):
     group_name: Optional[str] = None
     contact_info: Optional[str] = None
     number_phone: Optional[str] = None
+    chat_id: Optional[str] = None
 
     class Config:
         from_attributes = True

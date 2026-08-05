@@ -21,6 +21,7 @@ class RentalCustomer(Base):
     customer_name = Column(String)        # Tên Khách Hàng
     contact_info = Column(String)         # Liên Hệ Khách Hàng (telegram_username)
     number_phone = Column(String)         # Số Điện Thoại
+    chat_id = Column(String, nullable=True, index=True)  # Chat ID nhóm Telegram (member) của khách hàng
 
 class Rental(Base):
     __tablename__ = "rentals"
@@ -36,7 +37,8 @@ class Rental(Base):
     deposit = Column(Float)               # Tiền Cọc
     monthly_rental = Column(Float)        # Tiền Thuê
     rental_debt = Column(Float, default=0.0)  # Công Nợ
-    status = Column(String)               # Trạng Thái  
+    status = Column(String)               # Trạng Thái
+    notes = Column(String, nullable=True) # Ghi Chú (chứa cả cờ [SKIP_RENTAL: MM/YYYY], [BLACKLIST])
 
 class RentalPayment(Base):
     __tablename__ = "rental_payments"

@@ -838,8 +838,8 @@ async def register_bot_command_handler(client, message: Message) -> None:
             else:
                 label = "Rental (Member)"
                 commands_to_set = [
-                    BotCommand("rental_kiem_tra_khach_hang", "Kiểm tra khách hàng"),
-                    BotCommand("rental_kiem_tra_hop_dong", "Xem hợp đồng"),
+                    BotCommand("rental_kiem_tra_tt_khach_hang", "Xem thông tin khách hàng"),
+                    BotCommand("rental_kiem_tra_tt_hop_dong", "Xem hợp đồng"),
                     BotCommand("rental_xem_cong_no", "Xem công nợ"),
                 ]
 
