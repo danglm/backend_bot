@@ -21,6 +21,7 @@ class UserRosca(Base):
     cccd = Column(String, nullable=True)                                    # Số căn cước công dân
     role = Column(String, nullable=True)                                    # Vai trò: Owner (Chủ hụi), Player (Người chơi)
     status = Column(String, nullable=True)                                  # Trạng thái: Pending (Chờ duyệt), Active (Hoạt động), Left (Đã rời)
+    chat_id = Column(String, nullable=True, index=True)                     # Chat ID nhóm Telegram (member) của người chơi
 
 class Rosca(Base):
     """Bảng lưu trữ thông tin cấu hình của Dây hụi / Bát hụi"""
@@ -56,7 +57,8 @@ class RoscaMember(Base):
     profit_rate = Column(Float, default=0.0)                                # Tỷ suất lợi nhuận (%)
     status = Column(String, nullable=True)                                  # Trạng thái: Playing (Đang chơi), Defaulted (Bể hụi)
     note = Column(Text, nullable=True)                                      # Ghi chú riêng
-    telegram_group = Column(String, nullable=True)                          # Nhóm chat Telegram
+    telegram_group = Column(String, nullable=True)                          # Tên nhóm chat Telegram
+    chat_id = Column(String, nullable=True, index=True)                     # Chat ID nhóm Telegram (member) của chân hụi
 
 class RoscaRound(Base):
     """Bảng lưu trữ chi tiết các Kỳ khui hụi"""

@@ -21,20 +21,22 @@ async def api_get_user_roscas(
     role: Optional[str] = None,
     status: Optional[str] = None,
     phone_number: Optional[str] = None,
+    chat_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("rosca"))
 ):
     """
     Lấy danh sách người chơi/chủ hụi (user roscas).
     """
-    LogInfo(f"[Rosca API] Received get-user-roscas request. id: {id}, role: {role}, status: {status}, phone_number: {phone_number}")
+    LogInfo(f"[Rosca API] Received get-user-roscas request. id: {id}, role: {role}, status: {status}, phone_number: {phone_number}, chat_id: {chat_id}")
     try:
         users = crud_rosca.get_user_roscas(
             db,
             id=id,
             role=role,
             status=status,
-            phone_number=phone_number
+            phone_number=phone_number,
+            chat_id=chat_id
         )
         LogInfo(f"[Rosca API] Found {len(users)} user roscas.")
         return users
@@ -435,20 +437,22 @@ async def api_get_rosca_members(
     rosca_id: Optional[str] = None,
     user_id: Optional[str] = None,
     status: Optional[str] = None,
+    chat_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Credential = Depends(require_permission("rosca"))
 ):
     """
     Lấy danh sách chân hụi (rosca members).
     """
-    LogInfo(f"[Rosca API] Received get-rosca-members request. id: {id}, rosca_id: {rosca_id}, user_id: {user_id}, status: {status}")
+    LogInfo(f"[Rosca API] Received get-rosca-members request. id: {id}, rosca_id: {rosca_id}, user_id: {user_id}, status: {status}, chat_id: {chat_id}")
     try:
         members = crud_rosca.get_rosca_members(
             db,
             id=id,
             rosca_id=rosca_id,
             user_id=user_id,
-            status=status
+            status=status,
+            chat_id=chat_id
         )
         LogInfo(f"[Rosca API] Found {len(members)} rosca members.")
         return members

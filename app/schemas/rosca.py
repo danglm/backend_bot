@@ -11,6 +11,7 @@ class UserRoscaBase(BaseModel):
     cccd: Optional[str] = None
     role: Optional[str] = None
     status: Optional[str] = "Active"
+    chat_id: Optional[str] = None
 
 class UserRoscaCreate(UserRoscaBase):
     id: str
@@ -69,6 +70,7 @@ class RoscaMemberBase(BaseModel):
     status: Optional[str] = "Playing"
     note: Optional[str] = None
     telegram_group: Optional[str] = None
+    chat_id: Optional[str] = None
 
 class RoscaMemberCreate(RoscaMemberBase):
     rosca_id: str

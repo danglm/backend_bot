@@ -13,6 +13,7 @@ import uuid
 @bot.on_message(filters.command(["hui_tao_nguoi_choi", "rosca_create_user"]) | filters.regex(r"^@\w+\s+/(hui_tao_nguoi_choi|rosca_create_user)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def rosca_create_user_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_tao_nguoi_choi", "rosca_create_user"])
     if args is None: return
@@ -29,9 +30,11 @@ Username Telegram (không bắt buộc):
 Số Điện Thoại: 
 Số CCCD: 
 Vai Trò (Owner/Player): Player
+Chat ID (Telegram):
 </pre>
 
-<i>Lưu ý: Mã ID là bắt buộc (VD: NC01, CH01). Vai trò mặc định là Player (Người chơi). Username điền định dạng @username hoặc bỏ trống.</i>"""
+<i>Lưu ý: Mã ID là bắt buộc (VD: NC01, CH01). Vai trò mặc định là Player (Người chơi). Username điền định dạng @username hoặc bỏ trống.
+Chat ID (Telegram) là nhóm member của người chơi (VD: -1001234567890). Để trống thì bot tự lấy nhóm đang gõ lệnh nếu đó là nhóm member.</i>"""
         form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
         form_tracker.track(message.chat.id, "rosca_create_user", "create", form_msg.id)
         return
@@ -54,6 +57,7 @@ Vai Trò (Owner/Player): Player
     phone_number = data.get("Số Điện Thoại", "")
     cccd = data.get("Số CCCD", "")
     role = data.get("Vai Trò (Owner/Player)", "Player").capitalize()
+    input_chat_id = data.get("Chat ID (Telegram)", "").strip()
 
     if not user_id:
         await message.reply_text("⚠️ <b>Mã ID</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -90,6 +94,11 @@ Vai Trò (Owner/Player): Player
                 await message.reply_text(f"⚠️ Người chơi với CCCD <b>{cccd}</b> đã tồn tại trong hệ thống.", parse_mode=ParseMode.HTML)
                 return
 
+        user_chat_id, chat_err = _hui_resolve_chat_id(db, input_chat_id, message.chat.id)
+        if chat_err:
+            await message.reply_text(chat_err, parse_mode=ParseMode.HTML)
+            return
+
         new_user = UserRosca(
             id=user_id,
             full_name=full_name,
@@ -97,12 +106,17 @@ Vai Trò (Owner/Player): Player
             phone_number=phone_number if phone_number else None,
             cccd=cccd if cccd else None,
             role=role,
-            status="Active"
+            status="Active",
+            chat_id=user_chat_id
         )
         db.add(new_user)
         db.commit()
 
-        await message.reply_text(f"✅ Đã tạo hồ sơ <b>{full_name}</b> (Vai trò: {role}) thành công!", parse_mode=ParseMode.HTML)
+        await message.reply_text(
+            f"✅ Đã tạo hồ sơ <b>{full_name}</b> (Vai trò: {role}) thành công!\n"
+            f"Chat ID (Telegram): <code>{user_chat_id or 'Chưa gắn'}</code>",
+            parse_mode=ParseMode.HTML
+        )
         LogInfo(f"[RoscaCreateUser] Created {role} {full_name} by {message.from_user.id}", LogType.SYSTEM_STATUS)
 
         # Delete the form template message after successful creation
@@ -123,6 +137,7 @@ Vai Trò (Owner/Player): Player
 @bot.on_message(filters.command(["hui_cap_nhat_nguoi_choi", "rosca_update_user"]) | filters.regex(r"^@\w+\s+/(hui_cap_nhat_nguoi_choi|rosca_update_user)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def rosca_update_user_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_cap_nhat_nguoi_choi", "rosca_update_user"])
     if args is None: return
@@ -130,7 +145,7 @@ async def rosca_update_user_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
         if len(args) < 2:
-            await message.reply_text("⚠️ Vui lòng cung cấp Mã ID của người chơi cần cập nhật.\nVí dụ: <code>/hui_cap_nhat_nguoi_choi NC01</code>", parse_mode=ParseMode.HTML)
+            await _hui_send_first_menu(message, "uu")
             return
             
         user_id = args[1]
@@ -142,18 +157,9 @@ async def rosca_update_user_handler(client, message: Message) -> None:
                 await message.reply_text(f"⚠️ Không tìm thấy người chơi có Mã ID: <b>{user_id}</b>", parse_mode=ParseMode.HTML)
                 return
                 
-            form_template = f"""<b>FORM CẬP NHẬT NGƯỜI CHƠI / CHỦ HỤI</b>
-Vui lòng sao chép form dưới đây, chỉnh sửa thông tin và gửi lại:
-
-<pre>/hui_cap_nhat_nguoi_choi {user_id}
-Họ và Tên: {user.full_name or ''}
-Username Telegram (không bắt buộc): {user.username or ''}
-Số Điện Thoại: {user.phone_number or ''}
-Số CCCD: {user.cccd or ''}
-Vai Trò (Owner/Player): {user.role or 'Player'}
-</pre>
-"""
-            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(
+                _hui_form_update_user(user), parse_mode=ParseMode.HTML
+            )
             form_tracker.track(message.chat.id, "rosca_update_user", user_id, form_msg.id)
         except Exception as e:
             LogError(f"Error checking user in rosca_update_user: {e}", LogType.SYSTEM_STATUS)
@@ -184,6 +190,7 @@ Vai Trò (Owner/Player): {user.role or 'Player'}
     phone_number = data.get("Số Điện Thoại", "")
     cccd = data.get("Số CCCD", "")
     role = data.get("Vai Trò (Owner/Player)", "Player").capitalize()
+    input_chat_id = data.get("Chat ID (Telegram)", "").strip()
 
     if not full_name:
         await message.reply_text("⚠️ <b>Họ và Tên</b> là bắt buộc.", parse_mode=ParseMode.HTML)
@@ -214,15 +221,29 @@ Vai Trò (Owner/Player): {user.role or 'Player'}
                 await message.reply_text(f"⚠️ CCCD <b>{cccd}</b> đã được sử dụng bởi người khác.", parse_mode=ParseMode.HTML)
                 return
 
+        # Chat ID nhóm member: nhập tay thì ưu tiên, để trống thì giữ nguyên giá trị cũ
+        if input_chat_id:
+            new_chat_id, chat_err = _hui_resolve_chat_id(db, input_chat_id, message.chat.id)
+            if chat_err:
+                await message.reply_text(chat_err, parse_mode=ParseMode.HTML)
+                return
+        else:
+            new_chat_id = user.chat_id
+
         user.full_name = full_name
         user.username = username if username else None
         user.phone_number = phone_number if phone_number else None
         user.cccd = cccd if cccd else None
         user.role = role
-        
+        user.chat_id = new_chat_id
+
         db.commit()
 
-        await message.reply_text(f"✅ Đã cập nhật hồ sơ <b>{full_name}</b> (Vai trò: {role}) thành công!", parse_mode=ParseMode.HTML)
+        await message.reply_text(
+            f"✅ Đã cập nhật hồ sơ <b>{full_name}</b> (Vai trò: {role}) thành công!\n"
+            f"Chat ID (Telegram): <code>{new_chat_id or 'Chưa gắn'}</code>",
+            parse_mode=ParseMode.HTML
+        )
         LogInfo(f"[RoscaUpdateUser] Updated user {user_id} ({full_name}) by {message.from_user.id}", LogType.SYSTEM_STATUS)
 
         # Delete the form template message after successful update
@@ -250,7 +271,7 @@ async def rosca_delete_user_handler(client, message: Message) -> None:
     if args is None: return
 
     if len(args) < 2:
-        await message.reply_text("⚠️ Vui lòng cung cấp Mã ID của người chơi cần xóa.\nVí dụ: <code>/hui_xoa_nguoi_choi NC01</code>", parse_mode=ParseMode.HTML)
+        await _hui_send_first_menu(message, "du")
         return
         
     user_id = args[1]
@@ -262,23 +283,11 @@ async def rosca_delete_user_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Không tìm thấy người chơi có Mã ID: <b>{user_id}</b>", parse_mode=ParseMode.HTML)
             return
 
-        text = (
-            f"<b>XÁC NHẬN XÓA NGƯỜI CHƠI / CHỦ HỤI</b>\n\n"
-            f"- Mã ID: <b>{user.id}</b>\n"
-            f"- Họ và Tên: <b>{user.full_name}</b>\n"
-            f"- Vai trò: <b>{user.role}</b>\n"
-            f"- SĐT: <b>{user.phone_number or 'N/A'}</b>\n\n"
-            f"Bạn có chắc chắn muốn xóa hồ sơ này không?"
+        await message.reply_text(
+            _hui_confirm_delete_user_text(user),
+            reply_markup=_hui_confirm_delete_user_keyboard(user),
+            parse_mode=ParseMode.HTML
         )
-
-        buttons = [
-            [
-                InlineKeyboardButton("Xác nhận", callback_data=f"rosca_deluser_confirm_{user.id}"),
-                InlineKeyboardButton("Hủy", callback_data="rosca_deluser_cancel")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except Exception as e:
         LogError(f"Error in rosca_delete_user_handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra trong quá trình truy xuất thông tin.")
@@ -287,6 +296,7 @@ async def rosca_delete_user_handler(client, message: Message) -> None:
 
 
 @bot.on_callback_query(filters.regex(r"^rosca_deluser_confirm_(.+)$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delete_user_confirm_callback(client, callback_query: CallbackQuery):
     user_id = callback_query.matches[0].group(1)
     db = SessionLocal()
@@ -314,6 +324,7 @@ async def rosca_delete_user_confirm_callback(client, callback_query: CallbackQue
 
 
 @bot.on_callback_query(filters.regex(r"^rosca_deluser_cancel$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delete_user_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.delete()
 
@@ -322,6 +333,7 @@ async def rosca_delete_user_cancel_callback(client, callback_query: CallbackQuer
 @bot.on_message(filters.command(["hui_tao_day_hui", "roscas_create_roscas"]) | filters.regex(r"^@\w+\s+/(hui_tao_day_hui|roscas_create_roscas)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def rosca_create_roscas_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_tao_day_hui", "roscas_create_roscas"])
     if args is None: return
@@ -502,6 +514,7 @@ Ghi Chú:
 @bot.on_message(filters.command(["hui_cap_nhat_day_hui", "roscas_update_roscas"]) | filters.regex(r"^@\w+\s+/(hui_cap_nhat_day_hui|roscas_update_roscas)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def rosca_update_roscas_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_cap_nhat_day_hui", "roscas_update_roscas"])
     if args is None: return
@@ -509,7 +522,7 @@ async def rosca_update_roscas_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
         if len(args) < 2:
-            await message.reply_text("⚠️ Vui lòng cung cấp Mã Dây Hụi cần cập nhật.\nVí dụ: <code>/hui_cap_nhat_day_hui DH01</code>", parse_mode=ParseMode.HTML)
+            await _hui_send_first_menu(message, "ur")
             return
             
         code = args[1]
@@ -521,26 +534,9 @@ async def rosca_update_roscas_handler(client, message: Message) -> None:
                 await message.reply_text(f"⚠️ Không tìm thấy Dây hụi có mã: <b>{code}</b>", parse_mode=ParseMode.HTML)
                 return
                 
-            from bot.utils.utils import fmt_num
-            form_template = f"""<b>FORM CẬP NHẬT DÂY HỤI</b>
-Vui lòng sao chép form dưới đây, chỉnh sửa thông tin và gửi lại:
-
-<pre>/hui_cap_nhat_day_hui {code}
-ID Chủ Hụi (Mã ID): {rosca.user_id or ''}
-Số Tiền Gốc 1 Chân (VNĐ): {fmt_num(rosca.base_amount) if rosca.base_amount else ''}
-Mức Bỏ Hụi Tối Thiểu (VNĐ): {fmt_num(rosca.min_bid_amount) if rosca.min_bid_amount else ''}
-Mức Bỏ Hụi Tối Đa (VNĐ): {fmt_num(rosca.max_bid_amount) if rosca.max_bid_amount else ''}
-Tổng Số Chân Hụi: {rosca.total_parts or ''}
-Tiền Thảo (VNĐ): {fmt_num(rosca.commission_fee) if rosca.commission_fee else ''}
-Ngày Bắt Đầu (DD/MM/YYYY): {rosca.start_date.strftime('%d/%m/%Y') if rosca.start_date else ''}
-Ngày Kết Thúc (DD/MM/YYYY): {rosca.end_date.strftime('%d/%m/%Y') if rosca.end_date else ''}
-Ngày Đóng Hụi Hàng Kỳ (1-31): {rosca.payment_day or ''}
-Giờ Khui Hụi (HH:MM): {rosca.bidding_time.strftime('%H:%M') if rosca.bidding_time else ''}
-Loại Hụi (Hụi ngày/Hụi tuần/Hụi 2 tuần/Hụi Tháng): {rosca.period_type.value if rosca.period_type else 'Hụi Tháng'}
-Trạng Thái (Draft/Active/Closed): {rosca.status or 'Active'}
-Ghi Chú: {rosca.note or ''}
-</pre>"""
-            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(
+                _hui_form_update_rosca(rosca), parse_mode=ParseMode.HTML
+            )
             form_tracker.track(message.chat.id, "rosca_update_rosca", code, form_msg.id)
         except Exception as e:
             LogError(f"Error checking rosca in rosca_update_roscas: {e}", LogType.SYSTEM_STATUS)
@@ -700,7 +696,7 @@ async def rosca_delete_roscas_handler(client, message: Message) -> None:
     if args is None: return
 
     if len(args) < 2:
-        await message.reply_text("⚠️ Vui lòng cung cấp Mã Dây Hụi cần xóa.\nVí dụ: <code>/hui_xoa_day_hui DH01</code>", parse_mode=ParseMode.HTML)
+        await _hui_send_first_menu(message, "dr")
         return
         
     code = args[1]
@@ -714,26 +710,11 @@ async def rosca_delete_roscas_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Không tìm thấy Dây hụi có mã: <b>{code}</b>", parse_mode=ParseMode.HTML)
             return
             
-        owner = db.query(UserRosca).filter(UserRosca.id == rosca.user_id).first()
-        owner_name = owner.full_name if owner else "Không xác định"
-
-        text = (
-            f"<b>XÁC NHẬN XÓA DÂY HỤI</b>\n\n"
-            f"- Mã Dây Hụi: <b>{rosca.code}</b>\n"
-            f"- Số Tiền Gốc: <b>{fmt_num(rosca.base_amount)} VNĐ</b>\n"
-            f"- Tổng Số Chân: <b>{rosca.total_parts or 'N/A'}</b>\n"
-            f"- Chủ Hụi: <b>{owner_name} ({rosca.user_id})</b>\n\n"
-            f"Bạn có chắc chắn muốn xóa (chuyển sang trạng thái Deleted) dây hụi này không?"
+        await message.reply_text(
+            _hui_confirm_delete_rosca_text(db, rosca),
+            reply_markup=_hui_confirm_delete_rosca_keyboard(rosca),
+            parse_mode=ParseMode.HTML
         )
-
-        buttons = [
-            [
-                InlineKeyboardButton("Xác nhận", callback_data=f"rosca_delrosca_confirm_{rosca.id}"),
-                InlineKeyboardButton("Hủy", callback_data="rosca_delrosca_cancel")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except Exception as e:
         LogError(f"Error in rosca_delete_roscas_handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra trong quá trình truy xuất thông tin.")
@@ -742,6 +723,7 @@ async def rosca_delete_roscas_handler(client, message: Message) -> None:
 
 
 @bot.on_callback_query(filters.regex(r"^rosca_delrosca_confirm_(.+)$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delete_rosca_confirm_callback(client, callback_query: CallbackQuery):
     rosca_id = callback_query.matches[0].group(1)
     db = SessionLocal()
@@ -769,6 +751,7 @@ async def rosca_delete_rosca_confirm_callback(client, callback_query: CallbackQu
 
 
 @bot.on_callback_query(filters.regex(r"^rosca_delrosca_cancel$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delete_rosca_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.delete()
 
@@ -801,7 +784,7 @@ async def rosca_create_member_handler(client, message: Message) -> None:
                 cb_data = f"cb_crmem_r_{r.code}"
                 buttons.append([InlineKeyboardButton(btn_text, callback_data=cb_data)])
             
-            buttons.append([InlineKeyboardButton("Hủy", callback_data="rosca_delrosca_cancel")])
+            buttons.append([InlineKeyboardButton("Hủy", callback_data="hu|x")])
             
             await message.reply_text("<b>CHỌN DÂY HỤI</b>\nVui lòng chọn Dây hụi mà bạn muốn thêm chân:", reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
         except Exception as e:
@@ -833,6 +816,7 @@ async def rosca_create_member_handler(client, message: Message) -> None:
     profit_rate_str = data.get("Tỷ Suất Lợi Nhuận (%)", "0")
     status = data.get("Trạng Thái (Playing/Defaulted)", "Playing")
     telegram_group = data.get("Nhóm Chat Telegram (tùy chọn)", "")
+    input_chat_id = data.get("Chat ID (Telegram)", "").strip()
     note = data.get("Ghi Chú", "")
 
     if not member_id:
@@ -905,6 +889,13 @@ async def rosca_create_member_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Không thể thêm. Dây hụi này chỉ còn <b>{rosca.total_parts - current_total_parts}</b> chân trống (Tổng số: {rosca.total_parts}).", parse_mode=ParseMode.HTML)
             return
 
+        member_chat_id, chat_err = _hui_resolve_member_chat_id(
+            db, input_chat_id, telegram_group, message.chat.id
+        )
+        if chat_err:
+            await message.reply_text(chat_err, parse_mode=ParseMode.HTML)
+            return
+
         new_member = RoscaMember(
             id=member_id,
             rosca_id=rosca.id,
@@ -916,7 +907,8 @@ async def rosca_create_member_handler(client, message: Message) -> None:
             profit_rate=profit_rate,
             status=status,
             note=note,
-            telegram_group=telegram_group if telegram_group else None
+            telegram_group=telegram_group if telegram_group else None,
+            chat_id=member_chat_id
         )
         db.add(new_member)
         db.commit()
@@ -932,6 +924,7 @@ async def rosca_create_member_handler(client, message: Message) -> None:
 
 
 @bot.on_callback_query(filters.regex(r"^cb_crmem_r_(.+)$"))
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def rosca_create_member_select_callback(client, callback_query: CallbackQuery):
     rosca_code = callback_query.matches[0].group(1)
     
@@ -949,6 +942,7 @@ Tổng Tiền Lãi (VNĐ): 0
 Tỷ Suất Lợi Nhuận (%): 0
 Trạng Thái (Playing/Defaulted): Playing
 Nhóm Chat Telegram (tùy chọn): 
+Chat ID (Telegram):
 Ghi Chú: 
 </pre>
 
@@ -960,6 +954,7 @@ Ghi Chú:
 @bot.on_message(filters.command(["hui_cap_nhat_chan_hui", "roscas_update_member"]) | filters.regex(r"^@\w+\s+/(hui_cap_nhat_chan_hui|roscas_update_member)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def rosca_update_member_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_cap_nhat_chan_hui", "roscas_update_member"])
     if args is None: return
@@ -967,7 +962,7 @@ async def rosca_update_member_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
         if len(args) < 2:
-            await message.reply_text("⚠️ Vui lòng cung cấp Mã Chân Hụi cần cập nhật.\nVí dụ: <code>/hui_cap_nhat_chan_hui AT001</code>", parse_mode=ParseMode.HTML)
+            await _hui_send_first_menu(message, "um")
             return
             
         member_id = args[1]
@@ -980,25 +975,9 @@ async def rosca_update_member_handler(client, message: Message) -> None:
                 await message.reply_text(f"⚠️ Không tìm thấy Chân hụi có mã: <b>{member_id}</b>", parse_mode=ParseMode.HTML)
                 return
             
-            rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
-            rosca_code = rosca.code if rosca else ""
-            
-            form_template = f"""<b>FORM CẬP NHẬT CHÂN HỤI</b>
-Vui lòng sao chép form dưới đây, chỉnh sửa thông tin và gửi lại:
-
-<pre>/hui_cap_nhat_chan_hui {member_id}
-Mã Dây Hụi: {rosca_code}
-ID Người Chơi (Mã ID): {member.user_id or ''}
-Số Lượng Chân: {member.parts_count or 1}
-Tổng Tiền Đã Đóng (VNĐ): {fmt_num(member.total_contributed)}
-Tổng Tiền Đã Nhận (VNĐ): {fmt_num(member.total_received)}
-Tổng Tiền Lãi (VNĐ): {fmt_num(member.total_profit)}
-Tỷ Suất Lợi Nhuận (%): {fmt_num(member.profit_rate)}
-Trạng Thái (Playing/Defaulted): {member.status or 'Playing'}
-Nhóm Chat Telegram (tùy chọn): {member.telegram_group or ''}
-Ghi Chú: {member.note or ''}
-</pre>"""
-            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(
+                _hui_form_update_member(db, member), parse_mode=ParseMode.HTML
+            )
             form_tracker.track(message.chat.id, "rosca_update_member", member_id, form_msg.id)
         except Exception as e:
             LogError(f"Error checking member in rosca_update_member: {e}", LogType.SYSTEM_STATUS)
@@ -1033,6 +1012,7 @@ Ghi Chú: {member.note or ''}
     profit_rate_str = data.get("Tỷ Suất Lợi Nhuận (%)", "0")
     status = data.get("Trạng Thái (Playing/Defaulted)", "Playing")
     telegram_group = data.get("Nhóm Chat Telegram (tùy chọn)", "")
+    input_chat_id = data.get("Chat ID (Telegram)", "").strip()
     note = data.get("Ghi Chú", "")
 
     if not rosca_code:
@@ -1106,6 +1086,13 @@ Ghi Chú: {member.note or ''}
             await message.reply_text(f"⚠️ Không thể cập nhật. Dây hụi này chỉ còn <b>{rosca.total_parts - current_total_parts}</b> chân trống (Tổng số: {rosca.total_parts}).", parse_mode=ParseMode.HTML)
             return
 
+        member_chat_id, chat_err = _hui_resolve_member_chat_id(
+            db, input_chat_id, telegram_group, message.chat.id
+        )
+        if chat_err:
+            await message.reply_text(chat_err, parse_mode=ParseMode.HTML)
+            return
+
         member.rosca_id = rosca.id
         member.user_id = user_id
         member.parts_count = parts_count
@@ -1116,7 +1103,8 @@ Ghi Chú: {member.note or ''}
         member.status = status
         member.note = note
         member.telegram_group = telegram_group if telegram_group else None
-        
+        member.chat_id = member_chat_id
+
         db.commit()
 
         await message.reply_text(f"✅ Đã cập nhật thành công thông tin Chân hụi <b>{member_id}</b>.", parse_mode=ParseMode.HTML)
@@ -1147,7 +1135,7 @@ async def rosca_delete_member_handler(client, message: Message) -> None:
     if args is None: return
 
     if len(args) < 2:
-        await message.reply_text("⚠️ Vui lòng cung cấp Mã Chân Hụi cần xóa.\nVí dụ: <code>/hui_xoa_chan_hui AT001</code>", parse_mode=ParseMode.HTML)
+        await _hui_send_first_menu(message, "dm")
         return
         
     member_id = args[1]
@@ -1165,31 +1153,11 @@ async def rosca_delete_member_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Chân hụi <b>{member_id}</b> đã bị xóa trước đó.", parse_mode=ParseMode.HTML)
             return
 
-        rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
-        player = db.query(UserRosca).filter(UserRosca.id == member.user_id).first()
-        
-        rosca_code = rosca.code if rosca else "N/A"
-        player_name = player.full_name if player else "N/A"
-
-        info_text = f"""<b>⚠️ XÁC NHẬN XÓA CHÂN HỤI</b>
-
-Bạn có chắc chắn muốn xóa Chân hụi này không?
-- <b>Mã Chân Hụi:</b> {member.id}
-- <b>Mã Dây Hụi:</b> {rosca_code}
-- <b>Người Chơi:</b> {player_name}
-- <b>Số Lượng Chân:</b> {member.parts_count or 1}
-- <b>Tổng Tiền Đã Đóng:</b> {fmt_num(member.total_contributed)} đ
-
-<i>Lưu ý: Thao tác này sẽ chuyển trạng thái của chân hụi sang Deleted và không xóa vĩnh viễn khỏi hệ thống.</i>"""
-
-        buttons = [
-            [
-                InlineKeyboardButton("Xác nhận", callback_data=f"rosca_delmem_confirm_{member.id}"),
-                InlineKeyboardButton("Hủy", callback_data="rosca_delmem_cancel")
-            ]
-        ]
-        
-        await message.reply_text(info_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+        await message.reply_text(
+            _hui_confirm_delete_member_text(db, member),
+            reply_markup=_hui_confirm_delete_member_keyboard(member),
+            parse_mode=ParseMode.HTML
+        )
     except Exception as e:
         LogError(f"Error checking member for deletion: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra trong quá trình truy xuất thông tin.")
@@ -1198,6 +1166,7 @@ Bạn có chắc chắn muốn xóa Chân hụi này không?
 
 
 @bot.on_callback_query(filters.regex(r"^rosca_delmem_confirm_(.+)$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delmember_confirm_callback(client, callback_query: CallbackQuery):
     member_id = callback_query.matches[0].group(1)
     
@@ -1228,21 +1197,27 @@ async def rosca_delmember_confirm_callback(client, callback_query: CallbackQuery
         db.close()
 
 @bot.on_callback_query(filters.regex(r"^rosca_delmem_cancel$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delete_member_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.delete()
 
 # --- Rosca: Check Member (Kiểm Tra Chân Hụi) ---
 @bot.on_message(filters.command(["hui_kiem_tra_chan_hui", "roscas_check_member"]) | filters.regex(r"^@\w+\s+/(hui_kiem_tra_chan_hui|roscas_check_member)\b"))
 @require_group_role("main", "member")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_check_member_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_kiem_tra_chan_hui", "roscas_check_member"])
     if args is None: return
 
     if len(args) < 2:
-        await message.reply_text("⚠️ Vui lòng cung cấp Mã Chân Hụi cần kiểm tra.\nVí dụ: <code>/hui_kiem_tra_chan_hui AT2506_01</code>", parse_mode=ParseMode.HTML)
+        await _hui_send_first_menu(message, "cm")
         return
-        
-    member_id = args[1].strip()
+
+    await _hui_run_check_member(client, message, args[1].strip())
+
+
+async def _hui_run_check_member(client, message, member_id: str) -> None:
+    """In thông tin 1 chân hụi (dùng chung cho lệnh gõ tay và nút bấm)."""
     db = SessionLocal()
     try:
         from app.models.rosca import RoscaMember, Rosca, UserRosca, RoscaContribution
@@ -1314,15 +1289,20 @@ async def rosca_check_member_handler(client, message: Message) -> None:
 # --- Rosca: Check Contributions History (Kiểm Tra Đóng Hụi) ---
 @bot.on_message(filters.command(["hui_kiem_tra_dong_hui", "roscas_check_contributions"]) | filters.regex(r"^@\w+\s+/(hui_kiem_tra_dong_hui|roscas_check_contributions)\b"))
 @require_group_role("main", "member")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_check_contributions_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_kiem_tra_dong_hui", "roscas_check_contributions"])
     if args is None: return
 
     if len(args) < 2:
-        await message.reply_text("⚠️ Vui lòng cung cấp Mã Chân Hụi cần kiểm tra.\nVí dụ: <code>/hui_kiem_tra_dong_hui AT001</code>", parse_mode=ParseMode.HTML)
+        await _hui_send_first_menu(message, "cc")
         return
 
-    member_id = args[1].strip()
+    await _hui_run_check_contributions(client, message, args[1].strip())
+
+
+async def _hui_run_check_contributions(client, message, member_id: str) -> None:
+    """In lịch sử đóng hụi của 1 chân hụi (dùng chung lệnh gõ tay và nút bấm)."""
     db = SessionLocal()
     try:
         from app.models.rosca import RoscaMember, Rosca, UserRosca, RoscaContribution
@@ -1694,6 +1674,7 @@ Bạn có chắc chắn muốn ghi nhận giao dịch đóng hụi này không?
 
 
 @bot.on_callback_query(filters.regex(r"^cb_rosca_pay_confirm_(.+)$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_pay_contribution_confirm_callback(client, callback_query: CallbackQuery):
     cache_key = callback_query.matches[0].group(1)
     
@@ -1789,6 +1770,7 @@ async def rosca_pay_contribution_confirm_callback(client, callback_query: Callba
 
 
 @bot.on_callback_query(filters.regex(r"^cb_rosca_pay_(.+)$"))
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def rosca_pay_contribution_callback(client, callback_query: CallbackQuery):
     action = callback_query.matches[0].group(1)
     
@@ -1818,12 +1800,14 @@ Ghi Chú:
 
 
 @bot.on_callback_query(filters.regex(r"^rosca_delmem_cancel$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_delmember_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.delete()
 
 @bot.on_message(filters.command(["hui_huy_dong_tien"]) & filters.reply)
 @require_project_name("Hụi")
 @require_group_role("member", "main")
+@command_timeout(auto_delete_cmd=True)
 async def rosca_cancel_contribution_handler(client, message: Message) -> None:
     replied_msg = message.reply_to_message
     if not replied_msg or not replied_msg.text:
@@ -1883,16 +1867,43 @@ async def rosca_withdraw_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_rut_day_hui", "roscas_withdraw"])
     if args is None: return
 
-    if len(args) < 3:
-        await message.reply_text("⚠️ Vui lòng cung cấp Mã Chân Hụi và Số Tiền.\nVí dụ: <code>/hui_rut_day_hui AT001 50000000</code>", parse_mode=ParseMode.HTML)
+    lines = message.text.strip().split("\n")
+    is_form = len(lines) > 1
+
+    # Không kèm Mã Chân Hụi -> hiện menu chọn dây hụi rồi tới chân hụi
+    if not is_form and len(args) < 2:
+        await _hui_send_first_menu(message, "rw")
         return
 
-    member_id = args[1].strip()
+    if is_form:
+        member_id = args[1].strip() if len(args) >= 2 else _hui_parse_form_amount(message.text, ["Mã Chân Hụi"])
+        amount_str = _hui_parse_form_amount(message.text, ["Số Tiền Rút (VNĐ)", "Số Tiền Rút"])
+        if not amount_str:
+            await message.reply_text("⚠️ Vui lòng điền <b>Số Tiền Rút (VNĐ)</b> trong form.", parse_mode=ParseMode.HTML)
+            return
+    else:
+        if len(args) < 3:
+            await message.reply_text("⚠️ Vui lòng cung cấp Mã Chân Hụi và Số Tiền.\nVí dụ: <code>/hui_rut_day_hui AT001 50000000</code>", parse_mode=ParseMode.HTML)
+            return
+        member_id = args[1].strip()
+        amount_str = args[2]
+
     try:
-        amount = float(args[2].replace(",", "").replace(".", "").replace(" ", ""))
+        amount = float(amount_str.replace(",", "").replace(".", "").replace(" ", ""))
     except ValueError:
         await message.reply_text("⚠️ Số tiền không hợp lệ. Vui lòng nhập số.", parse_mode=ParseMode.HTML)
         return
+
+    if not member_id:
+        await message.reply_text("⚠️ Không xác định được Mã Chân Hụi.", parse_mode=ParseMode.HTML)
+        return
+
+    form_msg_id = form_tracker.pop(message.chat.id, "rosca_withdraw", member_id)
+    if form_msg_id:
+        try:
+            await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+        except Exception as del_err:
+            LogError(f"Failed to delete rosca withdraw form: {del_err}", LogType.SYSTEM_STATUS)
 
     db = SessionLocal()
     try:
@@ -1993,6 +2004,7 @@ Bạn có chắc chắn muốn xác nhận Rút/Hốt hụi và chuyển trạng
 
 
 @bot.on_callback_query(filters.regex(r"^cb_rw_confirm_(.+)$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_withdraw_confirm_callback(client, callback_query: CallbackQuery):
     cache_key = callback_query.matches[0].group(1)
     
@@ -2051,6 +2063,7 @@ async def rosca_withdraw_confirm_callback(client, callback_query: CallbackQuery)
 
 
 @bot.on_callback_query(filters.regex(r"^cb_rw_cancel$"))
+@command_timeout(auto_delete_cmd=True)
 async def rosca_withdraw_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.delete()
 
@@ -2059,11 +2072,24 @@ async def rosca_withdraw_cancel_callback(client, callback_query: CallbackQuery):
 # --- Rosca: Export Statistics to Excel (Thống Kê Hụi) ---
 @bot.on_message(filters.command(["hui_thong_ke_hui", "roscas_export_stats"]) | filters.regex(r"^@\w+\s+/(hui_thong_ke_hui|roscas_export_stats)\b"))
 @require_group_role("main", "member")
+@command_timeout(auto_delete_cmd=True)
 async def roscas_export_stats_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_thong_ke_hui", "roscas_export_stats"])
     if args is None: return
 
-    player_id = args[1].strip() if len(args) >= 2 else None
+    if len(args) < 2:
+        await message.reply_text(
+            "<b>THỐNG KÊ HỤI</b>\n\nChọn phạm vi thống kê:",
+            reply_markup=_hui_export_stats_menu_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    await _hui_run_export_stats(client, message, args[1].strip())
+
+
+async def _hui_run_export_stats(client, message, player_id) -> None:
+    """Xuất file thống kê hụi (player_id=None -> toàn bộ người chơi)."""
     db = SessionLocal()
     try:
         from app.models.rosca import UserRosca, RoscaMember, Rosca, RoscaContribution
@@ -2131,11 +2157,18 @@ async def roscas_export_stats_handler(client, message: Message) -> None:
                 day = min(start_date.day, 28)
                 return datetime.date(year, month, day)
 
+        # Nhóm member chỉ được thống kê chân hụi của chính nhóm mình
+        scope = _hui_scope(db, message.chat.id)
+        if scope is not None:
+            users = [u for u in users if u.id in scope["player_ids"]]
+
         # Process each user
         users_processed = 0
         for user in users:
             # Query members (positions)
             members = db.query(RoscaMember).filter(RoscaMember.user_id == user.id).all()
+            if scope is not None:
+                members = [m for m in members if m.id in scope["member_ids"]]
             if not members:
                 continue
 
@@ -2402,21 +2435,43 @@ async def roscas_export_stats_handler(client, message: Message) -> None:
 @bot.on_message(filters.command(["hui_tinh_lai_gia_lap"]) | filters.regex(r"^@\w+\s+/hui_tinh_lai_gia_lap\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main", "member")
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
 async def rosca_tinh_lai_gia_lap_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_tinh_lai_gia_lap"])
     if args is None: return
 
-    if len(args) < 3:
-        await message.reply_text(
-            "⚠️ <b>Cú pháp lệnh không hợp lệ.</b>\n"
-            "Vui lòng nhập: <code>/hui_tinh_lai_gia_lap [mã dây hụi] [Số tiền bỏ sắp tới]</code>\n"
-            "Ví dụ: <code>/hui_tinh_lai_gia_lap DH01 100000</code>",
-            parse_mode=ParseMode.HTML
-        )
+    lines = message.text.strip().split("\n")
+    is_form = len(lines) > 1
+
+    # Không kèm mã dây hụi -> menu chọn dây hụi
+    if not is_form and len(args) < 2:
+        await _hui_send_first_menu(message, "tl")
         return
 
-    rosca_code = args[1].strip()
-    upcoming_bid_str = args[2].strip()
+    if is_form:
+        rosca_code = args[1].strip() if len(args) >= 2 else _hui_parse_form_amount(message.text, ["Mã Dây Hụi"])
+        upcoming_bid_str = _hui_parse_form_amount(message.text, ["Số Tiền Bỏ Sắp Tới (VNĐ)", "Số Tiền Bỏ Sắp Tới"])
+        if not upcoming_bid_str:
+            await message.reply_text("⚠️ Vui lòng điền <b>Số Tiền Bỏ Sắp Tới (VNĐ)</b> trong form.", parse_mode=ParseMode.HTML)
+            return
+
+        form_msg_id = form_tracker.pop(message.chat.id, "rosca_tinh_lai", rosca_code)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete rosca tinh lai form: {del_err}", LogType.SYSTEM_STATUS)
+    else:
+        if len(args) < 3:
+            await message.reply_text(
+                "⚠️ <b>Cú pháp lệnh không hợp lệ.</b>\n"
+                "Vui lòng nhập: <code>/hui_tinh_lai_gia_lap [mã dây hụi] [Số tiền bỏ sắp tới]</code>\n"
+                "Ví dụ: <code>/hui_tinh_lai_gia_lap DH01 100000</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        rosca_code = args[1].strip()
+        upcoming_bid_str = args[2].strip()
 
     def parse_float(val_str):
         if not val_str: return None
@@ -2520,24 +2575,45 @@ async def rosca_bao_cao_hui_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["hui_bao_cao_hui"])
     if args is None: return
 
-    if len(args) < 3:
-        await message.reply_text(
-            "⚠️ <b>Cú pháp lệnh không hợp lệ.</b>\n"
-            "Vui lòng nhập: <code>/hui_bao_cao_hui [mã người chơi] [yyyy]</code>\n"
-            "Ví dụ: <code>/hui_bao_cao_hui NC01 2025</code>",
-            parse_mode=ParseMode.HTML
-        )
+    # Không kèm mã người chơi -> menu chọn người chơi
+    if len(args) < 2:
+        await _hui_send_first_menu(message, "bc")
         return
 
     player_id = args[1].strip()
-    year_str = args[2].strip()
+
+    # Có mã người chơi nhưng chưa có năm -> hiện nút chọn năm
+    if len(args) < 3:
+        db = SessionLocal()
+        try:
+            from app.models.rosca import UserRosca
+            user = db.query(UserRosca).filter(UserRosca.id == player_id).first()
+            if not user:
+                await message.reply_text(f"⚠️ Không tìm thấy người chơi có Mã ID: <b>{player_id}</b>", parse_mode=ParseMode.HTML)
+                return
+
+            await message.reply_text(
+                f"<b>BÁO CÁO HỤI THEO NĂM</b>\n"
+                f"Người chơi: <b>{user.full_name or user.id}</b> ({user.id})\n\n"
+                f"Chọn năm cần xem báo cáo:",
+                reply_markup=_hui_year_keyboard(db, player_id),
+                parse_mode=ParseMode.HTML
+            )
+        finally:
+            db.close()
+        return
 
     try:
-        year = int(year_str)
+        year = int(args[2].strip())
     except ValueError:
         await message.reply_text("⚠️ <b>Năm</b> không hợp lệ. Vui lòng nhập số nguyên (VD: 2025).", parse_mode=ParseMode.HTML)
         return
 
+    await _hui_run_bao_cao(client, message, player_id, year)
+
+
+async def _hui_run_bao_cao(client, message, player_id: str, year: int) -> None:
+    """Xuất báo cáo hụi theo năm của 1 người chơi."""
     db = SessionLocal()
     try:
         from app.models.rosca import UserRosca, RoscaMember, Rosca, RoscaContribution
@@ -2553,6 +2629,12 @@ async def rosca_bao_cao_hui_handler(client, message: Message) -> None:
 
         # 2. Get all RoscaMember (chân hụi) for this user
         all_members = db.query(RoscaMember).filter(RoscaMember.user_id == user.id).all()
+
+        # Nhóm member chỉ được xem chân hụi của chính nhóm mình
+        scope = _hui_scope(db, message.chat.id)
+        if scope is not None:
+            all_members = [m for m in all_members if m.id in scope["member_ids"]]
+
         if not all_members:
             await message.reply_text(f"⚠️ Người chơi <b>{user.full_name}</b> chưa có chân hụi nào.", parse_mode=ParseMode.HTML)
             return
@@ -2728,10 +2810,13 @@ def _build_rbc_buttons(cache):
     else:
         buttons.append([InlineKeyboardButton("4. Chi tiết theo Mã Dây Hụi", callback_data="rbc_rosca_show")])
 
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="hu|x")])
+
     return InlineKeyboardMarkup(buttons)
 
 
 @bot.on_callback_query(filters.regex(r"^rbc_month_(show|hide)$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
 async def rbc_month_toggle_callback(client, callback_query: CallbackQuery):
     """Toggle monthly detail section in the ROSCA yearly report."""
     action = callback_query.matches[0].group(1)
@@ -2754,6 +2839,7 @@ async def rbc_month_toggle_callback(client, callback_query: CallbackQuery):
 
 
 @bot.on_callback_query(filters.regex(r"^rbc_rosca_(show|hide)$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
 async def rbc_rosca_toggle_callback(client, callback_query: CallbackQuery):
     """Toggle per-rosca detail section in the ROSCA yearly report."""
     action = callback_query.matches[0].group(1)
@@ -2778,6 +2864,7 @@ async def rbc_rosca_toggle_callback(client, callback_query: CallbackQuery):
 # ===================== ROSCA NOTIFICATION BUTTON CALLBACKS =====================
 
 @bot.on_callback_query(filters.regex(r"^rnt_pay\|([^|]+)\|(\d+)$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
 async def rnt_pay_callback(client, callback_query: CallbackQuery):
     """Nút 'Đóng tiền chân Hụi' trên thông báo hụi -> Trả về form mẫu /hui_dong_tien_chan_hui."""
     member_id = callback_query.matches[0].group(1)
@@ -2820,6 +2907,7 @@ Ghi Chú:
 
 
 @bot.on_callback_query(filters.regex(r"^rnt_withdraw\|([^|]+)$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
 async def rnt_withdraw_callback(client, callback_query: CallbackQuery):
     """Nút 'Hốt tiền chân Hụi' trên thông báo hụi -> Hướng dẫn & mẫu lệnh /hui_rut_day_hui."""
     member_id = callback_query.matches[0].group(1)
@@ -2835,6 +2923,7 @@ async def rnt_withdraw_callback(client, callback_query: CallbackQuery):
 
 
 @bot.on_callback_query(filters.regex(r"^rnt_cancel_menu\|([^|]+)\|(\d+)$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
 async def rnt_cancel_menu_callback(client, callback_query: CallbackQuery):
     """Nút 'Hủy' trên thông báo hụi -> Hiện 2 nút sub-menu: Hoãn và Bể Hụi."""
     member_id = callback_query.matches[0].group(1)
@@ -2854,6 +2943,7 @@ async def rnt_cancel_menu_callback(client, callback_query: CallbackQuery):
 
 
 @bot.on_callback_query(filters.regex(r"^rnt_back\|([^|]+)\|(\d+)$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
 async def rnt_back_callback(client, callback_query: CallbackQuery):
     """Nút 'Quay lại' -> Khôi phục menu ban đầu (Đóng tiền, Hốt tiền, Hủy)."""
     member_id = callback_query.matches[0].group(1)
@@ -2873,6 +2963,7 @@ async def rnt_back_callback(client, callback_query: CallbackQuery):
 
 
 @bot.on_callback_query(filters.regex(r"^rnt_delay\|([^|]+)\|(\d+)$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
 async def rnt_delay_callback(client, callback_query: CallbackQuery):
     """Nút 3.1 'Hoãn' -> Thực hiện đóng hụi với số tiền 0 VNĐ, trạng thái Unpaid (Chưa đóng)."""
     member_id = callback_query.matches[0].group(1)
@@ -2938,6 +3029,7 @@ async def rnt_delay_callback(client, callback_query: CallbackQuery):
 
 
 @bot.on_callback_query(filters.regex(r"^rnt_break\|([^|]+)$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
 async def rnt_break_callback(client, callback_query: CallbackQuery):
     """Nút 3.2 'Bể Hụi' -> Chuyển trạng thái Dây hụi sang Bể Hụi."""
     member_id = callback_query.matches[0].group(1)
@@ -2976,3 +3068,946 @@ async def rnt_break_callback(client, callback_query: CallbackQuery):
     finally:
         db.close()
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  HỤI: KHUNG MENU NÚT DÙNG CHUNG
+#  callback_data: hu|<act>|<lvl>|<key>|<page>
+#    act : uu/du (người chơi) · ur/dr/tl (dây hụi) · um/dm/cm/cc/rw (chân hụi)
+#          tk/bc (báo cáo)
+#    lvl : u = danh sách người chơi | r = danh sách dây hụi
+#          m = danh sách chân hụi của 1 dây | s = đã chọn xong
+# ═══════════════════════════════════════════════════════════════════════════
+_HUI_PAGE_SIZE = 10
+
+# "Dead" mang 2 nghĩa khác nhau: dây hụi Dead = bể hụi, chân hụi Dead = đã hốt (hụi chết)
+_HUI_ROSCA_STATUS_VN = {
+    "Draft": "Nháp",
+    "Active": "Đang chạy",
+    "Closed": "Đã đóng",
+    "Dead": "Bể hụi",
+    "Deleted": "Đã xóa",
+}
+
+_HUI_MEMBER_STATUS_VN = {
+    "Playing": "Đang chơi",
+    "Dead": "Đã hốt",
+    "Withdrawn": "Đã rút",
+    "Completed": "Hoàn tất",
+    "Defaulted": "Bể hụi",
+    "Deleted": "Đã xóa",
+}
+
+# act -> (cấp danh sách đầu tiên, tiêu đề menu)
+#   "u" = chọn người chơi | "r" = chọn dây hụi | "rm" = chọn dây hụi rồi tới chân hụi
+_HUI_ACTS = {
+    "uu": ("u",  "CẬP NHẬT NGƯỜI CHƠI"),
+    "du": ("u",  "XÓA NGƯỜI CHƠI"),
+    "ur": ("r",  "CẬP NHẬT DÂY HỤI"),
+    "dr": ("r",  "XÓA DÂY HỤI"),
+    "tl": ("r",  "TÍNH LÃI GIẢ LẬP"),
+    "um": ("rm", "CẬP NHẬT CHÂN HỤI"),
+    "dm": ("rm", "XÓA CHÂN HỤI"),
+    "cm": ("rm", "KIỂM TRA CHÂN HỤI"),
+    "cc": ("rm", "KIỂM TRA ĐÓNG HỤI"),
+    "rw": ("rm", "RÚT DÂY HỤI / HỐT HỤI"),
+    "bc": ("u",  "BÁO CÁO HỤI THEO NĂM"),
+    "tk": ("u",  "THỐNG KÊ HỤI"),
+}
+
+
+async def _hui_safe_edit(callback_query, text, reply_markup=None):
+    """edit_text nhưng bỏ qua lỗi MESSAGE_NOT_MODIFIED (bấm lại đúng nút đang chọn)."""
+    from pyrogram.errors import MessageNotModified
+    try:
+        await callback_query.message.edit_text(
+            text, reply_markup=reply_markup, parse_mode=ParseMode.HTML
+        )
+    except MessageNotModified:
+        pass
+
+
+def _hui_page_slice(items, page):
+    """Cắt 1 trang (tối đa 10 mục) và trả về (mục_của_trang, page_đã_kẹp, tổng_trang)."""
+    total = len(items)
+    total_pages = max(1, (total + _HUI_PAGE_SIZE - 1) // _HUI_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * _HUI_PAGE_SIZE
+    return items[start:min(start + _HUI_PAGE_SIZE, total)], page, total_pages
+
+
+def _hui_nav_row(cb_prefix, page, total_pages):
+    """Hàng nút Trước / số trang / Sau. cb_prefix nối thêm số trang ở cuối."""
+    if total_pages <= 1:
+        return []
+    row = []
+    if page > 0:
+        row.append(InlineKeyboardButton("<< Trước", callback_data=f"{cb_prefix}{page - 1}"))
+    row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="hu|n"))
+    if page < total_pages - 1:
+        row.append(InlineKeyboardButton("Sau >>", callback_data=f"{cb_prefix}{page + 1}"))
+    return row
+
+
+def _hui_status_vn(status, kind="rosca"):
+    table = _HUI_MEMBER_STATUS_VN if kind == "member" else _HUI_ROSCA_STATUS_VN
+    return table.get(status, status or "Không rõ")
+
+
+def _hui_users(db):
+    from app.models.rosca import UserRosca
+    return db.query(UserRosca).order_by(UserRosca.id).all()
+
+
+def _hui_roscas(db):
+    """Toàn bộ dây hụi (giữ nguyên mọi trạng thái theo yêu cầu)."""
+    from app.models.rosca import Rosca
+    return db.query(Rosca).order_by(Rosca.code).all()
+
+
+def _hui_members_of(db, rosca_code):
+    from app.models.rosca import Rosca, RoscaMember
+    rosca = db.query(Rosca).filter(Rosca.code == rosca_code).first()
+    if not rosca:
+        return None, []
+    members = db.query(RoscaMember).filter(
+        RoscaMember.rosca_id == rosca.id
+    ).order_by(RoscaMember.id).all()
+    return rosca, members
+
+
+def _hui_user_map(db):
+    from app.models.rosca import UserRosca
+    return {u.id: u for u in db.query(UserRosca).all()}
+
+
+def _hui_user_list_keyboard(users, act, page):
+    page_users, page, total_pages = _hui_page_slice(users, page)
+    buttons = [
+        [InlineKeyboardButton(
+            f"{u.id} - {u.full_name or 'Chưa rõ'} ({'Chủ hụi' if u.role == 'Owner' else 'Người chơi'})",
+            callback_data=f"hu|{act}|s|{u.id}"
+        )]
+        for u in page_users
+    ]
+    nav = _hui_nav_row(f"hu|{act}|u|", page, total_pages)
+    if nav:
+        buttons.append(nav)
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="hu|x")])
+    return InlineKeyboardMarkup(buttons)
+
+
+def _hui_rosca_list_keyboard(db, roscas, act, page):
+    """Danh sách dây hụi. act cấp 'r' chọn xong luôn, act cấp 'rm' đi tiếp tới chân hụi."""
+    level = _HUI_ACTS.get(act, ("r", ""))[0]
+    page_roscas, page, total_pages = _hui_page_slice(roscas, page)
+    users = _hui_user_map(db)
+
+    buttons = []
+    for r in page_roscas:
+        owner = users.get(r.user_id)
+        owner_name = owner.full_name if owner else "Chưa rõ"
+        label = f"{r.code} - {owner_name} ({r.total_parts or '?'} chân) [{_hui_status_vn(r.status)}]"
+        cb = f"hu|{act}|m|{r.code}|0" if level == "rm" else f"hu|{act}|s|{r.code}"
+        buttons.append([InlineKeyboardButton(label, callback_data=cb)])
+
+    nav = _hui_nav_row(f"hu|{act}|r|", page, total_pages)
+    if nav:
+        buttons.append(nav)
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="hu|x")])
+    return InlineKeyboardMarkup(buttons)
+
+
+def _hui_member_list_keyboard(db, members, act, rosca_code, page):
+    page_members, page, total_pages = _hui_page_slice(members, page)
+    users = _hui_user_map(db)
+
+    buttons = []
+    for m in page_members:
+        player = users.get(m.user_id)
+        player_name = player.full_name if player else "Chưa rõ"
+        label = f"{m.id} - {player_name} ({m.parts_count or 1} chân) [{_hui_status_vn(m.status, 'member')}]"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"hu|{act}|s|{m.id}")])
+
+    nav = _hui_nav_row(f"hu|{act}|m|{rosca_code}|", page, total_pages)
+    if nav:
+        buttons.append(nav)
+    buttons.append([InlineKeyboardButton("<< Chọn dây hụi khác", callback_data=f"hu|{act}|r|0")])
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="hu|x")])
+    return InlineKeyboardMarkup(buttons)
+
+
+async def _hui_send_first_menu(message, act):
+    """Gửi menu cấp đầu tiên của một thao tác (dùng khi gõ lệnh không kèm mã).
+
+    Trong nhóm member, danh sách chỉ gồm người chơi / dây hụi của chính nhóm đó.
+    """
+    level, title = _HUI_ACTS[act]
+    db = SessionLocal()
+    try:
+        chat_id = message.chat.id
+        scoped = _hui_scope(db, chat_id) is not None
+
+        if level == "u":
+            users = _hui_scope_players(db, chat_id)
+            if not users:
+                await message.reply_text(
+                    "⚠️ Nhóm này chưa được gắn với người chơi hụi nào." if scoped
+                    else "⚠️ Chưa có người chơi / chủ hụi nào trong hệ thống.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            # Nhóm chỉ có đúng 1 người chơi -> bỏ luôn bước chọn người
+            if scoped and len(users) == 1 and act in ("bc", "tk"):
+                user = users[0]
+                if act == "bc":
+                    await message.reply_text(
+                        f"<b>{title}</b>\n"
+                        f"Người chơi: <b>{user.full_name or user.id}</b> ({user.id})\n\n"
+                        f"Chọn năm cần xem báo cáo:",
+                        reply_markup=_hui_year_keyboard(db, user.id),
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
+                player_id = user.id
+                db.close()
+                db = None
+                await _hui_run_export_stats(bot, message, player_id)
+                return
+
+            await message.reply_text(
+                f"<b>{title}</b>\n\nChọn người chơi:",
+                reply_markup=_hui_user_list_keyboard(users, act, 0),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            roscas = _hui_scope_roscas(db, chat_id)
+            if not roscas:
+                await message.reply_text(
+                    "⚠️ Nhóm này chưa có dây hụi nào." if scoped
+                    else "⚠️ Chưa có dây hụi nào trong hệ thống.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            await message.reply_text(
+                f"<b>{title}</b>\n\nChọn dây hụi:",
+                reply_markup=_hui_rosca_list_keyboard(db, roscas, act, 0),
+                parse_mode=ParseMode.HTML
+            )
+    finally:
+        if db is not None:
+            db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^hu\|n$"))
+@command_timeout(auto_delete_cmd=True)
+async def hui_noop_callback(client, callback_query: CallbackQuery):
+    await callback_query.answer()
+
+
+@bot.on_callback_query(filters.regex(r"^hu\|x$"))
+@command_timeout(auto_delete_cmd=True)
+async def hui_cancel_callback(client, callback_query: CallbackQuery):
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^hu\|([a-z]{2})\|u\|(\d+)$"))
+@command_timeout(auto_delete_cmd=True)
+async def hui_user_page_callback(client, callback_query: CallbackQuery):
+    """Phân trang danh sách người chơi."""
+    act = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+    if act not in _HUI_ACTS:
+        await callback_query.answer()
+        return
+
+    db = SessionLocal()
+    try:
+        users = _hui_scope_players(db, callback_query.message.chat.id)
+        if not users:
+            await _hui_safe_edit(callback_query, "⚠️ Nhóm này chưa được gắn với người chơi hụi nào.")
+            return
+        await _hui_safe_edit(
+            callback_query,
+            f"<b>{_HUI_ACTS[act][1]}</b>\n\nChọn người chơi:",
+            _hui_user_list_keyboard(users, act, page),
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in hui_user_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^hu\|([a-z]{2})\|r\|(\d+)$"))
+@command_timeout(auto_delete_cmd=True)
+async def hui_rosca_page_callback(client, callback_query: CallbackQuery):
+    """Phân trang danh sách dây hụi."""
+    act = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+    if act not in _HUI_ACTS:
+        await callback_query.answer()
+        return
+
+    db = SessionLocal()
+    try:
+        roscas = _hui_scope_roscas(db, callback_query.message.chat.id)
+        if not roscas:
+            await _hui_safe_edit(callback_query, "⚠️ Nhóm này chưa có dây hụi nào.")
+            return
+        await _hui_safe_edit(
+            callback_query,
+            f"<b>{_HUI_ACTS[act][1]}</b>\n\nChọn dây hụi:",
+            _hui_rosca_list_keyboard(db, roscas, act, page),
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in hui_rosca_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^hu\|([a-z]{2})\|m\|([^|]+)\|(\d+)$"))
+@command_timeout(auto_delete_cmd=True)
+async def hui_member_page_callback(client, callback_query: CallbackQuery):
+    """Danh sách chân hụi của 1 dây hụi (cấp 2)."""
+    act = callback_query.matches[0].group(1)
+    rosca_code = callback_query.matches[0].group(2)
+    page = int(callback_query.matches[0].group(3))
+    if act not in _HUI_ACTS:
+        await callback_query.answer()
+        return
+
+    db = SessionLocal()
+    try:
+        rosca, members = _hui_scope_members(db, callback_query.message.chat.id, rosca_code)
+        if not rosca:
+            await callback_query.answer("⚠️ Không tìm thấy dây hụi.", show_alert=True)
+            return
+        if not members:
+            await callback_query.answer("ℹ️ Không có chân hụi nào của nhóm này trong dây hụi.", show_alert=True)
+            return
+
+        await _hui_safe_edit(
+            callback_query,
+            f"<b>{_HUI_ACTS[act][1]}</b>\n"
+            f"Dây hụi: <b>{rosca.code}</b> [{_hui_status_vn(rosca.status)}]\n\n"
+            f"Chọn chân hụi:",
+            _hui_member_list_keyboard(db, members, act, rosca_code, page),
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in hui_member_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+# ── Hụi: form / xác nhận dùng chung cho cả lệnh gõ tay lẫn nút bấm ──────────
+def _hui_form_update_user(user) -> str:
+    """Form cập nhật người chơi / chủ hụi, điền sẵn dữ liệu hiện tại."""
+    return f"""<b>FORM CẬP NHẬT NGƯỜI CHƠI / CHỦ HỤI</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin và gửi lại:
+
+<pre>/hui_cap_nhat_nguoi_choi {user.id}
+Họ và Tên: {user.full_name or ''}
+Username Telegram (không bắt buộc): {user.username or ''}
+Số Điện Thoại: {user.phone_number or ''}
+Số CCCD: {user.cccd or ''}
+Vai Trò (Owner/Player): {user.role or 'Player'}
+Chat ID (Telegram): {user.chat_id or ''}
+</pre>
+"""
+
+
+def _hui_confirm_delete_user_text(user) -> str:
+    return (
+        f"<b>XÁC NHẬN XÓA NGƯỜI CHƠI / CHỦ HỤI</b>\n\n"
+        f"- Mã ID: <b>{user.id}</b>\n"
+        f"- Họ và Tên: <b>{user.full_name}</b>\n"
+        f"- Vai trò: <b>{user.role}</b>\n"
+        f"- SĐT: <b>{user.phone_number or 'N/A'}</b>\n\n"
+        f"Bạn có chắc chắn muốn xóa hồ sơ này không?"
+    )
+
+
+def _hui_confirm_delete_user_keyboard(user):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("Xác nhận", callback_data=f"rosca_deluser_confirm_{user.id}"),
+        InlineKeyboardButton("Hủy", callback_data="rosca_deluser_cancel")
+    ]])
+
+
+def _hui_form_update_rosca(rosca) -> str:
+    """Form cập nhật dây hụi, điền sẵn dữ liệu hiện tại."""
+    from bot.utils.utils import fmt_num
+    return f"""<b>FORM CẬP NHẬT DÂY HỤI</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin và gửi lại:
+
+<pre>/hui_cap_nhat_day_hui {rosca.code}
+ID Chủ Hụi (Mã ID): {rosca.user_id or ''}
+Số Tiền Gốc 1 Chân (VNĐ): {fmt_num(rosca.base_amount) if rosca.base_amount else ''}
+Mức Bỏ Hụi Tối Thiểu (VNĐ): {fmt_num(rosca.min_bid_amount) if rosca.min_bid_amount else ''}
+Mức Bỏ Hụi Tối Đa (VNĐ): {fmt_num(rosca.max_bid_amount) if rosca.max_bid_amount else ''}
+Tổng Số Chân Hụi: {rosca.total_parts or ''}
+Tiền Thảo (VNĐ): {fmt_num(rosca.commission_fee) if rosca.commission_fee else ''}
+Ngày Bắt Đầu (DD/MM/YYYY): {rosca.start_date.strftime('%d/%m/%Y') if rosca.start_date else ''}
+Ngày Kết Thúc (DD/MM/YYYY): {rosca.end_date.strftime('%d/%m/%Y') if rosca.end_date else ''}
+Ngày Đóng Hụi Hàng Kỳ (1-31): {rosca.payment_day or ''}
+Giờ Khui Hụi (HH:MM): {rosca.bidding_time.strftime('%H:%M') if rosca.bidding_time else ''}
+Loại Hụi (Hụi ngày/Hụi tuần/Hụi 2 tuần/Hụi Tháng): {rosca.period_type.value if rosca.period_type else 'Hụi Tháng'}
+Trạng Thái (Draft/Active/Closed): {rosca.status or 'Active'}
+Ghi Chú: {rosca.note or ''}
+</pre>"""
+
+
+def _hui_confirm_delete_rosca_text(db, rosca) -> str:
+    from app.models.rosca import UserRosca
+    from bot.utils.utils import fmt_num
+    owner = db.query(UserRosca).filter(UserRosca.id == rosca.user_id).first()
+    owner_name = owner.full_name if owner else "Không xác định"
+    return (
+        f"<b>XÁC NHẬN XÓA DÂY HỤI</b>\n\n"
+        f"- Mã Dây Hụi: <b>{rosca.code}</b>\n"
+        f"- Số Tiền Gốc: <b>{fmt_num(rosca.base_amount)} VNĐ</b>\n"
+        f"- Tổng Số Chân: <b>{rosca.total_parts or 'N/A'}</b>\n"
+        f"- Chủ Hụi: <b>{owner_name} ({rosca.user_id})</b>\n\n"
+        f"Bạn có chắc chắn muốn xóa (chuyển sang trạng thái Deleted) dây hụi này không?"
+    )
+
+
+def _hui_confirm_delete_rosca_keyboard(rosca):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("Xác nhận", callback_data=f"rosca_delrosca_confirm_{rosca.id}"),
+        InlineKeyboardButton("Hủy", callback_data="rosca_delrosca_cancel")
+    ]])
+
+
+def _hui_form_update_member(db, member) -> str:
+    """Form cập nhật chân hụi, điền sẵn dữ liệu hiện tại."""
+    from app.models.rosca import Rosca
+    from bot.utils.utils import fmt_num
+    rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
+    rosca_code = rosca.code if rosca else ""
+
+    return f"""<b>FORM CẬP NHẬT CHÂN HỤI</b>
+Vui lòng sao chép form dưới đây, chỉnh sửa thông tin và gửi lại:
+
+<pre>/hui_cap_nhat_chan_hui {member.id}
+Mã Dây Hụi: {rosca_code}
+ID Người Chơi (Mã ID): {member.user_id or ''}
+Số Lượng Chân: {member.parts_count or 1}
+Tổng Tiền Đã Đóng (VNĐ): {fmt_num(member.total_contributed)}
+Tổng Tiền Đã Nhận (VNĐ): {fmt_num(member.total_received)}
+Tổng Tiền Lãi (VNĐ): {fmt_num(member.total_profit)}
+Tỷ Suất Lợi Nhuận (%): {fmt_num(member.profit_rate)}
+Trạng Thái (Playing/Defaulted): {member.status or 'Playing'}
+Nhóm Chat Telegram (tùy chọn): {member.telegram_group or ''}
+Chat ID (Telegram): {member.chat_id or ''}
+Ghi Chú: {member.note or ''}
+</pre>"""
+
+
+def _hui_confirm_delete_member_text(db, member) -> str:
+    from app.models.rosca import Rosca, UserRosca
+    from bot.utils.utils import fmt_num
+    rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
+    player = db.query(UserRosca).filter(UserRosca.id == member.user_id).first()
+
+    return f"""<b>⚠️ XÁC NHẬN XÓA CHÂN HỤI</b>
+
+Bạn có chắc chắn muốn xóa Chân hụi này không?
+- <b>Mã Chân Hụi:</b> {member.id}
+- <b>Mã Dây Hụi:</b> {rosca.code if rosca else 'N/A'}
+- <b>Người Chơi:</b> {player.full_name if player else 'N/A'}
+- <b>Số Lượng Chân:</b> {member.parts_count or 1}
+- <b>Tổng Tiền Đã Đóng:</b> {fmt_num(member.total_contributed)} đ
+
+<i>Lưu ý: Thao tác này sẽ chuyển trạng thái của chân hụi sang Deleted và không xóa vĩnh viễn khỏi hệ thống.</i>"""
+
+
+def _hui_confirm_delete_member_keyboard(member):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("Xác nhận", callback_data=f"rosca_delmem_confirm_{member.id}"),
+        InlineKeyboardButton("Hủy", callback_data="rosca_delmem_cancel")
+    ]])
+
+
+@bot.on_callback_query(filters.regex(r"^hu\|([a-z]{2})\|s\|([^|]+)$"))
+@command_timeout(timeout_seconds=600, auto_delete_cmd=True)  # Form nhiều trường -> cần thời gian điền
+async def hui_select_callback(client, callback_query: CallbackQuery):
+    """Đã chọn xong đối tượng -> thực hiện thao tác tương ứng với act."""
+    act = callback_query.matches[0].group(1)
+    key = callback_query.matches[0].group(2)
+    if act not in _HUI_ACTS:
+        await callback_query.answer()
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.rosca import UserRosca, Rosca, RoscaMember
+
+        # Nhóm member chỉ được thao tác trên dữ liệu của chính nhóm
+        if not _hui_in_scope(db, callback_query.message.chat.id, act, key):
+            await callback_query.answer("⚠️ Dữ liệu này không thuộc nhóm của bạn.", show_alert=True)
+            return
+
+        # ── Người chơi ──────────────────────────────────────────────
+        if act in ("uu", "du"):
+            user = db.query(UserRosca).filter(UserRosca.id == key).first()
+            if not user:
+                await callback_query.answer("⚠️ Không tìm thấy người chơi.", show_alert=True)
+                return
+
+            if act == "uu":
+                form_msg = await callback_query.message.reply_text(
+                    _hui_form_update_user(user), parse_mode=ParseMode.HTML
+                )
+                form_tracker.track(callback_query.message.chat.id, "rosca_update_user", user.id, form_msg.id)
+                await callback_query.message.delete()
+            else:
+                await _hui_safe_edit(
+                    callback_query,
+                    _hui_confirm_delete_user_text(user),
+                    _hui_confirm_delete_user_keyboard(user),
+                )
+
+        # ── Dây hụi ─────────────────────────────────────────────────
+        elif act in ("ur", "dr", "tl"):
+            rosca = db.query(Rosca).filter(Rosca.code == key).first()
+            if not rosca:
+                await callback_query.answer("⚠️ Không tìm thấy dây hụi.", show_alert=True)
+                return
+
+            if act == "ur":
+                form_msg = await callback_query.message.reply_text(
+                    _hui_form_update_rosca(rosca), parse_mode=ParseMode.HTML
+                )
+                form_tracker.track(callback_query.message.chat.id, "rosca_update_rosca", rosca.code, form_msg.id)
+                await callback_query.message.delete()
+            elif act == "dr":
+                await _hui_safe_edit(
+                    callback_query,
+                    _hui_confirm_delete_rosca_text(db, rosca),
+                    _hui_confirm_delete_rosca_keyboard(rosca),
+                )
+            else:  # tl - tính lãi giả lập
+                form_msg = await callback_query.message.reply_text(
+                    _hui_form_tinh_lai(rosca), parse_mode=ParseMode.HTML
+                )
+                form_tracker.track(callback_query.message.chat.id, "rosca_tinh_lai", rosca.code, form_msg.id)
+                await callback_query.message.delete()
+
+        # ── Chân hụi ────────────────────────────────────────────────
+        elif act in ("um", "dm", "cm", "cc", "rw"):
+            member = db.query(RoscaMember).filter(RoscaMember.id == key).first()
+            if not member:
+                await callback_query.answer("⚠️ Không tìm thấy chân hụi.", show_alert=True)
+                return
+
+            if act == "um":
+                form_msg = await callback_query.message.reply_text(
+                    _hui_form_update_member(db, member), parse_mode=ParseMode.HTML
+                )
+                form_tracker.track(callback_query.message.chat.id, "rosca_update_member", member.id, form_msg.id)
+                await callback_query.message.delete()
+            elif act == "dm":
+                if member.status == "Deleted":
+                    await callback_query.answer("⚠️ Chân hụi này đã bị xóa trước đó.", show_alert=True)
+                    return
+                await _hui_safe_edit(
+                    callback_query,
+                    _hui_confirm_delete_member_text(db, member),
+                    _hui_confirm_delete_member_keyboard(member),
+                )
+            elif act == "rw":
+                form_msg = await callback_query.message.reply_text(
+                    _hui_form_withdraw(db, member), parse_mode=ParseMode.HTML
+                )
+                form_tracker.track(callback_query.message.chat.id, "rosca_withdraw", member.id, form_msg.id)
+                await callback_query.message.delete()
+            else:
+                # cm / cc: in thông tin ra tin nhắn mới rồi bỏ menu
+                member_id = member.id
+                db.close()
+                db = None
+                if act == "cm":
+                    await _hui_run_check_member(client, callback_query.message, member_id)
+                else:
+                    await _hui_run_check_contributions(client, callback_query.message, member_id)
+                await callback_query.message.delete()
+
+        # ── Báo cáo / thống kê theo người chơi ──────────────────────
+        elif act == "bc":
+            user = db.query(UserRosca).filter(UserRosca.id == key).first()
+            if not user:
+                await callback_query.answer("⚠️ Không tìm thấy người chơi.", show_alert=True)
+                return
+            await _hui_safe_edit(
+                callback_query,
+                f"<b>BÁO CÁO HỤI THEO NĂM</b>\n"
+                f"Người chơi: <b>{user.full_name or user.id}</b> ({user.id})\n\n"
+                f"Chọn năm cần xem báo cáo:",
+                _hui_year_keyboard(db, user.id),
+            )
+        elif act == "tk":
+            user = db.query(UserRosca).filter(UserRosca.id == key).first()
+            if not user:
+                await callback_query.answer("⚠️ Không tìm thấy người chơi.", show_alert=True)
+                return
+            player_id = user.id
+            db.close()
+            db = None
+            await callback_query.answer("⏳ Đang tạo file thống kê...")
+            await _hui_run_export_stats(client, callback_query.message, player_id)
+            await callback_query.message.delete()
+            return
+
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in hui_select_callback ({act}): {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        if db is not None:
+            db.close()
+
+
+# ── Hụi: form nhập số liệu cho rút hụi / tính lãi, và chọn năm báo cáo ──────
+def _hui_parse_form_amount(message_text: str, field_names) -> str:
+    """Đọc 1 trường số tiền trong form nhiều dòng (trả về chuỗi rỗng nếu không có)."""
+    lines = message_text.strip().split("\n")
+    for line in lines[1:]:
+        if ":" not in line:
+            continue
+        key, val = line.split(":", 1)
+        if key.strip() in field_names:
+            return val.strip()
+    return ""
+
+
+def _hui_form_withdraw(db, member) -> str:
+    """Form rút dây hụi / hốt hụi cho 1 chân hụi."""
+    from app.models.rosca import Rosca, UserRosca
+    from bot.utils.utils import fmt_num
+    rosca = db.query(Rosca).filter(Rosca.id == member.rosca_id).first()
+    player = db.query(UserRosca).filter(UserRosca.id == member.user_id).first()
+
+    return f"""<b>FORM RÚT DÂY HỤI / HỐT HỤI</b>
+Vui lòng sao chép form dưới đây, điền Số Tiền Rút và gửi lại:
+
+<pre>/hui_rut_day_hui {member.id}
+Mã Chân Hụi: {member.id}
+Mã Dây Hụi: {rosca.code if rosca else ''}
+Người Chơi: {player.full_name if player else ''}
+Số Lượng Chân: {member.parts_count or 1}
+Tổng Tiền Đã Đóng (VNĐ): {fmt_num(member.total_contributed)}
+Số Tiền Rút (VNĐ):
+</pre>
+
+<i>Số Tiền Rút là số tiền thực nhận sau khi đã trừ tiền thảo và hụi chết.</i>"""
+
+
+def _hui_form_tinh_lai(rosca) -> str:
+    """Form tính lãi giả lập cho 1 dây hụi."""
+    from bot.utils.utils import fmt_num
+    return f"""<b>FORM TÍNH LÃI GIẢ LẬP</b>
+Vui lòng sao chép form dưới đây, điền Số Tiền Bỏ và gửi lại:
+
+<pre>/hui_tinh_lai_gia_lap {rosca.code}
+Mã Dây Hụi: {rosca.code}
+Số Tiền Gốc 1 Chân (VNĐ): {fmt_num(rosca.base_amount) if rosca.base_amount else ''}
+Mức Bỏ Tối Thiểu (VNĐ): {fmt_num(rosca.min_bid_amount) if rosca.min_bid_amount else ''}
+Mức Bỏ Tối Đa (VNĐ): {fmt_num(rosca.max_bid_amount) if rosca.max_bid_amount else ''}
+Số Tiền Bỏ Sắp Tới (VNĐ):
+</pre>"""
+
+
+def _hui_years_of_player(db, player_id: str):
+    """Các năm thực sự có dữ liệu của người chơi (theo năm bắt đầu / kết thúc dây hụi).
+
+    Báo cáo lọc dây hụi theo `start_date` hoặc `end_date` rơi vào năm đó, nên đây
+    đúng là tập năm cho ra báo cáo có nội dung. Luôn kèm năm hiện tại để chủ hụi
+    xem được kỳ đang chạy dù dây mới tạo chưa có mốc ngày.
+    """
+    from app.models.rosca import Rosca, RoscaMember
+    import datetime as _dt
+
+    rosca_ids = [
+        m.rosca_id for m in db.query(RoscaMember).filter(RoscaMember.user_id == player_id).all()
+        if m.rosca_id
+    ]
+
+    years = set()
+    if rosca_ids:
+        for r in db.query(Rosca).filter(Rosca.id.in_(rosca_ids)).all():
+            if r.start_date:
+                years.add(r.start_date.year)
+            if r.end_date:
+                years.add(r.end_date.year)
+
+    years.add(_dt.date.today().year)
+    return sorted(years, reverse=True)
+
+
+def _hui_year_keyboard(db, player_id: str, page: int = 0):
+    """Nút chọn năm báo cáo: lấy từ dữ liệu thật của người chơi, 10 năm / trang."""
+    years = _hui_years_of_player(db, player_id)
+    page_years, page, total_pages = _hui_page_slice(years, page)
+
+    buttons = []
+    for i in range(0, len(page_years), 3):
+        buttons.append([
+            InlineKeyboardButton(str(y), callback_data=f"hu|bc|y|{player_id}|{y}")
+            for y in page_years[i:i + 3]
+        ])
+
+    nav = _hui_nav_row(f"hu|bc|p|{player_id}|", page, total_pages)
+    if nav:
+        buttons.append(nav)
+
+    buttons.append([InlineKeyboardButton("<< Chọn người chơi khác", callback_data="hu|bc|u|0")])
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="hu|x")])
+    return InlineKeyboardMarkup(buttons)
+
+
+@bot.on_callback_query(filters.regex(r"^hu\|bc\|p\|([^|]+)\|(\d+)$"))
+@command_timeout(auto_delete_cmd=True)
+async def hui_bao_cao_year_page_callback(client, callback_query: CallbackQuery):
+    """Phân trang danh sách năm báo cáo."""
+    player_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+    db = SessionLocal()
+    try:
+        from app.models.rosca import UserRosca
+        user = db.query(UserRosca).filter(UserRosca.id == player_id).first()
+        if not user:
+            await callback_query.answer("⚠️ Không tìm thấy người chơi.", show_alert=True)
+            return
+
+        await _hui_safe_edit(
+            callback_query,
+            f"<b>BÁO CÁO HỤI THEO NĂM</b>\n"
+            f"Người chơi: <b>{user.full_name or user.id}</b> ({user.id})\n\n"
+            f"Chọn năm cần xem báo cáo:",
+            _hui_year_keyboard(db, player_id, page),
+        )
+        await callback_query.answer()
+    except Exception as e:
+        LogError(f"Error in hui_bao_cao_year_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^hu\|bc\|y\|([^|]+)\|(\d{4})$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
+async def hui_bao_cao_year_callback(client, callback_query: CallbackQuery):
+    """Chọn năm -> xuất báo cáo hụi của người chơi."""
+    player_id = callback_query.matches[0].group(1)
+    year = int(callback_query.matches[0].group(2))
+    try:
+        await callback_query.answer("⏳ Đang tạo báo cáo...")
+        await _hui_run_bao_cao(client, callback_query.message, player_id, year)
+        await callback_query.message.delete()
+    except Exception as e:
+        LogError(f"Error in hui_bao_cao_year_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi tạo báo cáo.", show_alert=True)
+
+
+@bot.on_callback_query(filters.regex(r"^hu\|tk\|all$"))
+@command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa nội dung cần giữ
+async def hui_export_stats_all_callback(client, callback_query: CallbackQuery):
+    """Thống kê toàn bộ người chơi."""
+    try:
+        await callback_query.answer("⏳ Đang tạo file thống kê...")
+        await _hui_run_export_stats(client, callback_query.message, None)
+        await callback_query.message.delete()
+    except Exception as e:
+        LogError(f"Error in hui_export_stats_all_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi tạo thống kê.", show_alert=True)
+
+
+def _hui_export_stats_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Tất cả người chơi", callback_data="hu|tk|all")],
+        [InlineKeyboardButton("Chọn 1 người chơi", callback_data="hu|tk|u|0")],
+        [InlineKeyboardButton("Hủy", callback_data="hu|x")]
+    ])
+
+
+def _hui_resolve_chat_id(db, input_chat_id: str, current_chat_id=None):
+    """Xác định chat_id nhóm member cho người chơi hụi.
+
+    - Có nhập tay -> phải là nhóm member của dự án Hụi.
+    - Để trống -> lấy chính nhóm đang gõ lệnh nếu đó là nhóm member.
+    Trả về (chat_id, lỗi). chat_id có thể là None (không gắn nhóm).
+    """
+    from app.models.telegram import TelegramProjectMember
+    from app.models.business import Projects
+
+    project = db.query(Projects).filter(Projects.project_name == "Hụi").first()
+    member_chat_ids = set()
+    if project:
+        member_chat_ids = {
+            str(m.chat_id) for m in db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == project.id,
+                TelegramProjectMember.role == "member"
+            ).all() if m.chat_id
+        }
+
+    value = (input_chat_id or "").strip()
+    if value:
+        if member_chat_ids and value not in member_chat_ids:
+            return None, (
+                f"⚠️ Chat ID <b>{value}</b> không thuộc nhóm member nào của dự án Hụi. "
+                f"Vui lòng kiểm tra lại hoặc để trống."
+            )
+        return value, None
+
+    if current_chat_id is not None and str(current_chat_id) in member_chat_ids:
+        return str(current_chat_id), None
+
+    return None, None
+
+
+def _hui_resolve_member_chat_id(db, input_chat_id: str, telegram_group: str, current_chat_id=None):
+    """Xác định chat_id nhóm member cho 1 CHÂN HỤI.
+
+    Thứ tự ưu tiên: nhập tay -> suy từ Tên Nhóm điền trong form -> nhóm đang gõ lệnh.
+    Trả về (chat_id, lỗi).
+    """
+    from app.models.telegram import TelegramProjectMember
+    from app.models.business import Projects
+
+    value = (input_chat_id or "").strip()
+    if value:
+        return _hui_resolve_chat_id(db, value, None)
+
+    gname = (telegram_group or "").strip().lower()
+    if gname:
+        project = db.query(Projects).filter(Projects.project_name == "Hụi").first()
+        if project:
+            for m in db.query(TelegramProjectMember).filter(
+                TelegramProjectMember.project_id == project.id,
+                TelegramProjectMember.role == "member"
+            ).all():
+                if m.chat_id and (m.group_name or "").strip().lower() == gname:
+                    return str(m.chat_id), None
+
+    return _hui_resolve_chat_id(db, "", current_chat_id)
+
+
+# ── Hụi: giới hạn dữ liệu theo nhóm member ─────────────────────────────────
+def _hui_chat_role_group(db, chat_id):
+    """Trả về (role, group_name) của nhóm Telegram hiện tại, ('', None) nếu chưa sync."""
+    from app.models.telegram import TelegramProjectMember
+    row = db.query(TelegramProjectMember).filter(
+        TelegramProjectMember.chat_id == str(chat_id)
+    ).first()
+    if not row:
+        return "", None
+    # 1 chat có thể có nhiều dòng (mỗi thành viên 1 dòng) nhưng cùng role/group
+    return (row.role or ""), row.group_name
+
+
+def _hui_scope(db, chat_id):
+    """Phạm vi dữ liệu của nhóm hiện tại.
+
+    - Nhóm main -> None (xem toàn bộ dự án).
+    - Nhóm member -> dict {player_ids, member_ids} chỉ gồm người chơi / chân hụi
+      thuộc chính nhóm đó.
+
+    Lưu ý: 1 người chơi có thể tham gia hụi ở NHIỀU nhóm khác nhau, nên phạm vi
+    phải chốt ở mức CHÂN HỤI chứ không phải ở mức người chơi.
+
+    Thứ tự đối chiếu 1 chân hụi với nhóm:
+      1. rosca_members.chat_id  (chính xác nhất)
+      2. rosca_members.telegram_group so với tên nhóm (dữ liệu cũ chưa có chat_id)
+    user_roscas.chat_id chỉ dùng để nhận thêm người chơi chưa có chân hụi nào.
+    """
+    from app.models.rosca import RoscaMember, UserRosca
+
+    role, group_name = _hui_chat_role_group(db, chat_id)
+    if role == "main":
+        return None
+
+    gname = (group_name or "").strip().lower()
+    chat_key = str(chat_id)
+
+    # Người chơi được gắn thẳng vào nhóm này
+    player_ids = {
+        u.id for u in db.query(UserRosca).filter(UserRosca.chat_id == chat_key).all()
+    }
+    member_ids = set()
+
+    for m in db.query(RoscaMember).all():
+        if m.chat_id:
+            match = str(m.chat_id) == chat_key
+        else:
+            mg = (m.telegram_group or "").strip().lower()
+            match = bool(gname) and mg == gname
+
+        if match:
+            member_ids.add(m.id)
+            if m.user_id:
+                player_ids.add(m.user_id)
+
+    return {"player_ids": player_ids, "member_ids": member_ids}
+
+
+def _hui_scope_players(db, chat_id):
+    """Danh sách người chơi nhìn thấy được từ nhóm hiện tại."""
+    from app.models.rosca import UserRosca
+    scope = _hui_scope(db, chat_id)
+    q = db.query(UserRosca).order_by(UserRosca.id)
+    if scope is None:
+        return q.all()
+    if not scope["player_ids"]:
+        return []
+    return [u for u in q.all() if u.id in scope["player_ids"]]
+
+
+def _hui_scope_roscas(db, chat_id):
+    """Danh sách dây hụi nhìn thấy được từ nhóm hiện tại."""
+    from app.models.rosca import Rosca, RoscaMember
+    scope = _hui_scope(db, chat_id)
+    q = db.query(Rosca).order_by(Rosca.code)
+    if scope is None:
+        return q.all()
+    if not scope["member_ids"]:
+        return []
+    rosca_ids = {
+        m.rosca_id for m in db.query(RoscaMember).filter(
+            RoscaMember.id.in_(list(scope["member_ids"]))
+        ).all() if m.rosca_id
+    }
+    return [r for r in q.all() if r.id in rosca_ids]
+
+
+def _hui_scope_members(db, chat_id, rosca_code):
+    """(dây hụi, danh sách chân hụi) nhìn thấy được từ nhóm hiện tại."""
+    rosca, members = _hui_members_of(db, rosca_code)
+    if not rosca:
+        return None, []
+    scope = _hui_scope(db, chat_id)
+    if scope is None:
+        return rosca, members
+    return rosca, [m for m in members if m.id in scope["member_ids"]]
+
+
+def _hui_in_scope(db, chat_id, act, key) -> bool:
+    """Đối tượng vừa chọn có nằm trong phạm vi của nhóm hiện tại không."""
+    scope = _hui_scope(db, chat_id)
+    if scope is None:
+        return True
+
+    if act in ("uu", "du", "bc", "tk"):
+        return key in scope["player_ids"]
+    if act in ("ur", "dr", "tl"):
+        return any(r.code == key for r in _hui_scope_roscas(db, chat_id))
+    if act in ("um", "dm", "cm", "cc", "rw"):
+        return key in scope["member_ids"]
+    return True

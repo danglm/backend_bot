@@ -2673,12 +2673,12 @@ def _rental_payment_notify_keyboard(contract_id: str):
     """4 nút thao tác gắn kèm THÔNG BÁO ĐÓNG TIỀN THUÊ."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("Đã nhận TT đủ", callback_data=f"rnt_full_pay|{contract_id}"),
-            InlineKeyboardButton("Đã nhận TT", callback_data=f"rnt_pay|{contract_id}")
+            InlineKeyboardButton("Đã nhận TT đủ", callback_data=f"rpn_full_pay|{contract_id}"),
+            InlineKeyboardButton("Đã nhận TT", callback_data=f"rpn_pay|{contract_id}")
         ],
         [
-            InlineKeyboardButton("Lưu sổ", callback_data=f"rnt_remind|{contract_id}"),
-            InlineKeyboardButton("Nợ Xấu", callback_data=f"rnt_bad|{contract_id}")
+            InlineKeyboardButton("Lưu sổ", callback_data=f"rpn_remind|{contract_id}"),
+            InlineKeyboardButton("Nợ Xấu", callback_data=f"rpn_bad|{contract_id}")
         ]
     ])
 
@@ -2689,9 +2689,9 @@ async def _check_admin_or_owner_rental(callback_query: CallbackQuery) -> bool:
     return await _check_admin_or_owner_credit(callback_query)
 
 
-@bot.on_callback_query(filters.regex(r"^rnt_full_pay\|([^|]+)$"))
+@bot.on_callback_query(filters.regex(r"^rpn_full_pay\|([^|]+)$"))
 @command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa tin THÔNG BÁO ĐÓNG TIỀN THUÊ
-async def rnt_full_pay_callback(client, callback_query: CallbackQuery):
+async def rpn_full_pay_callback(client, callback_query: CallbackQuery):
     """Nút 1: 'Đã nhận TT đủ' -> Ghi nhận thanh toán toàn bộ tiền thuê đang nợ."""
     if not await _check_admin_or_owner_rental(callback_query):
         await callback_query.answer("⚠️ Thao tác này chỉ dành cho Admin và Owner!", show_alert=True)
@@ -2758,15 +2758,15 @@ async def rnt_full_pay_callback(client, callback_query: CallbackQuery):
         LogInfo(f"[RntFullPay] Contract {contract_code} paid full rent {paid_amount} by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
-        LogError(f"Error in rnt_full_pay_callback: {e}", LogType.SYSTEM_STATUS)
+        LogError(f"Error in rpn_full_pay_callback: {e}", LogType.SYSTEM_STATUS)
         await callback_query.answer("❌ Có lỗi xảy ra khi cập nhật thanh toán.", show_alert=True)
     finally:
         db.close()
 
 
-@bot.on_callback_query(filters.regex(r"^rnt_pay\|([^|]+)$"))
+@bot.on_callback_query(filters.regex(r"^rpn_pay\|([^|]+)$"))
 @command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa tin THÔNG BÁO ĐÓNG TIỀN THUÊ
-async def rnt_pay_callback(client, callback_query: CallbackQuery):
+async def rpn_pay_callback(client, callback_query: CallbackQuery):
     """Nút 2: 'Đã nhận TT' -> Hướng dẫn & mẫu lệnh /rental_payment_confirmed."""
     if not await _check_admin_or_owner_rental(callback_query):
         await callback_query.answer("⚠️ Thao tác này chỉ dành cho Admin và Owner!", show_alert=True)
@@ -2785,9 +2785,9 @@ async def rnt_pay_callback(client, callback_query: CallbackQuery):
     await callback_query.answer()
 
 
-@bot.on_callback_query(filters.regex(r"^rnt_remind\|([^|]+)$"))
+@bot.on_callback_query(filters.regex(r"^rpn_remind\|([^|]+)$"))
 @command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa tin THÔNG BÁO ĐÓNG TIỀN THUÊ
-async def rnt_remind_callback(client, callback_query: CallbackQuery):
+async def rpn_remind_callback(client, callback_query: CallbackQuery):
     """Nút 3: 'Lưu sổ' -> Dừng nhắc tháng này, tiền thuê vẫn giữ trong công nợ."""
     if not await _check_admin_or_owner_rental(callback_query):
         await callback_query.answer("⚠️ Thao tác này chỉ dành cho Admin và Owner!", show_alert=True)
@@ -2830,15 +2830,15 @@ async def rnt_remind_callback(client, callback_query: CallbackQuery):
         LogInfo(f"[RntRemind] Contract {contract_code} skipped reminder for {due_month:02d}/{due_year} by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
-        LogError(f"Error in rnt_remind_callback: {e}", LogType.SYSTEM_STATUS)
+        LogError(f"Error in rpn_remind_callback: {e}", LogType.SYSTEM_STATUS)
         await callback_query.answer("❌ Có lỗi xảy ra khi lưu sổ.", show_alert=True)
     finally:
         db.close()
 
 
-@bot.on_callback_query(filters.regex(r"^rnt_bad\|([^|]+)$"))
+@bot.on_callback_query(filters.regex(r"^rpn_bad\|([^|]+)$"))
 @command_timeout(auto_delete_cmd=False, auto_expire_menu=False)  # Không được tự xóa tin THÔNG BÁO ĐÓNG TIỀN THUÊ
-async def rnt_bad_callback(client, callback_query: CallbackQuery):
+async def rpn_bad_callback(client, callback_query: CallbackQuery):
     """Nút 4: 'Nợ Xấu' -> Chuyển hợp đồng sang Nợ Xấu (BAD_DEBT)."""
     if not await _check_admin_or_owner_rental(callback_query):
         await callback_query.answer("⚠️ Thao tác này chỉ dành cho Admin và Owner!", show_alert=True)
@@ -2876,7 +2876,7 @@ async def rnt_bad_callback(client, callback_query: CallbackQuery):
         LogInfo(f"[RntBad] Contract {contract_code} set to BAD_DEBT by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
     except Exception as e:
         db.rollback()
-        LogError(f"Error in rnt_bad_callback: {e}", LogType.SYSTEM_STATUS)
+        LogError(f"Error in rpn_bad_callback: {e}", LogType.SYSTEM_STATUS)
         await callback_query.answer("❌ Có lỗi xảy ra khi chuyển Nợ Xấu.", show_alert=True)
     finally:
         db.close()

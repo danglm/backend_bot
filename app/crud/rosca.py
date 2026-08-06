@@ -11,7 +11,8 @@ def get_user_roscas(
     id: Optional[str] = None,
     role: Optional[str] = None,
     status: Optional[str] = None,
-    phone_number: Optional[str] = None
+    phone_number: Optional[str] = None,
+    chat_id: Optional[str] = None
 ):
     query = db.query(UserRosca)
     if id is not None:
@@ -22,6 +23,8 @@ def get_user_roscas(
         query = query.filter(UserRosca.status == status)
     if phone_number is not None:
         query = query.filter(UserRosca.phone_number == phone_number)
+    if chat_id is not None:
+        query = query.filter(UserRosca.chat_id == str(chat_id))
     return query.all()
 
 def create_user_rosca(db: Session, obj_in: UserRoscaCreate):
@@ -32,7 +35,8 @@ def create_user_rosca(db: Session, obj_in: UserRoscaCreate):
         phone_number=obj_in.phone_number,
         cccd=obj_in.cccd,
         role=obj_in.role,
-        status=obj_in.status
+        status=obj_in.status,
+        chat_id=obj_in.chat_id
     )
     db.add(db_obj)
     db.commit()
@@ -149,7 +153,8 @@ def get_rosca_members(
     id: Optional[str] = None,
     rosca_id: Optional[str] = None,
     user_id: Optional[str] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    chat_id: Optional[str] = None
 ) -> list[dict]:
     query = db.query(
         RoscaMember,
@@ -169,6 +174,8 @@ def get_rosca_members(
         query = query.filter(RoscaMember.user_id == user_id)
     if status is not None:
         query = query.filter(RoscaMember.status == status)
+    if chat_id is not None:
+        query = query.filter(RoscaMember.chat_id == str(chat_id))
 
     results = query.all()
 
@@ -205,7 +212,8 @@ def create_rosca_member(db: Session, obj_in: RoscaMemberCreate):
         profit_rate=obj_in.profit_rate,
         status=obj_in.status,
         note=obj_in.note,
-        telegram_group=obj_in.telegram_group
+        telegram_group=obj_in.telegram_group,
+        chat_id=obj_in.chat_id
     )
     db.add(db_obj)
     db.commit()

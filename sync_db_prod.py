@@ -383,6 +383,101 @@ WHERE rc.chat_id IS NULL
   ) = 1;""",
     ]
 
+    # ── Backfill user_roscas.chat_id (khớp alembic e6f7a8b9c0d1 + f7a8b9c0d1e2) ──
+    # rosca_members.telegram_group đang lưu TÊN nhóm Telegram -> đối chiếu sang
+    # telegram_project_members để lấy chat_id. Chỉ điền khi khớp DUY NHẤT 1 nhóm:
+    # 1 người có thể chơi hụi ở nhiều nhóm, khi đó để trống và phân phạm vi theo
+    # telegram_group của từng chân hụi.
+    seed_cmds += [
+        "-- Backfill chat_id nhóm member cho người chơi hụi (theo chân hụi của họ)",
+        """UPDATE user_roscas AS u
+SET chat_id = sub.chat_id
+FROM (
+    SELECT rm.user_id,
+           MIN(tpm.chat_id) AS chat_id,
+           COUNT(DISTINCT tpm.chat_id) AS n_groups
+    FROM rosca_members rm
+    JOIN telegram_project_members tpm
+      ON LOWER(TRIM(tpm.group_name)) = LOWER(TRIM(rm.telegram_group))
+    JOIN projects p ON p.id = tpm.project_id
+    WHERE tpm.role = 'member'
+      AND p.project_name = 'Hụi'
+      AND tpm.chat_id IS NOT NULL
+      AND rm.telegram_group IS NOT NULL AND TRIM(rm.telegram_group) <> ''
+      AND rm.user_id IS NOT NULL
+    GROUP BY rm.user_id
+) AS sub
+WHERE u.chat_id IS NULL
+  AND u.id = sub.user_id
+  AND sub.n_groups = 1;""",
+        "-- Backfill chat_id cho chủ hụi (suy từ nhóm của các dây hụi họ đứng tên)",
+        """UPDATE user_roscas AS u
+SET chat_id = sub.chat_id
+FROM (
+    SELECT r.user_id AS owner_id,
+           MIN(tpm.chat_id) AS chat_id,
+           COUNT(DISTINCT tpm.chat_id) AS n_groups
+    FROM roscas r
+    JOIN rosca_members rm ON rm.rosca_id = r.id
+    JOIN telegram_project_members tpm
+      ON LOWER(TRIM(tpm.group_name)) = LOWER(TRIM(rm.telegram_group))
+    JOIN projects p ON p.id = tpm.project_id
+    WHERE tpm.role = 'member'
+      AND p.project_name = 'Hụi'
+      AND tpm.chat_id IS NOT NULL
+      AND rm.telegram_group IS NOT NULL AND TRIM(rm.telegram_group) <> ''
+      AND r.user_id IS NOT NULL
+    GROUP BY r.user_id
+) AS sub
+WHERE u.chat_id IS NULL
+  AND u.id = sub.owner_id
+  AND sub.n_groups = 1;""",
+    ]
+
+    # ── Backfill rosca_members.chat_id (khớp alembic a8b9c0d1e2f3 + b9c0d1e2f3a4) ──
+    # Phạm vi xem của nhóm member chốt ở mức CHÂN HỤI, vì 1 người chơi có thể tham
+    # gia hụi ở nhiều nhóm. Suy theo thứ tự: tên nhóm ghi trong telegram_group ->
+    # các chân hụi khác cùng dây -> chủ hụi đứng tên dây. Không suy được thì để trống.
+    seed_cmds += [
+        "-- Backfill chat_id cho chân hụi theo Tên Nhóm đã ghi",
+        """UPDATE rosca_members AS rm
+SET chat_id = sub.chat_id
+FROM (
+    SELECT DISTINCT ON (LOWER(TRIM(tpm.group_name)))
+           LOWER(TRIM(tpm.group_name)) AS gkey, tpm.chat_id
+    FROM telegram_project_members tpm
+    JOIN projects p ON p.id = tpm.project_id
+    WHERE tpm.role = 'member'
+      AND p.project_name = 'Hụi'
+      AND tpm.group_name IS NOT NULL AND TRIM(tpm.group_name) <> ''
+      AND tpm.chat_id IS NOT NULL
+    ORDER BY LOWER(TRIM(tpm.group_name)), tpm.chat_id
+) AS sub
+WHERE rm.chat_id IS NULL
+  AND rm.telegram_group IS NOT NULL
+  AND LOWER(TRIM(rm.telegram_group)) = sub.gkey;""",
+        "-- Chân hụi chưa ghi Tên Nhóm: suy theo các chân hụi khác cùng dây",
+        """UPDATE rosca_members AS rm
+SET chat_id = sub.chat_id
+FROM (
+    SELECT rosca_id, MIN(chat_id) AS chat_id, COUNT(DISTINCT chat_id) AS n_groups
+    FROM rosca_members
+    WHERE chat_id IS NOT NULL
+    GROUP BY rosca_id
+) AS sub
+WHERE rm.chat_id IS NULL
+  AND rm.rosca_id = sub.rosca_id
+  AND sub.n_groups = 1;""",
+        "-- Còn lại: suy theo chat_id của chủ hụi đứng tên dây",
+        """UPDATE rosca_members AS rm
+SET chat_id = u.chat_id
+FROM roscas r
+JOIN user_roscas u ON u.id = r.user_id
+WHERE rm.chat_id IS NULL
+  AND rm.rosca_id = r.id
+  AND u.chat_id IS NOT NULL;""",
+    ]
+
     # Dynamically seed telegram group mappings from appsettings.json
     try:
         import uuid
