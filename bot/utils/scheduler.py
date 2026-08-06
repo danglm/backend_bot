@@ -505,6 +505,12 @@ async def checkin_reminder_worker():
     Background worker that sends reminders to staff who haven't checked in.
     Reminders are sent every 15 minutes during the 30-minute window after their start time.
     """
+    from bot.utils.human_resource import (
+        build_checkin_reminder_keyboard,
+        build_checkout_reminder_keyboard,
+        resolve_reminder_commands,
+    )
+
     LogInfo("Check-in reminder worker started.", LogType.SYSTEM_STATUS)
     while True:
         try:
@@ -630,7 +636,16 @@ async def checkin_reminder_worker():
                                 f"⏰ Bây giờ là: <code>{now.strftime('%H:%M')}</code>"
                             )
                             client = bot
-                            await client.send_message(chat_id=chat_id, text=reminder_text, parse_mode=ParseMode.HTML)
+                            # Chỉ hiện nút Nghỉ phép nếu dự án của nhóm có lệnh xin nghỉ phép
+                            reminder_commands = resolve_reminder_commands(db, chat_id)
+                            await client.send_message(
+                                chat_id=chat_id,
+                                text=reminder_text,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=build_checkin_reminder_keyboard(
+                                    with_leave_button=bool(reminder_commands.get("request_leave"))
+                                ),
+                            )
                             LogInfo(f"Sent check-in reminder to {chat_id} for {len(late_checkin_mentions)} users.", LogType.SYSTEM_STATUS)
 
                         # Send Check-out Reminders
@@ -642,7 +657,12 @@ async def checkin_reminder_worker():
                                 f"⏰ Bây giờ là: <code>{now.strftime('%H:%M')}</code>"
                             )
                             client = bot
-                            await client.send_message(chat_id=chat_id, text=reminder_text, parse_mode=ParseMode.HTML)
+                            await client.send_message(
+                                chat_id=chat_id,
+                                text=reminder_text,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=build_checkout_reminder_keyboard(),
+                            )
                             LogInfo(f"Sent check-out reminder to {chat_id} for {len(late_checkout_mentions)} users.", LogType.SYSTEM_STATUS)
 
                     except Exception as e:

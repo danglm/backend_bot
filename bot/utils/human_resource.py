@@ -2,6 +2,7 @@
 Human Resource Utilities
 Các hàm xử lý dùng chung cho quản lý nhân sự, dùng được cho nhiều dự án (Tiến Nga, GGoMooSin, ...).
 """
+import asyncio
 import uuid
 import datetime
 from io import BytesIO
@@ -887,12 +888,26 @@ async def handle_delete_employee_callback(client, callback_query) -> None:
 # key: message_id của tin nhắn chứa Inline Keyboard
 # value: {"action": str, "form_data": dict|None, "command_name": str,
 #          "chat_id": int, "from_user_id": int, "original_message": Message}
-_PENDING_AUTHORITY_ACTIONS: dict[int, dict] = {}
+# Key là "{chat_id}:{message_id}" — message_id của Telegram chỉ duy nhất trong từng chat,
+# nên nếu chỉ dùng message_id thì 2 nhóm khác nhau có thể đè lên nhau.
+_PENDING_AUTHORITY_ACTIONS: dict[str, dict] = {}
+
+# Khóa theo mã nhân viên để 2 thao tác chấm công song song (bấm nút 2 lần liên tiếp,
+# hoặc vừa gõ lệnh vừa bấm nút) không cùng vượt qua bước kiểm tra "đã chấm công chưa".
+_EMPLOYEE_ACTION_LOCKS: dict[str, "asyncio.Lock"] = {}
+
+
+def _get_employee_lock(employee_id: str) -> "asyncio.Lock":
+    lock = _EMPLOYEE_ACTION_LOCKS.get(employee_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _EMPLOYEE_ACTION_LOCKS[employee_id] = lock
+    return lock
 
 
 async def resolve_employee_for_command(
     client, message: Message, db, callback_prefix: str, command_name: str,
-    form_data: dict | None = None,
+    form_data: dict | None = None, acting_user=None,
 ) -> Employee | None:
     """
     Xác định Employee cho lệnh chấm công/nghỉ phép, hỗ trợ ủy quyền (authority).
@@ -912,13 +927,19 @@ async def resolve_employee_for_command(
         callback_prefix: Prefix cho callback_data (ci/co/lv/ov)
         command_name: Tên lệnh gốc (vd: "/tien_nga_check_in")
         form_data: Dữ liệu form đã parse (cho request_leave/request_overtime), None cho check_in/check_out
+        acting_user: User thực hiện thao tác. Mặc định là message.from_user; truyền
+            callback_query.from_user khi thao tác đến từ nút bấm (message khi đó là
+            tin nhắn của bot nên from_user không phải người thao tác).
 
     Returns:
         Employee nếu chỉ có 1 candidate, None nếu cần chờ callback hoặc lỗi
     """
     from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-    username = message.from_user.username
+    if acting_user is None:
+        acting_user = message.from_user
+
+    username = acting_user.username
     if not username:
         await message.reply_text(
             "⚠️ Bạn chưa cài đặt username Telegram. Vui lòng cài đặt username trước.",
@@ -987,12 +1008,12 @@ async def resolve_employee_for_command(
     )
 
     # Lưu context để callback xử lý tiếp
-    _PENDING_AUTHORITY_ACTIONS[sent.id] = {
+    _PENDING_AUTHORITY_ACTIONS[f"{message.chat.id}:{sent.id}"] = {
         "action": callback_prefix,
         "form_data": form_data,
         "command_name": command_name,
         "chat_id": message.chat.id,
-        "from_user_id": message.from_user.id,
+        "from_user_id": acting_user.id,
         "original_message": message,
     }
 
@@ -1000,6 +1021,16 @@ async def resolve_employee_for_command(
 
 
 async def _execute_check_in_for_employee(client, message: Message, employee: Employee, db, acting_username: str) -> None:
+    """
+    Check-in cho 1 Employee, có khóa theo mã nhân viên.
+    Khóa để 2 lần bấm nút liên tiếp (hoặc bấm nút + gõ lệnh) không cùng lúc vượt qua
+    bước kiểm tra "đã check-in hôm nay chưa" rồi tạo 2 bản ghi Attendance trùng nhau.
+    """
+    async with _get_employee_lock(employee.id):
+        await _do_check_in_for_employee(client, message, employee, db, acting_username)
+
+
+async def _do_check_in_for_employee(client, message: Message, employee: Employee, db, acting_username: str) -> None:
     """Thực hiện logic check-in cho 1 Employee cụ thể (tách riêng từ handle_check_in)."""
     from app.models.finance import Attendance
 
@@ -1114,6 +1145,12 @@ async def _execute_check_in_for_employee(client, message: Message, employee: Emp
 
 
 async def _execute_check_out_for_employee(client, message: Message, employee: Employee, db, acting_username: str) -> None:
+    """Check-out cho 1 Employee, có khóa theo mã nhân viên (xem _execute_check_in_for_employee)."""
+    async with _get_employee_lock(employee.id):
+        await _do_check_out_for_employee(client, message, employee, db, acting_username)
+
+
+async def _do_check_out_for_employee(client, message: Message, employee: Employee, db, acting_username: str) -> None:
     """Thực hiện logic check-out cho 1 Employee cụ thể (tách riêng từ handle_check_out)."""
     from app.models.finance import Attendance
 
@@ -1238,8 +1275,17 @@ async def handle_authority_callback(client, callback_query) -> None:
 
     action = prefix_part.replace("auth_", "")  # ci, co, lv, ov
 
-    msg_id = callback_query.message.id
-    pending = _PENDING_AUTHORITY_ACTIONS.pop(msg_id, None)
+    pending_key = f"{callback_query.message.chat.id}:{callback_query.message.id}"
+    pending = _PENDING_AUTHORITY_ACTIONS.get(pending_key)
+
+    # Kiểm tra người nhấn nút đúng là người gõ lệnh.
+    # Kiểm tra trước khi pop, nếu không một người bấm nhầm sẽ xóa mất context
+    # khiến người có quyền bấm sau đó không dùng được nữa.
+    if pending and callback_query.from_user.id != pending["from_user_id"]:
+        await callback_query.answer("⚠️ Chỉ người gõ lệnh mới được chọn.", show_alert=True)
+        return
+
+    _PENDING_AUTHORITY_ACTIONS.pop(pending_key, None)
 
     if emp_id == "cancel":
         await callback_query.message.edit_text(
@@ -1247,11 +1293,6 @@ async def handle_authority_callback(client, callback_query) -> None:
             parse_mode=ParseMode.HTML
         )
         await callback_query.answer()
-        return
-
-    # Kiểm tra người nhấn nút đúng là người gõ lệnh
-    if pending and callback_query.from_user.id != pending["from_user_id"]:
-        await callback_query.answer("⚠️ Chỉ người gõ lệnh mới được chọn.", show_alert=True)
         return
 
     acting_username = callback_query.from_user.username
@@ -1406,6 +1447,200 @@ async def handle_check_out(client, message: Message, command_name: str) -> None:
 
 
 # ══════════════════════════════════════════════════════════════
+# NÚT BẤM TRÊN TIN NHẮN NHẮC NHỞ CHẤM CÔNG
+# ══════════════════════════════════════════════════════════════
+
+# Lệnh HR theo dự án, dùng để dựng form khi bấm nút trên tin nhắn nhắc nhở.
+# Key là từ khóa (không dấu phân biệt hoa thường) khớp với Projects.project_name.
+REMINDER_PROJECT_COMMANDS = {
+    "tiến nga": {
+        "check_in": "/tien_nga_check_in",
+        "check_out": "/tien_nga_check_out",
+        "request_leave": "/tien_nga_request_leave",
+    },
+    "ggomoosin": {
+        "check_in": "/ggomoosin_check_in",
+        "check_out": "/ggomoosin_check_out",
+    },
+}
+
+
+def resolve_reminder_commands(db, chat_id) -> dict:
+    """
+    Tra cứu bộ lệnh HR tương ứng với dự án của nhóm chat.
+    Trả về dict rỗng nếu nhóm chưa đồng bộ dự án hoặc dự án không có lệnh HR.
+    """
+    from app.models.business import Projects
+
+    try:
+        member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(chat_id)
+        ).first()
+        if not member:
+            return {}
+
+        project = db.query(Projects).filter(Projects.id == member.project_id).first()
+        if not project:
+            return {}
+
+        project_name_lower = (project.project_name or "").lower()
+        for keyword, commands in REMINDER_PROJECT_COMMANDS.items():
+            if keyword in project_name_lower:
+                return commands
+    except Exception as e:
+        LogError(f"Error in resolve_reminder_commands: {e}", LogType.SYSTEM_STATUS)
+    return {}
+
+
+def build_checkin_reminder_keyboard(with_leave_button: bool = True) -> InlineKeyboardMarkup:
+    """Bàn phím cho tin nhắn nhắc nhở check-in: Chấm công / Nghỉ phép / Hủy."""
+    from pyrogram.types import InlineKeyboardButton
+
+    first_row = [InlineKeyboardButton("Chấm công", callback_data="hr_rmd|ci")]
+    if with_leave_button:
+        first_row.append(InlineKeyboardButton("Nghỉ phép", callback_data="hr_rmd|lv"))
+
+    return InlineKeyboardMarkup([
+        first_row,
+        [InlineKeyboardButton("Hủy", callback_data="hr_rmd|x")],
+    ])
+
+
+def build_checkout_reminder_keyboard() -> InlineKeyboardMarkup:
+    """Bàn phím cho tin nhắn nhắc nhở check-out: Check-out / Hủy."""
+    from pyrogram.types import InlineKeyboardButton
+
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Check-out", callback_data="hr_rmd|co")],
+        [InlineKeyboardButton("Hủy", callback_data="hr_rmd|x")],
+    ])
+
+
+async def _safe_answer(callback_query, text: str = "", show_alert: bool = False) -> None:
+    """
+    Trả lời callback, bỏ qua lỗi. Telegram chỉ cho trả lời 1 lần và callback hết hạn
+    sau vài chục giây, nên lần trả lời thứ 2 (hoặc trả lời muộn) sẽ ném lỗi.
+    """
+    try:
+        await callback_query.answer(text, show_alert=show_alert)
+    except Exception:
+        pass
+
+
+async def _reminder_cancel(callback_query, username: str | None) -> None:
+    """Gỡ tin nhắn nhắc nhở. Chỉ nhân viên được tag trong tin nhắn mới được hủy."""
+    import re
+
+    message = callback_query.message
+    mentioned = set(re.findall(r"@(\w+)", message.text or message.caption or ""))
+    if mentioned and (not username or username not in mentioned):
+        await _safe_answer(
+            callback_query,
+            "⚠️ Chỉ nhân viên được nhắc mới có thể hủy nhắc nhở này.", show_alert=True
+        )
+        return
+
+    try:
+        await message.delete()
+    except Exception:
+        # Tin nhắn có thể đã bị người khác hủy trước đó, hoặc bot không có quyền xóa
+        try:
+            await message.edit_text(
+                "❌ <b>Đã hủy nhắc nhở chấm công.</b>", parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
+    await _safe_answer(callback_query, "Đã hủy nhắc nhở.")
+
+
+async def handle_reminder_action_callback(client, callback_query) -> None:
+    """
+    Xử lý các nút trên tin nhắn nhắc nhở chấm công.
+    Callback data: hr_rmd|ci (chấm công) | hr_rmd|co (check-out) | hr_rmd|lv (form nghỉ phép) | hr_rmd|x (hủy)
+    """
+    action = callback_query.data.split("|", 1)[1]
+    message = callback_query.message
+    username = callback_query.from_user.username
+
+    if action == "x":
+        try:
+            await _reminder_cancel(callback_query, username)
+        except Exception as e:
+            LogError(f"Error cancelling attendance reminder: {e}", LogType.SYSTEM_STATUS)
+            await _safe_answer(callback_query, "❌ Không hủy được nhắc nhở.", show_alert=True)
+        return
+
+    if not username:
+        await _safe_answer(
+            callback_query,
+            "⚠️ Bạn chưa cài đặt username Telegram. Vui lòng cài đặt username trước.",
+            show_alert=True
+        )
+        return
+
+    db = SessionLocal()
+    try:
+        commands = resolve_reminder_commands(db, message.chat.id)
+
+        if action == "lv":
+            leave_command = commands.get("request_leave")
+            if not leave_command:
+                await _safe_answer(
+                    callback_query,
+                    "⚠️ Dự án này chưa hỗ trợ đăng ký nghỉ phép qua bot.", show_alert=True
+                )
+                return
+            form = _build_leave_form(username, leave_command, db=db)
+            await message.reply_text(
+                f"@{username}\n\n{form}", parse_mode=ParseMode.HTML
+            )
+            await _safe_answer(callback_query)
+            return
+
+        # action == "ci" / "co": kiểm tra user có gắn với nhân viên nào không trước khi xử lý,
+        # tránh spam tin nhắn lỗi vào nhóm khi người ngoài bấm nhầm.
+        from sqlalchemy import or_
+
+        linked = db.query(Employee).filter(
+            or_(Employee.username == username, Employee.authority == username),
+            Employee.status != "inactive"
+        ).first()
+        if not linked:
+            await _safe_answer(
+                callback_query,
+                f"⚠️ Không tìm thấy nhân viên nào liên kết với @{username} trong hệ thống.",
+                show_alert=True
+            )
+            return
+
+        command_name = commands.get("check_in" if action == "ci" else "check_out", "")
+        employee = await resolve_employee_for_command(
+            client, message, db, callback_prefix=action, command_name=command_name,
+            acting_user=callback_query.from_user,
+        )
+        if not employee:
+            # Đang chờ user chọn nhân viên trên Inline Keyboard ủy quyền
+            await _safe_answer(callback_query)
+            return
+
+        # Tắt spinner trước khi ghi DB: thao tác có thể lâu hơn thời gian sống của callback,
+        # kết quả (thành công hay lỗi) đều được trả lời bằng tin nhắn trong nhóm.
+        await _safe_answer(callback_query)
+
+        if action == "ci":
+            await _execute_check_in_for_employee(client, message, employee, db, username)
+        else:
+            await _execute_check_out_for_employee(client, message, employee, db, username)
+
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in handle_reminder_action_callback: {e}", LogType.SYSTEM_STATUS)
+        await _safe_answer(callback_query, "❌ Có lỗi xảy ra. Vui lòng thử lại.", show_alert=True)
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
 # REQUEST LEAVE (Xin nghỉ phép)
 # ══════════════════════════════════════════════════════════════
 
@@ -1429,6 +1664,34 @@ Lý do: </pre>
 
 <i>Loại nghỉ gồm: {leave_types}
 Số ngày nghỉ phép năm còn lại: <b>{leave_balance}</b></i>"""
+
+
+def _build_leave_form(username: str | None, command_name: str, db=None) -> str:
+    """
+    Tạo nội dung form xin nghỉ phép, kèm số ngày phép còn lại của user (nếu có).
+    Truyền `db` để dùng lại session sẵn có thay vì mở thêm connection mới.
+    """
+    leave_balance = "N/A"
+    if username:
+        own_db = db is None
+        session = SessionLocal() if own_db else db
+        try:
+            employee = session.query(Employee).filter(
+                Employee.username == username
+            ).first()
+            if employee and employee.leave_balance is not None:
+                leave_balance = str(employee.leave_balance)
+        except Exception:
+            pass
+        finally:
+            if own_db:
+                session.close()
+
+    return LEAVE_FORM_TEMPLATE.format(
+        cmd=command_name,
+        leave_types=", ".join(LEAVE_TYPE_OPTIONS),
+        leave_balance=leave_balance,
+    )
 
 
 async def _execute_request_leave_for_employee(
@@ -1594,27 +1857,7 @@ async def handle_request_leave(client, message: Message, command_name: str) -> N
 
     # Nếu chỉ gõ lệnh không tham số -> hiển thị form mẫu
     if len(lines) < 3:
-        leave_balance = "N/A"
-        username = message.from_user.username
-        if username:
-            db = SessionLocal()
-            try:
-                employee = db.query(Employee).filter(
-                    Employee.username == username
-                ).first()
-                if employee and employee.leave_balance is not None:
-                    leave_balance = str(employee.leave_balance)
-            except Exception:
-                pass
-            finally:
-                db.close()
-
-        leave_types_str = ", ".join(LEAVE_TYPE_OPTIONS)
-        form = LEAVE_FORM_TEMPLATE.format(
-            cmd=command_name,
-            leave_types=leave_types_str,
-            leave_balance=leave_balance,
-        )
+        form = _build_leave_form(message.from_user.username, command_name)
         await message.reply_text(form, parse_mode=ParseMode.HTML)
         return
 

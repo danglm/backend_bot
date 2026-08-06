@@ -49,6 +49,7 @@ def _sync_parent_investment(db, child_inv):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_create_employee", "tien_nga_tao_nhan_vien"])
     if args is None: return
@@ -63,6 +64,7 @@ async def tien_nga_create_employee_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_update_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_update_employee", "tien_nga_cap_nhat_nhan_vien"])
     if args is None: return
@@ -77,6 +79,7 @@ async def tien_nga_update_employee_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_delete_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_delete_employee", "tien_nga_xoa_nhan_vien"])
     if args is None: return
@@ -96,6 +99,7 @@ async def tien_nga_delete_employee_cb_handler(client, callback_query):
 @require_project_name("Tiến Nga")
 @require_group_role("member")
 @require_custom_title(CustomTitle.MEMBER_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_in_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_check_in", "tien_nga_cham_cong"])
     if args is None: return
@@ -107,6 +111,7 @@ async def tien_nga_check_in_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("member")
 @require_custom_title(CustomTitle.MEMBER_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_out_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_check_out", "tien_nga_tan_ca"])
     if args is None: return
@@ -118,6 +123,7 @@ async def tien_nga_check_out_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("member")
 @require_custom_title(CustomTitle.MEMBER_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_request_leave_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_request_leave", "tien_nga_xin_nghi_phep"])
     if args is None: return
@@ -129,6 +135,7 @@ async def tien_nga_request_leave_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("member")
 @require_custom_title(CustomTitle.MEMBER_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_request_overtime_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_request_overtime", "tien_nga_dang_ky_tang_ca"])
     if args is None: return
@@ -140,6 +147,7 @@ async def tien_nga_request_overtime_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("member")
 @require_custom_title(CustomTitle.MEMBER_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_request_attendance_update_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_request_attendance_update", "tien_nga_cap_nhat_cong"])
     if args is None: return
@@ -156,6 +164,7 @@ async def _att_req_callback(client, callback_query):
 @require_project_name("Tiến Nga")
 @require_group_role("member")
 @require_custom_title(CustomTitle.MEMBER_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_check_in_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_check_in", "tien_nga_xem_cham_cong"])
     if args is None: return
@@ -167,6 +176,7 @@ async def tien_nga_list_check_in_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("member")
 @require_custom_title(CustomTitle.MEMBER_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_request_leave_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_request_leave", "tien_nga_xem_nghi_phep"])
     if args is None: return
@@ -179,6 +189,7 @@ async def tien_nga_list_request_leave_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_task_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_create_task", "tien_nga_giao_viec"])
     if args is None: return
@@ -191,6 +202,7 @@ async def tien_nga_create_task_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_tasks_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_tasks", "tien_nga_danh_sach_cong_viec"])
     if args is None: return
@@ -206,6 +218,7 @@ async def tien_nga_list_tasks_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("member")
 @require_custom_title(CustomTitle.MEMBER_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_xem_cong_viec_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_xem_cong_viec"])
     if args is None: return
@@ -254,6 +267,11 @@ async def _ov_req_callback(client, callback_query):
     from bot.utils.human_resource import handle_overtime_request_callback
     await handle_overtime_request_callback(client, callback_query)
 
+@bot.on_callback_query(filters.regex(r"^hr_rmd\|(ci|co|lv|x)$"))
+async def _hr_reminder_callback(client, callback_query):
+    from bot.utils.human_resource import handle_reminder_action_callback
+    await handle_reminder_action_callback(client, callback_query)
+
 @bot.on_callback_query(filters.regex(r"^auth_(ci|co|lv|ov|au)\|(.+)$"))
 async def _auth_select_callback(client, callback_query):
     from bot.utils.human_resource import handle_authority_callback
@@ -264,6 +282,7 @@ async def _auth_select_callback(client, callback_query):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_cancel_handler(client, message: Message) -> None:
     replied = message.reply_to_message
     if not replied or not replied.text:
@@ -359,6 +378,7 @@ async def tien_nga_cancel_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_tasks_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_check_tasks", "tien_nga_xem_cong_viec"])
     if args is None: return
@@ -371,6 +391,7 @@ async def tien_nga_check_tasks_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_payroll_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_payroll", "tien_nga_xuat_danh_sach_luong"])
     if args is None: return
@@ -386,6 +407,7 @@ async def tien_nga_list_payroll_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_payroll_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["export_payroll", "tien_nga_xuat_luong", "tien_nga_export_payroll"])
     if args is None: return
@@ -402,6 +424,7 @@ async def tien_nga_export_payroll_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_recreate_attendance_report_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_recreate_attendance_report", "tien_nga_tao_lai_bang_cham_cong"])
     if args is None: return
@@ -417,6 +440,7 @@ async def tien_nga_recreate_attendance_report_handler(client, message: Message) 
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_attendance_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_attendance", "tien_nga_danh_sach_cham_cong"])
     if args is None: return
@@ -434,6 +458,7 @@ async def tien_nga_list_attendance_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_nghi_ngay_le_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_nghi_ngay_le"])
     if args is None: return
@@ -443,31 +468,165 @@ async def tien_nga_nghi_ngay_le_handler(client, message: Message) -> None:
 
 
 
-@bot.on_message(filters.command(["tien_nga_create_collection_point", "tien_nga_tao_diem_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_collection_point|tien_nga_tao_diem_thu_mua)\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
-@require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
-async def tien_nga_create_collection_point_handler(client, message: Message) -> None:
-    lines = message.text.strip().split("\n")
-    
-    if len(lines) < 2:
-        form_template = """<b>FORM TẠO ĐIỂM THU MUA MỚI</b>
+# ══════════════════════════════════════════════════════════════
+# ĐIỂM THU MUA — menu nút bấm của /tien_nga_tao_diem_thu_mua
+# Menu → Danh sách (phân trang) → Form thêm
+# ══════════════════════════════════════════════════════════════
+
+TN_DTM_PAGE_SIZE = 10
+
+TN_DTM_MENU_TEXT = "<b>QUẢN LÝ ĐIỂM THU MUA</b>\n\nVui lòng chọn thao tác:"
+
+TN_DTM_FORM_TEMPLATE = """<b>FORM TẠO ĐIỂM THU MUA MỚI</b>
 Vui lòng sao chép form dưới đây, điền đầy đủ thông tin và gửi lại:
 
 <pre>/tien_nga_create_collection_point
-Tên Điểm Thu Mua: 
-Địa Chỉ: 
-Mã Viết Tắt: 
-Người Quản Lý: 
-SĐT Liên Lạc: 
+Tên Điểm Thu Mua:
+Địa Chỉ:
+Mã Viết Tắt:
+Người Quản Lý:
+SĐT Liên Lạc:
 Ghi Chú: </pre>
 
 <i>Mã Viết Tắt dùng để tạo mã hàng tự động.
 Ví dụ: LT (Lạc Tánh), P (Phê), GA (Gia An)
 → Mã hàng sẽ là: LT20260505, P20260505, ...</i>"""
-        form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
-        form_tracker.track(message.chat.id, "tien_nga_create_cp", "create", form_msg.id)
+
+
+def _build_tn_dtm_main_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Danh sách", callback_data="tn_dtm_list|0")],
+        [InlineKeyboardButton("Thêm điểm thu mua", callback_data="tn_dtm_form")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_dtm_cancel")],
+    ])
+
+
+def _build_tn_dtm_list_keyboard(total_items: int, page: int):
+    total_pages = max(1, (total_items + TN_DTM_PAGE_SIZE - 1) // TN_DTM_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+
+    buttons = []
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("<< Trước", callback_data=f"tn_dtm_list|{page - 1}"))
+    nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="tn_dtm_noop"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Sau >>", callback_data=f"tn_dtm_list|{page + 1}"))
+
+    buttons.append(nav_row)
+    buttons.append([InlineKeyboardButton("Thêm điểm thu mua", callback_data="tn_dtm_form")])
+    buttons.append([
+        InlineKeyboardButton("Ẩn bớt", callback_data="tn_dtm_menu"),
+        InlineKeyboardButton("Hủy", callback_data="tn_dtm_cancel"),
+    ])
+    return InlineKeyboardMarkup(buttons)
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dtm_noop$"))
+async def tn_dtm_noop_callback(client, callback_query: CallbackQuery):
+    await callback_query.answer()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dtm_cancel$"))
+async def tn_dtm_cancel_callback(client, callback_query: CallbackQuery):
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dtm_menu$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dtm_menu_callback(client, callback_query: CallbackQuery):
+    """Nút Ẩn bớt — thu danh sách lại về menu ban đầu."""
+    await callback_query.message.edit_text(
+        TN_DTM_MENU_TEXT, reply_markup=_build_tn_dtm_main_keyboard(), parse_mode=ParseMode.HTML
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dtm_form$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dtm_form_callback(client, callback_query: CallbackQuery):
+    """Nút Thêm điểm thu mua — hiện form để sao chép và gửi lại."""
+    cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("Hủy", callback_data="tn_dtm_cancel")]])
+    await callback_query.message.edit_text(
+        TN_DTM_FORM_TEMPLATE, parse_mode=ParseMode.HTML, reply_markup=cancel_kb
+    )
+    # Theo dõi để tự xóa form sau khi tạo thành công
+    form_tracker.track(
+        callback_query.message.chat.id, "tien_nga_create_cp", "create", callback_query.message.id
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dtm_list\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dtm_list_callback(client, callback_query: CallbackQuery):
+    """Nút Danh sách — hiện các Điểm Thu Mua, phân trang TN_DTM_PAGE_SIZE mỗi trang."""
+    page = int(callback_query.matches[0].group(1))
+    db = SessionLocal()
+    try:
+        from app.models.business import CollectionPoint
+
+        points = db.query(CollectionPoint).order_by(CollectionPoint.collection_name).all()
+
+        if not points:
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Thêm điểm thu mua", callback_data="tn_dtm_form")],
+                [
+                    InlineKeyboardButton("Ẩn bớt", callback_data="tn_dtm_menu"),
+                    InlineKeyboardButton("Hủy", callback_data="tn_dtm_cancel"),
+                ],
+            ])
+            await callback_query.message.edit_text(
+                "<b>DANH SÁCH ĐIỂM THU MUA</b>\n\n<i>ℹ️ Chưa có Điểm Thu Mua nào trong hệ thống.</i>",
+                parse_mode=ParseMode.HTML, reply_markup=kb
+            )
+            return
+
+        total = len(points)
+        total_pages = max(1, (total + TN_DTM_PAGE_SIZE - 1) // TN_DTM_PAGE_SIZE)
+        page = max(0, min(page, total_pages - 1))
+        start = page * TN_DTM_PAGE_SIZE
+
+        lines = [f"<b>DANH SÁCH ĐIỂM THU MUA</b> (Tổng: <b>{total}</b> điểm)\n"]
+        for idx, p in enumerate(points[start:start + TN_DTM_PAGE_SIZE], start=start + 1):
+            lines.append(
+                f"{idx}. <b>{p.collection_name}</b> - Viết tắt: <code>{p.code_prefix or '—'}</code>\n"
+                f"    Địa chỉ: {p.address or '—'}\n"
+                f"    Người QL: {p.manager_name or '—'} - SĐT: {p.manager_phone or '—'}"
+            )
+
+        await callback_query.message.edit_text(
+            "\n".join(lines),
+            reply_markup=_build_tn_dtm_list_keyboard(total, page),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error in tn_dtm_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi lấy danh sách.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_message(filters.command(["tien_nga_create_collection_point", "tien_nga_tao_diem_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_create_collection_point|tien_nga_tao_diem_thu_mua)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
+async def tien_nga_create_collection_point_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    if len(lines) < 2:
+        await message.reply_text(
+            TN_DTM_MENU_TEXT, reply_markup=_build_tn_dtm_main_keyboard(), parse_mode=ParseMode.HTML
+        )
         return
 
     # Parse form data
@@ -559,33 +718,300 @@ Ví dụ: LT (Lạc Tánh), P (Phê), GA (Gia An)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_collection_point_handler(client, message: Message) -> None:
-    from app.db.session import SessionLocal
-    from app.models.business import CollectionPoint
-    
     db = SessionLocal()
     try:
-        points = db.query(CollectionPoint).all()
-        if not points:
-            await message.reply_text("⚠️ <b>Không có Điểm Thu Mua nào trong hệ thống.</b>", parse_mode=ParseMode.HTML)
-            return
-            
-        text = "<b>DANH SÁCH ĐIỂM THU MUA</b>\n\n"
-        for idx, p in enumerate(points, 1):
-            text += f"<b>{idx}. {p.collection_name}</b>\n"
-            text += f"   Mã: <code>{p.id}</code>\n"
-            text += f"   Viết tắt: <code>{p.code_prefix or '—'}</code>\n"
-            text += f"   Địa chỉ: {p.address}\n"
-            text += f"   Người QL: {p.manager_name or '—'}\n"
-            text += f"   SĐT: {p.manager_phone or '—'}\n"
-            if p.notes:
-                text += f"   Ghi chú: {p.notes}\n"
-            text += "\n"
-            
-        await message.reply_text(text, parse_mode=ParseMode.HTML)
+        text, markup = _tn_lcp_list_view(db)
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
     except Exception as e:
         LogError(f"Error listing collection points: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra khi tải danh sách Điểm Thu Mua.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
+# QUẢN LÝ ĐIỂM THU MUA — luồng nút bấm của /tien_nga_danh_sach_diem_thu_mua
+# Danh sách → chọn 1 điểm → Thông tin / Cập nhật / Xóa
+# ══════════════════════════════════════════════════════════════
+
+def _tn_lcp_list_view(db):
+    """Màn hình danh sách Điểm Thu Mua để chọn."""
+    return _tn_collection_point_view(
+        db, "tn_lcp", "DANH SÁCH ĐIỂM THU MUA",
+        item_cb_template="{prefix}_s|{cp_id}",
+        subtitle="Vui lòng chọn Điểm Thu Mua để xem thao tác:",
+    )
+
+
+def _tn_lcp_usage_counts(db, cp_id):
+    """Số khách hàng và số phiếu thu mua đang gắn với điểm thu mua này."""
+    from app.models.business import Customers, DailyPurchases
+
+    customers = db.query(Customers).filter(Customers.collection_point_id == cp_id).count()
+    purchases = db.query(DailyPurchases).filter(DailyPurchases.collection_point_id == cp_id).count()
+    return customers, purchases
+
+
+def _build_collection_point_info_text(db, cp) -> str:
+    """Nội dung thông tin 1 Điểm Thu Mua."""
+    customers, purchases = _tn_lcp_usage_counts(db, cp.id)
+    sample_code = f"{cp.code_prefix}20260505" if cp.code_prefix else "(chưa có)"
+    return (
+        f"<b>THÔNG TIN ĐIỂM THU MUA: {cp.collection_name}</b>\n\n"
+        f"<b>Mã:</b> <code>{cp.id}</code>\n"
+        f"<b>Tên:</b> {cp.collection_name}\n"
+        f"<b>Mã Viết Tắt:</b> <code>{cp.code_prefix or '—'}</code>\n"
+        f"<b>Địa Chỉ:</b> {cp.address or '—'}\n"
+        f"<b>Người Quản Lý:</b> {cp.manager_name or '—'}\n"
+        f"<b>SĐT Liên Lạc:</b> {cp.manager_phone or '—'}\n"
+        f"<b>Ghi Chú:</b> {cp.notes or '—'}\n\n"
+        f"<b>Số khách hàng:</b> {customers}\n"
+        f"<b>Số phiếu thu mua:</b> {purchases}\n\n"
+        f"<i>Mã hàng mẫu: {sample_code}</i>"
+    )
+
+
+def _build_collection_point_update_form(cp) -> str:
+    """Form cập nhật Điểm Thu Mua đã điền sẵn dữ liệu hiện tại."""
+    return f"""<b>FORM CẬP NHẬT ĐIỂM THU MUA</b>
+Vui lòng sao chép form dưới đây, sửa thông tin và gửi lại:
+
+<pre>/tien_nga_update_collection_point
+Mã Điểm: {cp.id}
+Tên Điểm Thu Mua: {cp.collection_name}
+Địa Chỉ: {cp.address or ''}
+Mã Viết Tắt: {cp.code_prefix or ''}
+Người Quản Lý: {cp.manager_name or ''}
+SĐT Liên Lạc: {cp.manager_phone or ''}
+Ghi Chú: {cp.notes or ''}</pre>"""
+
+
+async def _tn_lcp_load(callback_query, db, cp_id):
+    """Lấy Điểm Thu Mua theo mã, báo alert nếu không còn tồn tại."""
+    from app.models.business import CollectionPoint
+
+    cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
+    if not cp:
+        await callback_query.answer("⚠️ Không tìm thấy Điểm Thu Mua này.", show_alert=True)
+        return None
+    return cp
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lcp_x$"))
+async def tn_lcp_cancel_callback(client, callback_query):
+    """Hủy luồng quản lý điểm thu mua."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lcp_ls$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_lcp_list_callback(client, callback_query):
+    """Quay về danh sách Điểm Thu Mua."""
+    db = SessionLocal()
+    try:
+        text, markup = _tn_lcp_list_view(db)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_lcp_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lcp_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_lcp_menu_callback(client, callback_query):
+    """Chọn 1 Điểm Thu Mua → hiện 3 nút thao tác."""
+    cp_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        cp = await _tn_lcp_load(callback_query, db, cp_id)
+        if not cp:
+            return
+
+        text = (
+            f"<b>ĐIỂM THU MUA: {cp.collection_name}</b>\n"
+            f"Mã Viết Tắt: <code>{cp.code_prefix or '—'}</code>\n\n"
+            f"Vui lòng chọn thao tác:"
+        )
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Thông tin điểm thu mua", callback_data=f"tn_lcp_i|{cp_id}")],
+            [InlineKeyboardButton("Cập nhật điểm thu mua", callback_data=f"tn_lcp_u|{cp_id}")],
+            [InlineKeyboardButton("Xóa điểm thu mua", callback_data=f"tn_lcp_d|{cp_id}")],
+            [
+                InlineKeyboardButton("Quay lại", callback_data="tn_lcp_ls"),
+                InlineKeyboardButton("Hủy", callback_data="tn_lcp_x"),
+            ],
+        ])
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_lcp_menu_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lcp_i\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_lcp_info_callback(client, callback_query):
+    """Nút Thông tin điểm thu mua."""
+    cp_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        cp = await _tn_lcp_load(callback_query, db, cp_id)
+        if not cp:
+            return
+
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_lcp_s|{cp_id}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_lcp_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_collection_point_info_text(db, cp), markup)
+    except Exception as e:
+        LogError(f"Error in tn_lcp_info_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lcp_u\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_lcp_update_callback(client, callback_query):
+    """Nút Cập nhật điểm thu mua — hiện form điền sẵn để sao chép và gửi lại."""
+    cp_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        cp = await _tn_lcp_load(callback_query, db, cp_id)
+        if not cp:
+            return
+
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("Hủy", callback_data="tn_lcp_x")]])
+        await _tn_screen_edit(callback_query, _build_collection_point_update_form(cp), markup)
+        # Theo dõi để tự xóa form sau khi /tien_nga_update_collection_point chạy thành công
+        form_tracker.track(
+            callback_query.message.chat.id, "tien_nga_update_cp", cp_id, callback_query.message.id
+        )
+    except Exception as e:
+        LogError(f"Error in tn_lcp_update_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lcp_d\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_lcp_delete_confirm_callback(client, callback_query):
+    """Nút Xóa điểm thu mua — hỏi xác nhận, chặn nếu còn dữ liệu tham chiếu."""
+    cp_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        cp = await _tn_lcp_load(callback_query, db, cp_id)
+        if not cp:
+            return
+
+        customers, purchases = _tn_lcp_usage_counts(db, cp.id)
+        back_row = [
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_lcp_s|{cp_id}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_lcp_x"),
+        ]
+
+        # CollectionPoint không có cột trạng thái nên chỉ xóa hẳn được.
+        # Còn khách hàng / phiếu thu mua tham chiếu thì phải chặn, nếu không dữ liệu sẽ mồ côi.
+        if customers or purchases:
+            text = (
+                f"⚠️ <b>KHÔNG THỂ XÓA ĐIỂM THU MUA</b>\n\n"
+                f"<b>{cp.collection_name}</b> vẫn đang được dùng:\n"
+                f"• Khách hàng: <b>{customers}</b>\n"
+                f"• Phiếu thu mua: <b>{purchases}</b>\n\n"
+                f"<i>Vui lòng chuyển hoặc xóa các dữ liệu này trước khi xóa điểm thu mua.</i>"
+            )
+            await _tn_screen_edit(callback_query, text, InlineKeyboardMarkup([back_row]))
+            return
+
+        text = (
+            f"<b>XÁC NHẬN XÓA ĐIỂM THU MUA</b>\n\n"
+            f"<b>Tên:</b> {cp.collection_name}\n"
+            f"<b>Mã Viết Tắt:</b> <code>{cp.code_prefix or '—'}</code>\n"
+            f"<b>Địa Chỉ:</b> {cp.address or '—'}\n\n"
+            f"<i>Điểm thu mua sẽ bị xóa khỏi hệ thống và không khôi phục được. "
+            f"Bạn có chắc chắn muốn xóa?</i>"
+        )
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Xác nhận", callback_data=f"tn_lcp_dy|{cp_id}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_lcp_x"),
+        ]])
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_lcp_delete_confirm_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lcp_dy\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_lcp_delete_confirmed_callback(client, callback_query):
+    """Xác nhận xóa Điểm Thu Mua."""
+    cp_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        cp = await _tn_lcp_load(callback_query, db, cp_id)
+        if not cp:
+            return
+
+        # Kiểm tra lại ngay trước khi xóa, phòng trường hợp có người vừa thêm dữ liệu
+        customers, purchases = _tn_lcp_usage_counts(db, cp.id)
+        if customers or purchases:
+            await callback_query.answer(
+                f"⚠️ Không xóa được: điểm này còn {customers} khách hàng và {purchases} phiếu thu mua.",
+                show_alert=True
+            )
+            return
+
+        cp_name = cp.collection_name
+        db.delete(cp)
+        db.commit()
+
+        LogInfo(
+            f"[TienNga] Deleted collection point '{cp_name}' ({cp_id}) by user {callback_query.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+        await _tn_screen_edit(
+            callback_query,
+            f"✅ <b>XÓA ĐIỂM THU MUA THÀNH CÔNG</b>\n\n"
+            f"Tên: <b>{cp_name}</b>\n"
+            f"Mã: <code>{cp_id}</code>",
+            None
+        )
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in tn_lcp_delete_confirmed_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi cập nhật database.", show_alert=True)
     finally:
         db.close()
 
@@ -599,27 +1025,10 @@ async def tien_nga_update_collection_point_handler(client, message: Message) -> 
     lines = message.text.strip().split("\n")
 
     if len(lines) < 2:
-        from app.db.session import SessionLocal
-        from app.models.business import CollectionPoint
-
         db = SessionLocal()
         try:
-            points = db.query(CollectionPoint).all()
-            if not points:
-                await message.reply_text("⚠️ <b>Chưa có Điểm Thu Mua nào.</b>", parse_mode=ParseMode.HTML)
-                return
-
-            buttons = []
-            for p in points:
-                buttons.append([InlineKeyboardButton(p.collection_name, callback_data=f"tn_updcp_{p.id}")])
-            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_updcp_cancel")])
-
-            markup = InlineKeyboardMarkup(buttons)
-            await message.reply_text(
-                "<b>Chọn Điểm Thu Mua cần cập nhật:</b>",
-                reply_markup=markup,
-                parse_mode=ParseMode.HTML
-            )
+            text, markup = _tn_ucp_list_view(db, 0)
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
         except Exception as e:
             LogError(f"Error listing collection points for update: {e}", LogType.SYSTEM_STATUS)
             await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
@@ -645,7 +1054,6 @@ async def tien_nga_update_collection_point_handler(client, message: Message) -> 
     manager_phone = data.get("SĐT Liên Lạc", "").strip()
     notes = data.get("Ghi Chú", "").strip()
 
-    from app.db.session import SessionLocal
     from app.models.business import CollectionPoint
 
     db = SessionLocal()
@@ -715,42 +1123,70 @@ async def tien_nga_update_collection_point_handler(client, message: Message) -> 
     finally:
         db.close()
 
-@bot.on_callback_query(filters.regex(r"^tn_updcp_(.+)$"))
-async def tien_nga_update_collection_point_callback(client, callback_query):
+# ══════════════════════════════════════════════════════════════
+# CẬP NHẬT ĐIỂM THU MUA — luồng nút bấm
+# Danh sách (phân trang) → Form cập nhật
+# ══════════════════════════════════════════════════════════════
+
+def _tn_ucp_list_view(db, page: int):
+    """Màn hình danh sách Điểm Thu Mua để chọn cái cần cập nhật, có phân trang."""
+    return _tn_collection_point_view(
+        db, "tn_ucp", "CẬP NHẬT ĐIỂM THU MUA",
+        item_cb_template="{prefix}_s|{cp_id}",
+        subtitle="Vui lòng chọn Điểm Thu Mua cần cập nhật:",
+        page=page,
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ucp_x$"))
+async def tn_ucp_cancel_callback(client, callback_query):
+    """Hủy luồng cập nhật điểm thu mua."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ucp_p\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_ucp_page_callback(client, callback_query):
+    """Lật trang danh sách Điểm Thu Mua."""
+    page = int(callback_query.matches[0].group(1))
+    db = SessionLocal()
+    try:
+        text, markup = _tn_ucp_list_view(db, page)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_ucp_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ucp_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_ucp_form_callback(client, callback_query):
+    """Chọn 1 Điểm Thu Mua → hiện form cập nhật điền sẵn để sao chép và gửi lại."""
     cp_id = callback_query.matches[0].group(1)
-
-    if cp_id == "cancel":
-        await callback_query.message.delete()
-        await callback_query.answer("Đã hủy.")
-        return
-
-    from app.db.session import SessionLocal
-    from app.models.business import CollectionPoint
 
     db = SessionLocal()
     try:
-        cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
+        cp = await _tn_lcp_load(callback_query, db, cp_id)
         if not cp:
-            await callback_query.answer("⚠️ Không tìm thấy Điểm Thu Mua", show_alert=True)
             return
 
-        form_template = f"""<b>FORM CẬP NHẬT ĐIỂM THU MUA</b>
-Vui lòng sao chép form dưới đây, sửa thông tin và gửi lại:
-
-<pre>/tien_nga_update_collection_point
-Mã Điểm: {cp.id}
-Tên Điểm Thu Mua: {cp.collection_name}
-Địa Chỉ: {cp.address or ''}
-Mã Viết Tắt: {cp.code_prefix or ''}
-Người Quản Lý: {cp.manager_name or ''}
-SĐT Liên Lạc: {cp.manager_phone or ''}
-Ghi Chú: {cp.notes or ''}</pre>"""
-        form_msg = await callback_query.message.reply_text(form_template, parse_mode=ParseMode.HTML)
-        form_tracker.track(callback_query.message.chat.id, "tien_nga_update_cp", cp_id, form_msg.id)
-        await callback_query.answer()
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("Hủy", callback_data="tn_ucp_x")]])
+        await _tn_screen_edit(callback_query, _build_collection_point_update_form(cp), markup)
+        # Theo dõi để tự xóa form sau khi /tien_nga_update_collection_point chạy thành công
+        form_tracker.track(
+            callback_query.message.chat.id, "tien_nga_update_cp", cp_id, callback_query.message.id
+        )
     except Exception as e:
-        LogError(f"Error in update collection point callback: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Lỗi hệ thống", show_alert=True)
+        LogError(f"Error in tn_ucp_form_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
     finally:
         db.close()
 
@@ -777,7 +1213,8 @@ async def tien_nga_create_customer_handler(client, message: Message) -> None:
             buttons = []
             for p in points:
                 buttons.append([InlineKeyboardButton(p.collection_name, callback_data=f"tn_selcp_{p.id}")])
-                
+            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_cp_cancel")])
+
             markup = InlineKeyboardMarkup(buttons)
             await message.reply_text("<b>Vui lòng chọn Điểm Thu Mua (Xưởng) cho Khách Hàng:</b>", reply_markup=markup, parse_mode=ParseMode.HTML)
         except Exception as e:
@@ -866,6 +1303,12 @@ async def tien_nga_create_customer_handler(client, message: Message) -> None:
         db.close()
 
 
+@bot.on_callback_query(filters.regex(r"^tn_cp_cancel$"))
+async def tien_nga_cancel_collection_point_callback(client, callback_query):
+    """Hủy bảng chọn Điểm Thu Mua của lệnh /tien_nga_create_customer."""
+    await callback_query.message.delete()
+
+
 @bot.on_callback_query(filters.regex(r"^tn_selcp_(.+)$"))
 async def tien_nga_select_collection_point_callback(client, callback_query):
     cp_id = callback_query.matches[0].group(1)
@@ -910,37 +1353,56 @@ STK Ngân Hàng: </pre>
     finally:
         db.close()
 
-@bot.on_message(filters.command(["tien_nga_update_customer", "tien_nga_cap_nhat_khach_hang"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_customer|tien_nga_cap_nhat_khach_hang)\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
-async def tien_nga_update_customer_handler(client, message: Message) -> None:
-    lines = message.text.strip().split("\n")
-    
-    if len(lines) < 2:
-        args = lines[0].split()
-        if len(args) != 2:
-            await message.reply_text("⚠️ Cú pháp: <code>/tien_nga_update_customer [Mã Hộ]</code>\n\n<i>Ví dụ: <code>/tien_nga_update_customer KH001</code></i>", parse_mode=ParseMode.HTML)
-            return
-            
-        hoursehold_id = args[1]
-        
-        from app.db.session import SessionLocal
-        from app.models.business import Customers
-        
-        db = SessionLocal()
-        try:
-            customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
-            if not customer:
-                await message.reply_text(f"⚠️ Không tìm thấy Khách hàng với mã hộ <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML)
-                return
-                
-            def fmt_num(val):
-                if val is None: return 0
-                return int(val) if val == int(val) else val
-            
-            # Format number output to Vietnam string but keeping the numeric in form to be copy pasted easily
-            form_template = f"""<b>FORM CẬP NHẬT KHÁCH HÀNG</b>
+
+# ══════════════════════════════════════════════════════════════
+# KIỂM TRA KHÁCH HÀNG — luồng nút bấm
+# Điểm Thu Mua → Hộ dân (phân trang) → Thông tin / Cập nhật / Xóa
+# ══════════════════════════════════════════════════════════════
+
+TN_PAGE_SIZE = 10
+
+
+def _build_customer_info_text(db, customer) -> str:
+    """Nội dung thông tin khách hàng, dùng chung cho lệnh gõ tay và nút Thông tin."""
+    from app.models.business import CollectionPoint
+
+    cp_name = "Chưa rõ"
+    if customer.collection_point_id:
+        cp = db.query(CollectionPoint).filter(CollectionPoint.id == customer.collection_point_id).first()
+        if cp:
+            cp_name = cp.collection_name
+
+    if customer.status == "ACTIVE":
+        status_str = "Hoạt động"
+    elif customer.status == "DELETED":
+        status_str = "Đã ẩn/xóa"
+    else:
+        status_str = customer.status
+
+    return (
+        f"<b>THÔNG TIN KHÁCH HÀNG: {customer.fullname or '—'}</b>\n\n"
+        f"<b>Mã Hộ:</b> {customer.hoursehold_id}\n"
+        f"<b>Tên Khách Hàng:</b> {customer.fullname or '—'}\n"
+        f"<b>Điểm Thu Mua:</b> {cp_name}\n"
+        f"<b>SĐT:</b> {customer.number_phone or '—'}\n"
+        f"<b>Địa Chỉ:</b> {customer.address or '—'}\n"
+        f"<b>Nguyên Liệu:</b> {customer.ingredient or '—'}\n"
+        f"<b>Số Tiền Nợ:</b> <code>{fmt_vn(customer.amount_of_debt)}</code>\n"
+        f"<b>Ứng Cuối Mùa:</b> <code>{fmt_vn(customer.cash_advance)}</code>\n"
+        f"<b>Tổng Công Nợ:</b> <code>{fmt_vn(customer.total_debt)}</code>\n"
+        f"<b>Trạng Thái:</b> {status_str}\n"
+        f"<b>Tài khoản TG:</b> {customer.username or '—'}"
+    )
+
+
+def _build_customer_update_form(customer) -> str:
+    """Form cập nhật khách hàng đã điền sẵn dữ liệu hiện tại."""
+    def fmt_int(val):
+        if val is None:
+            return 0
+        return int(val) if val == int(val) else val
+
+    return f"""<b>FORM CẬP NHẬT KHÁCH HÀNG</b>
 Vui lòng sao chép form dưới đây, sửa thông tin và gửi lại:
 
 <pre>/tien_nga_update_customer
@@ -949,16 +1411,822 @@ Tên Khách Hàng: {customer.fullname or ""}
 SĐT Khách: {customer.number_phone or ""}
 Địa Chỉ: {customer.address or ""}
 Nguyên Liệu: {customer.ingredient or ""}
-Số Tiền Nợ (VNĐ): {fmt_num(customer.amount_of_debt)}
-Ứng Tiền Cuối Mùa (VNĐ): {fmt_num(customer.cash_advance)}
-Tổng Công Nợ (VNĐ): {fmt_num(customer.total_debt)}
-Trợ Giá (VNĐ): {fmt_num(customer.is_subsidized)}
+Số Tiền Nợ (VNĐ): {fmt_int(customer.amount_of_debt)}
+Ứng Tiền Cuối Mùa (VNĐ): {fmt_int(customer.cash_advance)}
+Tổng Công Nợ (VNĐ): {fmt_int(customer.total_debt)}
+Trợ Giá (VNĐ): {fmt_int(customer.is_subsidized)}
 Trạng Thái: {customer.status or 'ACTIVE'}
 Username: {customer.username or ''}
 Nhóm Telegram: {customer.telegram_group or ''}
 Ngân Hàng: {customer.bank_name or ''}
 STK Ngân Hàng: {customer.number_bank or ''}</pre>"""
-            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+
+
+def _tn_collection_point_view(
+    db, prefix: str, title: str,
+    item_cb_template: str = "{prefix}_cp|{cp_id}|0",
+    subtitle: str = "Vui lòng chọn Điểm Thu Mua (Xưởng):",
+    page: int | None = None,
+):
+    """
+    Màn hình chọn Điểm Thu Mua, dùng chung cho các luồng nút bấm.
+    `prefix` quyết định callback_data (tn_cc = kiểm tra KH, tn_uc = cập nhật KH,
+    tn_dc = xóa KH, tn_lcp = quản lý điểm thu mua, tn_ucp = cập nhật điểm thu mua).
+    `item_cb_template` là callback khi bấm vào 1 điểm — mặc định mở danh sách khách hàng.
+    `page` khác None thì bật phân trang TN_PAGE_SIZE mỗi trang, điều hướng qua {prefix}_p|<trang>.
+    Trả về (text, markup) hoặc (text, None) nếu chưa có điểm nào.
+    """
+    from app.models.business import CollectionPoint
+
+    points = db.query(CollectionPoint).order_by(CollectionPoint.collection_name).all()
+    if not points:
+        return "⚠️ Chưa có Điểm Thu Mua nào. Vui lòng tạo trước bằng lệnh /tien_nga_create_collection_point.", None
+
+    text = f"<b>{title}</b>\n\n{subtitle}"
+    nav_row = []
+
+    if page is not None:
+        total = len(points)
+        total_pages = max(1, (total + TN_PAGE_SIZE - 1) // TN_PAGE_SIZE)
+        page = max(0, min(page, total_pages - 1))
+        start = page * TN_PAGE_SIZE
+        if page > 0:
+            nav_row.append(InlineKeyboardButton("<< Trước", callback_data=f"{prefix}_p|{page - 1}"))
+        # Nút số trang chỉ để hiển thị: bấm vào là vẽ lại đúng trang đang xem
+        nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data=f"{prefix}_p|{page}"))
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton("Sau >>", callback_data=f"{prefix}_p|{page + 1}"))
+        points = points[start:start + TN_PAGE_SIZE]
+        text += f"\nTrang <b>{page + 1}/{total_pages}</b> ({total} điểm)"
+
+    buttons = [
+        [InlineKeyboardButton(
+            p.collection_name,
+            callback_data=item_cb_template.format(prefix=prefix, cp_id=p.id)
+        )]
+        for p in points
+    ]
+    if nav_row:
+        buttons.append(nav_row)
+    buttons.append([InlineKeyboardButton("Hủy", callback_data=f"{prefix}_x")])
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _tn_customer_list_view(
+    db, cp_id: str, page: int, prefix: str,
+    selected=None, action_label: str | None = None, only_active: bool = False,
+):
+    """
+    Màn hình danh sách Hộ dân của 1 Điểm Thu Mua, phân trang TN_PAGE_SIZE mỗi trang.
+    Luôn có nút Quay lại về danh sách Điểm Thu Mua ({prefix}_cps) và nút Hủy ({prefix}_x).
+
+    - `selected`: truyền một set mã hộ để bật chế độ chọn nhiều. Bấm vào 1 hộ là
+      bật/tắt chọn ({prefix}_t) thay vì mở luôn hộ đó ({prefix}_s).
+    - `action_label`: tên nút hành động ({prefix}_go), chỉ hiện khi đã chọn ít nhất 1 hộ.
+    - `only_active`: bỏ qua các hộ đã ở trạng thái DELETED/INACTIVE.
+    """
+    from app.models.business import Customers, CollectionPoint
+
+    cp = db.query(CollectionPoint).filter(CollectionPoint.id == cp_id).first()
+    if not cp:
+        return "⚠️ Không tìm thấy Điểm Thu Mua này.", None
+
+    multi_select = selected is not None
+
+    def tail_buttons():
+        rows = []
+        if multi_select and selected and action_label:
+            rows.append([InlineKeyboardButton(
+                f"✅ {action_label} ({len(selected)})", callback_data=f"{prefix}_go"
+            )])
+        rows.append([
+            InlineKeyboardButton("Quay lại", callback_data=f"{prefix}_cps"),
+            InlineKeyboardButton("Hủy", callback_data=f"{prefix}_x"),
+        ])
+        return rows
+
+    query = db.query(Customers).filter(Customers.collection_point_id == cp_id)
+    if only_active:
+        from sqlalchemy import or_ as _or
+        # NOT IN sẽ loại luôn row có status NULL, nên phải cho NULL đi cùng
+        query = query.filter(_or(
+            Customers.status.is_(None),
+            Customers.status.notin_(["DELETED", "INACTIVE"]),
+        ))
+    customers = query.order_by(Customers.hoursehold_id).all()
+
+    if not customers:
+        note = (
+            "⚠️ Không còn Hộ dân nào đang hoạt động ở điểm thu mua này."
+            if only_active else
+            "⚠️ Chưa có Hộ dân nào thuộc điểm thu mua này."
+        )
+        return (
+            f"<b>ĐIỂM THU MUA: {cp.collection_name}</b>\n\n{note}",
+            InlineKeyboardMarkup(tail_buttons())
+        )
+
+    total = len(customers)
+    total_pages = (total + TN_PAGE_SIZE - 1) // TN_PAGE_SIZE
+    page = max(0, min(page, total_pages - 1))
+    start = page * TN_PAGE_SIZE
+
+    buttons = []
+    for c in customers[start:start + TN_PAGE_SIZE]:
+        label = f"{c.hoursehold_id} - {c.fullname or '—'}"
+        if c.status == "DELETED":
+            label += " (đã xóa)"
+        if multi_select:
+            icon = "✅" if c.hoursehold_id in selected else "⬜"
+            buttons.append([InlineKeyboardButton(
+                f"{icon} {label}", callback_data=f"{prefix}_t|{c.hoursehold_id}"
+            )])
+        else:
+            buttons.append([InlineKeyboardButton(label, callback_data=f"{prefix}_s|{c.hoursehold_id}")])
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("Trước", callback_data=f"{prefix}_cp|{cp_id}|{page - 1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Sau", callback_data=f"{prefix}_cp|{cp_id}|{page + 1}"))
+    if nav_row:
+        buttons.append(nav_row)
+
+    buttons.extend(tail_buttons())
+
+    text = (
+        f"<b>ĐIỂM THU MUA: {cp.collection_name}</b>\n\n"
+        f"Vui lòng chọn Hộ dân — Trang <b>{page + 1}/{total_pages}</b> ({total} hộ):"
+    )
+    if multi_select:
+        text += f"\n\n<i>Nhấn vào tên để chọn/bỏ chọn, sau đó nhấn {action_label}.</i>"
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _tn_cc_customer_menu_view(customer):
+    """Màn hình thao tác cho 1 Hộ dân đã chọn."""
+    text = (
+        f"<b>HỘ DÂN: {customer.fullname or '—'}</b>\n"
+        f"Mã Hộ: <b>{customer.hoursehold_id}</b>\n\n"
+        f"Vui lòng chọn thao tác:"
+    )
+    hh = customer.hoursehold_id
+    markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Thông tin Khách hàng", callback_data=f"tn_cc_i|{hh}")],
+        [InlineKeyboardButton("Cập nhật Khách hàng", callback_data=f"tn_cc_u|{hh}")],
+        [InlineKeyboardButton("Xóa Khách hàng", callback_data=f"tn_cc_d|{hh}")],
+        [InlineKeyboardButton("Quay lại", callback_data=f"tn_cc_back|{hh}")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_cc_x")],
+    ])
+    return text, markup
+
+
+def _tn_cc_page_of_customer(db, customer) -> int:
+    """Tìm số trang đang chứa khách hàng này, để nút Quay lại về đúng trang đang xem."""
+    from app.models.business import Customers
+
+    if not customer.collection_point_id:
+        return 0
+    ids = [
+        row[0] for row in db.query(Customers.hoursehold_id).filter(
+            Customers.collection_point_id == customer.collection_point_id
+        ).order_by(Customers.hoursehold_id).all()
+    ]
+    try:
+        return ids.index(customer.hoursehold_id) // TN_PAGE_SIZE
+    except ValueError:
+        return 0
+
+
+async def _tn_screen_edit(callback_query, text: str, markup=None) -> None:
+    """Thay nội dung tin nhắn đang hiển thị bằng màn hình mới."""
+    try:
+        await callback_query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        # Bấm lại đúng nút của màn hình đang hiển thị -> Telegram trả MESSAGE_NOT_MODIFIED
+        if "MESSAGE_NOT_MODIFIED" not in str(e):
+            raise
+    try:
+        await callback_query.answer()
+    except Exception:
+        pass
+
+
+async def _tn_load_customer(callback_query, db, hoursehold_id: str):
+    """Lấy khách hàng theo mã hộ, báo lỗi qua alert nếu không còn tồn tại."""
+    from app.models.business import Customers
+
+    customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+    if not customer:
+        await callback_query.answer(f"⚠️ Không tìm thấy Hộ dân {hoursehold_id}.", show_alert=True)
+        return None
+    return customer
+
+
+@bot.on_callback_query(filters.regex(r"^tn_cc_x$"))
+async def tn_cc_cancel_callback(client, callback_query):
+    """Hủy toàn bộ luồng kiểm tra khách hàng."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_cc_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_cc_collection_points_callback(client, callback_query):
+    """Quay về danh sách Điểm Thu Mua."""
+    db = SessionLocal()
+    try:
+        text, markup = _tn_collection_point_view(db, "tn_cc", "KIỂM TRA KHÁCH HÀNG")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_cc_collection_points_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_cc_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_cc_customer_list_callback(client, callback_query):
+    """Danh sách Hộ dân của 1 Điểm Thu Mua (kèm phân trang Trước/Sau)."""
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_customer_list_view(db, cp_id, page, "tn_cc")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_cc_customer_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_cc_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_cc_customer_menu_callback(client, callback_query):
+    """Chọn 1 Hộ dân → hiện 3 nút thao tác."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+        text, markup = _tn_cc_customer_menu_view(customer)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_cc_customer_menu_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_cc_back\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_cc_back_to_list_callback(client, callback_query):
+    """Từ màn hình thao tác quay về đúng trang danh sách Hộ dân đang xem."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+        if not customer.collection_point_id:
+            text, markup = _tn_collection_point_view(db, "tn_cc", "KIỂM TRA KHÁCH HÀNG")
+        else:
+            page = _tn_cc_page_of_customer(db, customer)
+            text, markup = _tn_customer_list_view(db, str(customer.collection_point_id), page, "tn_cc")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_cc_back_to_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_cc_i\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_cc_customer_info_callback(client, callback_query):
+    """Nút Thông tin Khách hàng."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_cc_s|{hoursehold_id}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_cc_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_customer_info_text(db, customer), markup)
+    except Exception as e:
+        LogError(f"Error in tn_cc_customer_info_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_cc_u\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_cc_customer_update_callback(client, callback_query):
+    """Nút Cập nhật Khách hàng — hiện form điền sẵn để sao chép và gửi lại."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_cc_s|{hoursehold_id}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_cc_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_customer_update_form(customer), markup)
+        # Theo dõi để tự xóa form sau khi /tien_nga_update_customer chạy thành công
+        form_tracker.track(
+            callback_query.message.chat.id, "tien_nga_update_customer",
+            hoursehold_id, callback_query.message.id
+        )
+    except Exception as e:
+        LogError(f"Error in tn_cc_customer_update_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_cc_d\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_cc_customer_delete_confirm_callback(client, callback_query):
+    """Nút Xóa Khách hàng — hỏi xác nhận trước khi xóa."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        if customer.status in ("INACTIVE", "DELETED"):
+            await callback_query.answer(
+                f"ℹ️ Hộ dân {hoursehold_id} đã ở trạng thái khóa / xóa từ trước.", show_alert=True
+            )
+            return
+
+        text = (
+            f"<b>XÁC NHẬN XÓA KHÁCH HÀNG</b>\n\n"
+            f"<b>Mã Hộ:</b> {customer.hoursehold_id}\n"
+            f"<b>Tên KH:</b> {customer.fullname or '—'}\n\n"
+            f"<i>Khách hàng sẽ được chuyển sang trạng thái DELETED (ẩn khỏi hệ thống). "
+            f"Bạn có chắc chắn muốn xóa?</i>"
+        )
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Xác nhận", callback_data=f"tn_cc_dy|{hoursehold_id}"),
+            InlineKeyboardButton("Thoát", callback_data=f"tn_cc_s|{hoursehold_id}"),
+        ]])
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_cc_customer_delete_confirm_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_cc_dy\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_cc_customer_delete_confirmed_callback(client, callback_query):
+    """Xác nhận xóa — chuyển khách hàng sang trạng thái DELETED."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        if customer.status in ("INACTIVE", "DELETED"):
+            await callback_query.answer(
+                f"ℹ️ Hộ dân {hoursehold_id} đã ở trạng thái khóa / xóa từ trước.", show_alert=True
+            )
+            return
+
+        fullname = customer.fullname
+        customer.status = "DELETED"
+        db.commit()
+
+        LogInfo(
+            f"[TienNga] Soft deleted customer '{hoursehold_id}' by user {callback_query.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+        await _tn_screen_edit(
+            callback_query,
+            f"✅ <b>XÓA KHÁCH HÀNG THÀNH CÔNG</b>\n\n"
+            f"Mã Hộ: <b>{hoursehold_id}</b>\n"
+            f"Tên KH: {fullname or '—'}\n"
+            f"<i>Khách hàng này đã được ẩn (chuyển sang trạng thái DELETED).</i>",
+            None
+        )
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in tn_cc_customer_delete_confirmed_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi cập nhật database.", show_alert=True)
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
+# CẬP NHẬT KHÁCH HÀNG — luồng nút bấm
+# Điểm Thu Mua → Khách hàng (phân trang) → Form cập nhật
+# ══════════════════════════════════════════════════════════════
+
+@bot.on_callback_query(filters.regex(r"^tn_uc_x$"))
+async def tn_uc_cancel_callback(client, callback_query):
+    """Hủy luồng cập nhật khách hàng."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_uc_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_uc_collection_points_callback(client, callback_query):
+    """Quay về danh sách Điểm Thu Mua."""
+    db = SessionLocal()
+    try:
+        text, markup = _tn_collection_point_view(db, "tn_uc", "CẬP NHẬT KHÁCH HÀNG")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_uc_collection_points_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_uc_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_uc_customer_list_callback(client, callback_query):
+    """Danh sách Khách hàng của 1 Điểm Thu Mua (kèm phân trang Trước/Sau)."""
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_customer_list_view(db, cp_id, page, "tn_uc")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_uc_customer_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_uc_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_uc_customer_form_callback(client, callback_query):
+    """Chọn 1 Khách hàng → hiện form cập nhật điền sẵn để sao chép và gửi lại."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Hủy", callback_data="tn_uc_x")],
+        ])
+        await _tn_screen_edit(callback_query, _build_customer_update_form(customer), markup)
+        # Theo dõi để tự xóa form sau khi /tien_nga_update_customer chạy thành công
+        form_tracker.track(
+            callback_query.message.chat.id, "tien_nga_update_customer",
+            hoursehold_id, callback_query.message.id
+        )
+    except Exception as e:
+        LogError(f"Error in tn_uc_customer_form_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
+# XÓA KHÁCH HÀNG — luồng nút bấm
+# Điểm Thu Mua → Khách hàng (phân trang, chọn nhiều) → Xác nhận xóa
+# ══════════════════════════════════════════════════════════════
+
+# Lựa chọn đang mở của từng bảng chọn, key "{chat_id}:{message_id}".
+# message_id của Telegram chỉ duy nhất trong từng chat nên phải kèm chat_id.
+_TN_DC_SELECTIONS: dict[str, dict] = {}
+
+# Bảng chọn quá hạn thì coi như bỏ (menu cũng đã bị command_timeout tự xóa từ lâu)
+_TN_DC_STATE_TTL_SECONDS = 3600
+
+
+def _tn_dc_key(callback_query) -> str:
+    return f"{callback_query.message.chat.id}:{callback_query.message.id}"
+
+
+def _tn_dc_prune() -> None:
+    """Dọn các bảng chọn đã quá hạn để dict không phình theo thời gian chạy."""
+    now = datetime.now()
+    for key, state in list(_TN_DC_SELECTIONS.items()):
+        if (now - state["updated_at"]).total_seconds() > _TN_DC_STATE_TTL_SECONDS:
+            _TN_DC_SELECTIONS.pop(key, None)
+
+
+def _tn_dc_set_state(callback_query, cp_id: str, page: int, selected: set) -> None:
+    _tn_dc_prune()
+    _TN_DC_SELECTIONS[_tn_dc_key(callback_query)] = {
+        "cp_id": cp_id,
+        "page": page,
+        "selected": selected,
+        "updated_at": datetime.now(),
+    }
+
+
+async def _tn_dc_get_state(callback_query):
+    """Lấy bảng chọn đang mở; báo alert và trả None nếu phiên đã hết hạn."""
+    state = _TN_DC_SELECTIONS.get(_tn_dc_key(callback_query))
+    if not state:
+        await callback_query.answer(
+            "⚠️ Phiên chọn đã hết hạn. Vui lòng gõ lại lệnh /tien_nga_xoa_khach_hang.",
+            show_alert=True
+        )
+        return None
+    return state
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dc_x$"))
+async def tn_dc_cancel_callback(client, callback_query):
+    """Hủy luồng xóa khách hàng."""
+    _TN_DC_SELECTIONS.pop(_tn_dc_key(callback_query), None)
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dc_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dc_collection_points_callback(client, callback_query):
+    """Quay về danh sách Điểm Thu Mua (bỏ các hộ đang chọn)."""
+    _TN_DC_SELECTIONS.pop(_tn_dc_key(callback_query), None)
+    db = SessionLocal()
+    try:
+        text, markup = _tn_collection_point_view(db, "tn_dc", "XÓA KHÁCH HÀNG")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_dc_collection_points_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+async def _tn_dc_render_list(callback_query, cp_id: str, page: int, selected: set) -> None:
+    """Vẽ lại bảng chọn Hộ dân và lưu lại trạng thái đang chọn."""
+    db = SessionLocal()
+    try:
+        text, markup = _tn_customer_list_view(
+            db, cp_id, page, "tn_dc",
+            selected=selected, action_label="Xóa", only_active=True,
+        )
+        _tn_dc_set_state(callback_query, cp_id, page, selected)
+        await _tn_screen_edit(callback_query, text, markup)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dc_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dc_customer_list_callback(client, callback_query):
+    """Danh sách Khách hàng của 1 Điểm Thu Mua, cho chọn nhiều (kèm Trước/Sau)."""
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    try:
+        state = _TN_DC_SELECTIONS.get(_tn_dc_key(callback_query))
+        # Đổi điểm thu mua thì bỏ các hộ đã chọn; lật trang thì giữ nguyên
+        selected = state["selected"] if state and state["cp_id"] == cp_id else set()
+        await _tn_dc_render_list(callback_query, cp_id, page, selected)
+    except Exception as e:
+        LogError(f"Error in tn_dc_customer_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dc_t\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dc_toggle_callback(client, callback_query):
+    """Bật/tắt chọn 1 Hộ dân."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    try:
+        state = await _tn_dc_get_state(callback_query)
+        if not state:
+            return
+
+        selected = state["selected"]
+        if hoursehold_id in selected:
+            selected.discard(hoursehold_id)
+        else:
+            selected.add(hoursehold_id)
+
+        await _tn_dc_render_list(callback_query, state["cp_id"], state["page"], selected)
+    except Exception as e:
+        LogError(f"Error in tn_dc_toggle_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dc_go$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dc_confirm_callback(client, callback_query):
+    """Nút Xóa — hiện thông báo xác nhận kèm danh sách hộ đã chọn."""
+    db = SessionLocal()
+    try:
+        state = await _tn_dc_get_state(callback_query)
+        if not state:
+            return
+
+        selected = state["selected"]
+        if not selected:
+            await callback_query.answer("⚠️ Bạn chưa chọn Hộ dân nào.", show_alert=True)
+            return
+
+        from app.models.business import Customers
+
+        customers = db.query(Customers).filter(
+            Customers.hoursehold_id.in_(list(selected))
+        ).order_by(Customers.hoursehold_id).all()
+
+        if not customers:
+            await callback_query.answer("⚠️ Không tìm thấy Hộ dân đã chọn.", show_alert=True)
+            return
+
+        lines = "\n".join(
+            f"• <b>{c.hoursehold_id}</b> - {c.fullname or '—'}" for c in customers
+        )
+        text = (
+            f"<b>XÁC NHẬN XÓA KHÁCH HÀNG</b>\n\n"
+            f"Sẽ xóa <b>{len(customers)}</b> hộ dân sau:\n{lines}\n\n"
+            f"<i>Các hộ này sẽ chuyển sang trạng thái DELETED (ẩn khỏi hệ thống). "
+            f"Bạn có chắc chắn muốn xóa?</i>"
+        )
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Xác nhận", callback_data="tn_dc_ok"),
+            InlineKeyboardButton("Hủy", callback_data="tn_dc_x"),
+        ]])
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_dc_confirm_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dc_ok$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dc_delete_confirmed_callback(client, callback_query):
+    """Xác nhận xóa — chuyển toàn bộ hộ đã chọn sang trạng thái DELETED."""
+    db = SessionLocal()
+    try:
+        state = await _tn_dc_get_state(callback_query)
+        if not state:
+            return
+
+        selected = state["selected"]
+        if not selected:
+            await callback_query.answer("⚠️ Bạn chưa chọn Hộ dân nào.", show_alert=True)
+            return
+
+        from app.models.business import Customers
+
+        customers = db.query(Customers).filter(
+            Customers.hoursehold_id.in_(list(selected))
+        ).order_by(Customers.hoursehold_id).all()
+
+        deleted, skipped = [], []
+        for c in customers:
+            if c.status in ("DELETED", "INACTIVE"):
+                skipped.append(c)
+            else:
+                c.status = "DELETED"
+                deleted.append(c)
+        db.commit()
+
+        # Xóa xong thì phiên chọn kết thúc
+        _TN_DC_SELECTIONS.pop(_tn_dc_key(callback_query), None)
+
+        LogInfo(
+            f"[TienNga] Soft deleted {len(deleted)} customers "
+            f"({', '.join(c.hoursehold_id for c in deleted)}) by user {callback_query.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+
+        text = f"✅ <b>XÓA KHÁCH HÀNG THÀNH CÔNG</b>\n\nĐã xóa <b>{len(deleted)}</b> hộ dân:\n"
+        text += "\n".join(f"• <b>{c.hoursehold_id}</b> - {c.fullname or '—'}" for c in deleted) or "—"
+        if skipped:
+            text += (
+                f"\n\n<i>Bỏ qua {len(skipped)} hộ đã ở trạng thái khóa/xóa từ trước: "
+                f"{', '.join(c.hoursehold_id for c in skipped)}</i>"
+            )
+        text += "\n\n<i>Các hộ này đã được ẩn (chuyển sang trạng thái DELETED).</i>"
+
+        await _tn_screen_edit(callback_query, text, None)
+    except Exception as e:
+        db.rollback()
+        LogError(f"Error in tn_dc_delete_confirmed_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra khi cập nhật database.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_message(filters.command(["tien_nga_update_customer", "tien_nga_cap_nhat_khach_hang"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_customer|tien_nga_cap_nhat_khach_hang)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
+async def tien_nga_update_customer_handler(client, message: Message) -> None:
+    lines = message.text.strip().split("\n")
+
+    if len(lines) < 2:
+        args = lines[0].split()
+        # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+        if args and args[0].startswith("@"):
+            args = args[1:]
+
+        # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Khách hàng bằng nút bấm
+        if len(args) == 1:
+            db = SessionLocal()
+            try:
+                text, markup = _tn_collection_point_view(db, "tn_uc", "CẬP NHẬT KHÁCH HÀNG")
+                await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception as e:
+                LogError(f"Error listing collection points for update customer: {e}", LogType.SYSTEM_STATUS)
+                await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+            finally:
+                db.close()
+            return
+
+        if len(args) != 2:
+            await message.reply_text(
+                "⚠️ Cú pháp: <code>/tien_nga_update_customer [Mã Hộ]</code>\n\n"
+                "<i>Ví dụ: <code>/tien_nga_update_customer KH001</code></i>\n"
+                "<i>Hoặc gõ <code>/tien_nga_update_customer</code> để chọn từ danh sách.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        hoursehold_id = args[1]
+
+        from app.models.business import Customers
+
+        db = SessionLocal()
+        try:
+            customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+            if not customer:
+                await message.reply_text(f"⚠️ Không tìm thấy Khách hàng với mã hộ <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML)
+                return
+
+            form_msg = await message.reply_text(_build_customer_update_form(customer), parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "tien_nga_update_customer", hoursehold_id, form_msg.id)
         except Exception as e:
             LogError(f"Error fetching customer for update: {e}", LogType.SYSTEM_STATUS)
@@ -994,9 +2262,8 @@ STK Ngân Hàng: {customer.number_bank or ''}</pre>"""
     total_debt = parse_float_vn(data.get("Tổng Công Nợ (VNĐ)", data.get("Tổng Công Nợ", "0")))
     is_subsidized = parse_float_vn(data.get("Trợ Giá (VNĐ)", data.get("Trợ Giá", "0")))
 
-    from app.db.session import SessionLocal
     from app.models.business import Customers
-    
+
     db = SessionLocal()
     try:
         customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
@@ -1059,21 +2326,40 @@ STK Ngân Hàng: {customer.number_bank or ''}</pre>"""
 @require_project_name("Tiến Nga")
 @require_group_role("main", "member")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_customer_handler(client, message: Message) -> None:
     args = message.text.split()
+    # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+    if args and args[0].startswith("@"):
+        args = args[1:]
+
+    from app.db.session import SessionLocal
+    from app.models.business import Customers
+
+    # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Hộ dân bằng nút bấm
+    if len(args) == 1:
+        db = SessionLocal()
+        try:
+            text, markup = _tn_collection_point_view(db, "tn_cc", "KIỂM TRA KHÁCH HÀNG")
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error listing collection points for check customer: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
     if len(args) != 2:
         await message.reply_text(
             "⚠️ Cú pháp: <code>/tien_nga_check_customer [Mã Hộ]</code>\n\n"
-            "<i>Ví dụ: <code>/tien_nga_check_customer KH001</code></i>",
+            "<i>Ví dụ: <code>/tien_nga_check_customer KH001</code></i>\n"
+            "<i>Hoặc gõ <code>/tien_nga_check_customer</code> để chọn từ danh sách.</i>",
             parse_mode=ParseMode.HTML
         )
         return
-        
+
     hoursehold_id = args[1]
-    
-    from app.db.session import SessionLocal
-    from app.models.business import Customers, CollectionPoint
-    
+
     db = SessionLocal()
     try:
         customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
@@ -1081,29 +2367,7 @@ async def tien_nga_check_customer_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Không tìm thấy Khách hàng mã hộ <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML)
             return
 
-        cp_name = "Chưa rõ"
-        if customer.collection_point_id:
-            cp = db.query(CollectionPoint).filter(CollectionPoint.id == customer.collection_point_id).first()
-            if cp:
-                cp_name = cp.collection_name
-                
-        status_str = "Hoạt động" if customer.status == "ACTIVE" else ("Đã ẩn/xóa" if customer.status == "DELETED" else customer.status)
-        
-        await message.reply_text(
-            f"<b>THÔNG TIN KHÁCH HÀNG: {customer.fullname or '—'}</b>\n\n"
-            f"<b>Mã Hộ:</b> {customer.hoursehold_id}\n"
-            f"<b>Tên Khách Hàng:</b> {customer.fullname or '—'}\n"
-            f"<b>Điểm Thu Mua:</b> {cp_name}\n"
-            f"<b>SĐT:</b> {customer.number_phone or '—'}\n"
-            f"<b>Địa Chỉ:</b> {customer.address or '—'}\n"
-            f"<b>Nguyên Liệu:</b> {customer.ingredient or '—'}\n"
-            f"<b>Số Tiền Nợ:</b> <code>{fmt_vn(customer.amount_of_debt)}</code>\n"
-            f"<b>Ứng Cuối Mùa:</b> <code>{fmt_vn(customer.cash_advance)}</code>\n"
-            f"<b>Tổng Công Nợ:</b> <code>{fmt_vn(customer.total_debt)}</code>\n"
-            f"<b>Trạng Thái:</b> {status_str}\n"
-            f"<b>Tài khoản TG:</b> {customer.username or '—'}",
-            parse_mode=ParseMode.HTML
-        )
+        await message.reply_text(_build_customer_info_text(db, customer), parse_mode=ParseMode.HTML)
     except Exception as e:
         LogError(f"Error checking customer: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Lỗi hệ thống khi tìm kiếm khách hàng.", parse_mode=ParseMode.HTML)
@@ -1115,21 +2379,39 @@ async def tien_nga_check_customer_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_delete_customer_handler(client, message: Message) -> None:
     args = message.text.split()
+    # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+    if args and args[0].startswith("@"):
+        args = args[1:]
+
+    from app.models.business import Customers
+
+    # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Khách hàng bằng nút bấm
+    if len(args) == 1:
+        db = SessionLocal()
+        try:
+            text, markup = _tn_collection_point_view(db, "tn_dc", "XÓA KHÁCH HÀNG")
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error listing collection points for delete customer: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
     if len(args) != 2:
         await message.reply_text(
             "⚠️ Cú pháp: <code>/tien_nga_delete_customer [Mã Hộ]</code>\n\n"
-            "<i>Ví dụ: <code>/tien_nga_delete_customer KH001</code></i>",
+            "<i>Ví dụ: <code>/tien_nga_delete_customer KH001</code></i>\n"
+            "<i>Hoặc gõ <code>/tien_nga_delete_customer</code> để chọn từ danh sách.</i>",
             parse_mode=ParseMode.HTML
         )
         return
-        
+
     hoursehold_id = args[1]
-    
-    from app.db.session import SessionLocal
-    from app.models.business import Customers
-    
+
     db = SessionLocal()
     try:
         customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
@@ -1165,6 +2447,7 @@ async def tien_nga_delete_customer_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_employee_handler(client, message: Message) -> None:
     db = SessionLocal()
     try:
@@ -1295,6 +2578,7 @@ async def tien_nga_list_employee_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_customers_handler(client, message: Message) -> None:
     args = message.text.strip().split()
 
@@ -1505,30 +2789,156 @@ def parse_float_vn(val_str: str) -> float:
     except ValueError:
         return 0.0
 
+# ══════════════════════════════════════════════════════════════
+# THU MUA HÀNG NGÀY — luồng nút bấm
+# Điểm Thu Mua → Khách hàng (phân trang) → Form nhập mua mủ
+# ══════════════════════════════════════════════════════════════
+
+def _build_daily_purchase_form(db, customer) -> str:
+    """Form nhập mua mủ ngày, điền sẵn thông tin của hộ dân."""
+    from app.models.business import CollectionPoint
+
+    cp_name = ""
+    cp_id_str = ""
+    if customer.collection_point_id:
+        cp = db.query(CollectionPoint).filter(CollectionPoint.id == customer.collection_point_id).first()
+        if cp:
+            cp_name = cp.collection_name
+            cp_id_str = str(cp.id)
+
+    today_str = datetime.now().strftime("%d/%m/%Y")
+    tro_gia = customer.is_subsidized or 0
+
+    return f"""<b>📋 FORM NHẬP MUA MỦ NGÀY</b>
+Khách hàng: <b>{customer.fullname}</b> (<code>{customer.hoursehold_id}</code>)
+Xưởng: <b>{cp_name or 'Chưa có'}</b>
+
+Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
+
+<pre>/tien_nga_daily_purchase
+Mã Hộ: {customer.hoursehold_id}
+Điểm Thu Mua: {cp_id_str}
+Ngày: {today_str}
+Trợ Giá (VNĐ): {tro_gia}
+Khối Lượng (Kg):
+Trừ Bì (Kg): 0
+Số Độ (%):
+Đơn Giá (VNĐ):
+Có Lưu Sổ: yes</pre>
+
+<i>Ghi chú: Số tiền ví dụ 424.080 hoặc 5.898.728,5
+Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dp_x$"))
+async def tn_dp_cancel_callback(client, callback_query):
+    """Hủy luồng thu mua hàng ngày."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dp_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dp_collection_points_callback(client, callback_query):
+    """Quay về danh sách Điểm Thu Mua."""
+    db = SessionLocal()
+    try:
+        text, markup = _tn_collection_point_view(db, "tn_dp", "THU MUA HÀNG NGÀY")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_dp_collection_points_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dp_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dp_customer_list_callback(client, callback_query):
+    """Danh sách Khách hàng của 1 Điểm Thu Mua (kèm phân trang Trước/Sau)."""
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_customer_list_view(
+            db, cp_id, page, "tn_dp", only_active=True
+        )
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_dp_customer_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_dp_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_dp_form_callback(client, callback_query):
+    """Chọn 1 Khách hàng → hiện form nhập mua mủ của hộ đó."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("Hủy", callback_data="tn_dp_x")]])
+        await _tn_screen_edit(callback_query, _build_daily_purchase_form(db, customer), markup)
+        # Theo dõi để tự xóa form sau khi /tien_nga_daily_purchase chạy thành công
+        form_tracker.track(
+            callback_query.message.chat.id, "tien_nga_daily_purchase",
+            hoursehold_id, callback_query.message.id
+        )
+    except Exception as e:
+        LogError(f"Error in tn_dp_form_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
 @bot.on_message(filters.command(["tien_nga_daily_purchase", "tien_nga_thu_mua_hang_ngay"]) | filters.regex(r"^@\w+\s+/(tien_nga_daily_purchase|tien_nga_thu_mua_hang_ngay)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_daily_purchase_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
-    
+
     # Nếu chỉ có 1 dòng (lệnh + có thể mã hộ)
     if len(lines) < 2:
         args = lines[0].split()
+        # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+        if args and args[0].startswith("@"):
+            args = args[1:]
+
+        from app.models.business import Customers
+
+        # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Khách hàng bằng nút bấm
         if len(args) < 2:
-            await message.reply_text(
-                "⚠️ Cú pháp: <code>/tien_nga_daily_purchase [Mã Hộ]</code>\n\n"
-                "<i>Ví dụ: <code>/tien_nga_daily_purchase X051</code></i>",
-                parse_mode=ParseMode.HTML
-            )
+            db = SessionLocal()
+            try:
+                text, markup = _tn_collection_point_view(db, "tn_dp", "THU MUA HÀNG NGÀY")
+                await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception as e:
+                LogError(f"Error listing collection points for daily purchase: {e}", LogType.SYSTEM_STATUS)
+                await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+            finally:
+                db.close()
             return
-            
+
         hoursehold_id = args[1].upper()
-        
-        from app.db.session import SessionLocal
-        from app.models.business import Customers, CollectionPoint
-        
+
         db = SessionLocal()
         try:
             customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
@@ -1538,38 +2948,10 @@ async def tien_nga_daily_purchase_handler(client, message: Message) -> None:
                     parse_mode=ParseMode.HTML
                 )
                 return
-            
-            cp_name = ""
-            cp_id_str = ""
-            if customer.collection_point_id:
-                cp = db.query(CollectionPoint).filter(CollectionPoint.id == customer.collection_point_id).first()
-                if cp:
-                    cp_name = cp.collection_name
-                    cp_id_str = str(cp.id)
-            
-            today_str = datetime.now().strftime("%d/%m/%Y")
-            tro_gia = customer.is_subsidized or 0
-            
-            form_template = f"""<b>📋 FORM NHẬP MUA MỦ NGÀY</b>
-Khách hàng: <b>{customer.fullname}</b> (<code>{hoursehold_id}</code>)
-Xưởng: <b>{cp_name or 'Chưa có'}</b>
 
-Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:
-
-<pre>/tien_nga_daily_purchase
-Mã Hộ: {hoursehold_id}
-Điểm Thu Mua: {cp_id_str}
-Ngày: {today_str}
-Trợ Giá (VNĐ): {tro_gia}
-Khối Lượng (Kg): 
-Trừ Bì (Kg): 0
-Số Độ (%): 
-Đơn Giá (VNĐ): 
-Có Lưu Sổ: yes</pre>
-
-<i>Ghi chú: Số tiền ví dụ 424.080 hoặc 5.898.728,5
-Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
-            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
+            form_msg = await message.reply_text(
+                _build_daily_purchase_form(db, customer), parse_mode=ParseMode.HTML
+            )
             form_tracker.track(message.chat.id, "tien_nga_daily_purchase", hoursehold_id, form_msg.id)
         except Exception as e:
             LogError(f"Error fetching customer for daily purchase: {e}", LogType.SYSTEM_STATUS)
@@ -1641,10 +3023,9 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
         saved_amount = 0
         paid_amount = total_amount
 
-    from app.db.session import SessionLocal
     from app.models.business import DailyPurchases, Customers, CollectionPoint
     import uuid as uuid_lib
-    
+
     db = SessionLocal()
     try:
         # Verify customer exists
@@ -1753,6 +3134,7 @@ Có Lưu Sổ: yes (lưu sổ) hoặc no (thanh toán)</i>"""
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_losses_handler(client, message: Message) -> None:
     from app.models.business import LossControls, PartnerBusinesses
     from app.models.inventory import ProductTransaction
@@ -2600,44 +3982,217 @@ async def control_losses_overwrite_callback(client, callback_query):
         db.close()
 
 
+# ══════════════════════════════════════════════════════════════
+# BÁO CÁO / HÓA ĐƠN THEO HỘ DÂN — luồng nút bấm dùng chung
+# Điểm Thu Mua → Khách hàng (phân trang) → Chọn khoảng thời gian
+#
+# 3 lệnh dùng chung phần duyệt, chỉ khác tiêu đề và prefix callback chọn thời gian:
+#   tn_rp → rpt_tm  Báo cáo thu mua
+#   tn_rl → rpt_ls  Hóa đơn lưu sổ
+#   tn_rt → rpt_tt  Hóa đơn đã thanh toán
+# ══════════════════════════════════════════════════════════════
+
+def _build_report_period_view(cb_prefix: str, title: str, hoursehold_id: str, customer_name: str = ""):
+    """Màn hình chọn khoảng thời gian cho báo cáo/hóa đơn của 1 hộ dân."""
+    buttons = [
+        [InlineKeyboardButton("Hôm nay", callback_data=f"{cb_prefix}|{hoursehold_id}|today"),
+         InlineKeyboardButton("Hôm qua", callback_data=f"{cb_prefix}|{hoursehold_id}|yesterday")],
+        [InlineKeyboardButton("Tuần này", callback_data=f"{cb_prefix}|{hoursehold_id}|week"),
+         InlineKeyboardButton("Tháng này", callback_data=f"{cb_prefix}|{hoursehold_id}|month")],
+        [InlineKeyboardButton("Năm này", callback_data=f"{cb_prefix}|{hoursehold_id}|year")],
+        [InlineKeyboardButton("Khác", callback_data=f"{cb_prefix}|{hoursehold_id}|custom")],
+        [InlineKeyboardButton("Hủy", callback_data=f"{cb_prefix}_cancel")],
+    ]
+    name_line = f"Khách hàng: <b>{customer_name}</b>\n" if customer_name else ""
+    text = (
+        f"<b>{title}</b>\n"
+        f"{name_line}"
+        f"Mã hộ: <b>{hoursehold_id}</b>\n\n"
+        f"Chọn khoảng thời gian:"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+async def _tn_report_collection_points_screen(callback_query, browse_prefix: str, title: str):
+    """Vẽ màn danh sách Điểm Thu Mua cho một luồng báo cáo."""
+    db = SessionLocal()
+    try:
+        text, markup = _tn_collection_point_view(db, browse_prefix, title)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in {browse_prefix} collection points screen: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+async def _tn_report_customers_screen(callback_query, browse_prefix: str):
+    """Vẽ màn danh sách Khách hàng (phân trang) cho một luồng báo cáo."""
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_customer_list_view(db, cp_id, page, browse_prefix)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in {browse_prefix} customer list screen: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+async def _tn_report_period_screen(callback_query, browse_prefix: str, cb_prefix: str, title: str):
+    """Chọn 1 Khách hàng → chuyển sang màn chọn khoảng thời gian."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        text, markup = _build_report_period_view(cb_prefix, title, hoursehold_id, customer.fullname or "")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in {browse_prefix} period screen: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# --- Báo cáo thu mua (tn_rp → rpt_tm) ---
+
+@bot.on_callback_query(filters.regex(r"^tn_rp_x$"))
+async def tn_rp_cancel_callback(client, callback_query):
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_rp_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_rp_collection_points_callback(client, callback_query):
+    await _tn_report_collection_points_screen(callback_query, "tn_rp", "BÁO CÁO THU MUA")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_rp_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_rp_customer_list_callback(client, callback_query):
+    await _tn_report_customers_screen(callback_query, "tn_rp")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_rp_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_rp_period_menu_callback(client, callback_query):
+    await _tn_report_period_screen(callback_query, "tn_rp", "rpt_tm", "BÁO CÁO THU MUA")
+
+
+# --- Hóa đơn lưu sổ (tn_rl → rpt_ls) ---
+
+@bot.on_callback_query(filters.regex(r"^tn_rl_x$"))
+async def tn_rl_cancel_callback(client, callback_query):
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_rl_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_rl_collection_points_callback(client, callback_query):
+    await _tn_report_collection_points_screen(callback_query, "tn_rl", "HÓA ĐƠN LƯU SỔ")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_rl_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_rl_customer_list_callback(client, callback_query):
+    await _tn_report_customers_screen(callback_query, "tn_rl")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_rl_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_rl_period_menu_callback(client, callback_query):
+    await _tn_report_period_screen(callback_query, "tn_rl", "rpt_ls", "HÓA ĐƠN LƯU SỔ")
+
+
+# --- Hóa đơn đã thanh toán (tn_rt → rpt_tt) ---
+
+@bot.on_callback_query(filters.regex(r"^tn_rt_x$"))
+async def tn_rt_cancel_callback(client, callback_query):
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_rt_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_rt_collection_points_callback(client, callback_query):
+    await _tn_report_collection_points_screen(callback_query, "tn_rt", "HÓA ĐƠN ĐÃ THANH TOÁN")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_rt_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_rt_customer_list_callback(client, callback_query):
+    await _tn_report_customers_screen(callback_query, "tn_rt")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_rt_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main", "member")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+async def tn_rt_period_menu_callback(client, callback_query):
+    await _tn_report_period_screen(callback_query, "tn_rt", "rpt_tt", "HÓA ĐƠN ĐÃ THANH TOÁN")
+
+
 @bot.on_message(filters.command(["tien_nga_export_daily_purchase", "tien_nga_xuat_bao_cao_thu_mua"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_daily_purchase|tien_nga_xuat_bao_cao_thu_mua)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Tiến Nga")
 @require_group_role("main", "member")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_daily_purchase_handler(client, message: Message) -> None:
     args = message.text.strip().split()
+    # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+    if args and args[0].startswith("@"):
+        args = args[1:]
 
-    # Validate cú pháp - cần ít nhất mã hộ
+    # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Khách hàng bằng nút bấm
     if len(args) < 2:
-        await message.reply_text(
-            "⚠️ <b>Cú pháp:</b>\n"
-            "<code>/tien_nga_xuat_bao_cao_thu_mua [Mã Hộ]</code>\n\n"
-            "<i>Ví dụ:\n"
-            "<code>/tien_nga_xuat_bao_cao_thu_mua X001</code></i>",
-            parse_mode=ParseMode.HTML
-        )
+        db = SessionLocal()
+        try:
+            text, markup = _tn_collection_point_view(db, "tn_rp", "BÁO CÁO THU MUA")
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error listing collection points for purchase report: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
         return
 
     # Nếu chỉ có mã hộ (không có ngày) -> hiển thị nút chọn thời gian
     if len(args) == 2:
         hoursehold_id = args[1].upper()
-        buttons = [
-            [InlineKeyboardButton("Hôm nay", callback_data=f"rpt_tm|{hoursehold_id}|today"),
-             InlineKeyboardButton("Hôm qua", callback_data=f"rpt_tm|{hoursehold_id}|yesterday")],
-            [InlineKeyboardButton("Tuần này", callback_data=f"rpt_tm|{hoursehold_id}|week"),
-             InlineKeyboardButton("Tháng này", callback_data=f"rpt_tm|{hoursehold_id}|month")],
-            [InlineKeyboardButton("Năm này", callback_data=f"rpt_tm|{hoursehold_id}|year")],
-            [InlineKeyboardButton("Khác", callback_data=f"rpt_tm|{hoursehold_id}|custom")],
-            [InlineKeyboardButton("Hủy", callback_data="rpt_tm_cancel")],
-        ]
-        await message.reply_text(
-            f"<b>BÁO CÁO THU MUA</b>\n"
-            f"Mã hộ: <b>{hoursehold_id}</b>\n\n"
-            f"Chọn khoảng thời gian:",
-            reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode=ParseMode.HTML
-        )
+        text, markup = _build_report_period_view("rpt_tm", "BÁO CÁO THU MUA", hoursehold_id)
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
         return
 
     hoursehold_id = args[1].upper()
@@ -2812,39 +4367,31 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
 @require_project_name("Tiến Nga")
 @require_group_role("main", "member")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_saved_bill_handler(client, message: Message) -> None:
     args = message.text.strip().split()
+    # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+    if args and args[0].startswith("@"):
+        args = args[1:]
 
-    # Validate cú pháp - cần ít nhất mã hộ
+    # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Khách hàng bằng nút bấm
     if len(args) < 2:
-        await message.reply_text(
-            "⚠️ <b>Cú pháp:</b>\n"
-            "<code>/tien_nga_xuat_hoa_don_luu_so [Mã Hộ]</code>\n\n"
-            "<i>Ví dụ:\n"
-            "<code>/tien_nga_xuat_hoa_don_luu_so X001</code></i>",
-            parse_mode=ParseMode.HTML
-        )
+        db = SessionLocal()
+        try:
+            text, markup = _tn_collection_point_view(db, "tn_rl", "HÓA ĐƠN LƯU SỔ")
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error listing collection points for saved bill: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
         return
 
     # Nếu chỉ có mã hộ (không có ngày) -> hiển thị nút chọn thời gian
     if len(args) == 2:
         hoursehold_id = args[1].upper()
-        buttons = [
-            [InlineKeyboardButton("Hôm nay", callback_data=f"rpt_ls|{hoursehold_id}|today"),
-             InlineKeyboardButton("Hôm qua", callback_data=f"rpt_ls|{hoursehold_id}|yesterday")],
-            [InlineKeyboardButton("Tuần này", callback_data=f"rpt_ls|{hoursehold_id}|week"),
-             InlineKeyboardButton("Tháng này", callback_data=f"rpt_ls|{hoursehold_id}|month")],
-            [InlineKeyboardButton("Năm này", callback_data=f"rpt_ls|{hoursehold_id}|year")],
-            [InlineKeyboardButton("Khác", callback_data=f"rpt_ls|{hoursehold_id}|custom")],
-            [InlineKeyboardButton("Hủy", callback_data="rpt_ls_cancel")],
-        ]
-        await message.reply_text(
-            f"<b>HÓA ĐƠN LƯU SỔ</b>\n"
-            f"Mã hộ: <b>{hoursehold_id}</b>\n\n"
-            f"Chọn khoảng thời gian:",
-            reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode=ParseMode.HTML
-        )
+        text, markup = _build_report_period_view("rpt_ls", "HÓA ĐƠN LƯU SỔ", hoursehold_id)
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
         return
 
     hoursehold_id = args[1].upper()
@@ -3021,39 +4568,31 @@ async def tien_nga_export_saved_bill_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main", "member")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER, CustomTitle.MEMBER_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_export_paid_bill_handler(client, message: Message) -> None:
     args = message.text.strip().split()
+    # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+    if args and args[0].startswith("@"):
+        args = args[1:]
 
-    # Validate cú pháp - cần ít nhất mã hộ
+    # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Khách hàng bằng nút bấm
     if len(args) < 2:
-        await message.reply_text(
-            "⚠️ <b>Cú pháp:</b>\n"
-            "<code>/tien_nga_xuat_hoa_don_da_tt [Mã Hộ]</code>\n\n"
-            "<i>Ví dụ:\n"
-            "<code>/tien_nga_xuat_hoa_don_da_tt X001</code></i>",
-            parse_mode=ParseMode.HTML
-        )
+        db = SessionLocal()
+        try:
+            text, markup = _tn_collection_point_view(db, "tn_rt", "HÓA ĐƠN ĐÃ THANH TOÁN")
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error listing collection points for paid bill: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
         return
 
     # Nếu chỉ có mã hộ (không có ngày) -> hiển thị nút chọn thời gian
     if len(args) == 2:
         hoursehold_id = args[1].upper()
-        buttons = [
-            [InlineKeyboardButton("Hôm nay", callback_data=f"rpt_tt|{hoursehold_id}|today"),
-             InlineKeyboardButton("Hôm qua", callback_data=f"rpt_tt|{hoursehold_id}|yesterday")],
-            [InlineKeyboardButton("Tuần này", callback_data=f"rpt_tt|{hoursehold_id}|week"),
-             InlineKeyboardButton("Tháng này", callback_data=f"rpt_tt|{hoursehold_id}|month")],
-            [InlineKeyboardButton("Năm này", callback_data=f"rpt_tt|{hoursehold_id}|year")],
-            [InlineKeyboardButton("Khác", callback_data=f"rpt_tt|{hoursehold_id}|custom")],
-            [InlineKeyboardButton("Hủy", callback_data="rpt_tt_cancel")],
-        ]
-        await message.reply_text(
-            f"<b>HÓA ĐƠN ĐÃ THANH TOÁN</b>\n"
-            f"Mã hộ: <b>{hoursehold_id}</b>\n\n"
-            f"Chọn khoảng thời gian:",
-            reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode=ParseMode.HTML
-        )
+        text, markup = _build_report_period_view("rpt_tt", "HÓA ĐƠN ĐÃ THANH TOÁN", hoursehold_id)
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
         return
 
     hoursehold_id = args[1].upper()
@@ -4214,6 +5753,252 @@ async def tien_nga_export_callback(client, callback_query: CallbackQuery):
         await callback_query.answer("🚀 Nhánh module này sẽ được phát triển tiếp sau nhé!", show_alert=True)
 
 ### Report paid amount
+# ══════════════════════════════════════════════════════════════
+# BÁO CÁO THEO HỘ DÂN — nhánh "Theo Hộ dân" của báo cáo đã TT / lưu sổ
+# Khoảng thời gian đã chọn ở bước trước → Điểm Thu Mua → Khách hàng → chạy báo cáo
+#
+# Khoảng thời gian không nhét vào callback_data được (UUID xưởng + trang đã gần
+# hết 64 byte), nên giữ trong bộ nhớ theo từng tin nhắn menu.
+# ══════════════════════════════════════════════════════════════
+
+_TN_HH_REPORT_CTX: dict[str, dict] = {}
+_TN_HH_REPORT_TTL_SECONDS = 3600
+
+
+def _tn_hh_ctx_key(callback_query) -> str:
+    return f"{callback_query.message.chat.id}:{callback_query.message.id}"
+
+
+def _tn_hh_ctx_set(callback_query, time_code: str) -> None:
+    now = datetime.now()
+    for key, ctx in list(_TN_HH_REPORT_CTX.items()):
+        if (now - ctx["updated_at"]).total_seconds() > _TN_HH_REPORT_TTL_SECONDS:
+            _TN_HH_REPORT_CTX.pop(key, None)
+    _TN_HH_REPORT_CTX[_tn_hh_ctx_key(callback_query)] = {
+        "time_code": time_code,
+        "updated_at": now,
+    }
+
+
+async def _tn_hh_ctx_get(callback_query, command_hint: str):
+    """Lấy khoảng thời gian đang chọn; báo alert và trả None nếu phiên đã hết hạn."""
+    ctx = _TN_HH_REPORT_CTX.get(_tn_hh_ctx_key(callback_query))
+    if not ctx:
+        await callback_query.answer(
+            f"⚠️ Phiên chọn đã hết hạn. Vui lòng gõ lại lệnh {command_hint}.",
+            show_alert=True
+        )
+        return None
+    return ctx["time_code"]
+
+
+def _build_household_amount_report(db, kind: str, hh_id: str, start, end) -> str:
+    """
+    Thống kê thu mua của 1 hộ dân trong khoảng ngày.
+    `kind` = "paid" (đã thanh toán) hoặc "saved" (lưu sổ) — chỉ khác tiêu đề và thứ tự dòng.
+    """
+    from app.models.business import DailyPurchases, Customers, CollectionPoint
+    from sqlalchemy import func
+
+    customer = db.query(Customers).filter(Customers.hoursehold_id == hh_id).first()
+    cust_name = customer.fullname if customer else "Không rõ"
+    cp_name = ""
+    if customer and customer.collection_point_id:
+        cp = db.query(CollectionPoint).filter(CollectionPoint.id == customer.collection_point_id).first()
+        cp_name = cp.collection_name if cp else ""
+
+    stats = db.query(
+        func.sum(DailyPurchases.paid_amount).label("paid"),
+        func.sum(DailyPurchases.total_amount).label("total"),
+        func.sum(DailyPurchases.saved_amount).label("saved"),
+        func.sum(DailyPurchases.advance_amount).label("advance"),
+        func.sum(DailyPurchases.actual_weight).label("weight"),
+        func.count(DailyPurchases.id).label("cnt")
+    ).filter(
+        DailyPurchases.hoursehold_id == hh_id,
+        DailyPurchases.day >= start,
+        DailyPurchases.day <= end
+    ).first()
+
+    paid = stats.paid or 0
+    total = stats.total or 0
+    saved = stats.saved or 0
+    advance = stats.advance or 0
+    weight = stats.weight or 0
+    cnt = stats.cnt or 0
+
+    title = "THỐNG KÊ ĐÃ THANH TOÁN - HỘ DÂN" if kind == "paid" else "THỐNG KÊ LƯU SỔ - HỘ DÂN"
+    period = f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
+
+    if cnt == 0:
+        return (
+            f"<b>{title}</b>\n"
+            f"🗓 <b>{period}</b>\n\n"
+            f"<b>Mã Hộ:</b> <code>{hh_id}</code> | {cust_name}\n\n"
+            f"<i>Không có dữ liệu mua mủ trong khoảng thời gian này.</i>"
+        )
+
+    # Chỉ số được nhấn mạnh đứng trước, tùy loại báo cáo
+    if kind == "paid":
+        money_lines = (
+            f"<b>Đã thanh toán:</b> <code>{fmt_vn(paid)}</code>\n"
+            f"<b>Lưu sổ:</b> <code>{fmt_vn(saved)}</code>\n"
+        )
+    else:
+        money_lines = (
+            f"<b>Lưu sổ:</b> <code>{fmt_vn(saved)}</code>\n"
+            f"<b>Đã thanh toán:</b> <code>{fmt_vn(paid)}</code>\n"
+        )
+
+    return (
+        f"<b>{title}</b>\n"
+        f"🗓 <b>{period}</b>\n\n"
+        f"<b>Mã Hộ:</b> <code>{hh_id}</code>\n"
+        f"<b>Tên KH:</b> {cust_name}\n"
+        f"<b>Xưởng:</b> {cp_name or 'N/A'}\n"
+        f"{'━' * 15}\n"
+        f"<b>Số lượt mua:</b> <code>{cnt}</code>\n"
+        f"<b>Tổng KL thực tế:</b> <code>{weight:,.1f} kg</code>\n"
+        f"<b>Tổng thành tiền:</b> <code>{fmt_vn(total)}</code>\n"
+        f"{money_lines}"
+        f"<b>Tạm ứng:</b> <code>{fmt_vn(advance)}</code>\n"
+        f"{'━' * 15}\n"
+        f"<b>Còn lại:</b> <code>{fmt_vn(total - paid - saved - advance)}</code>"
+    )
+
+
+def _tn_parse_report_time_code(time_code: str):
+    """Quy đổi mã khoảng thời gian của báo cáo (0d/7d/.../py/c_ddmmyy_ddmmyy) → (start, end, nhãn)."""
+    today = datetime.now().date()
+    start_date = end_date = today
+    label = "Hôm nay"
+
+    presets = {
+        "0d": (0, "Hôm nay"),
+        "7d": (7, "7 ngày gần nhất"),
+        "14d": (14, "14 ngày gần nhất"),
+        "21d": (21, "21 ngày gần nhất"),
+        "1m": (30, "1 tháng gần nhất"),
+        "1q": (90, "1 quý gần nhất"),
+        "2q": (180, "2 quý gần nhất"),
+        "1y": (365, "1 năm gần nhất"),
+    }
+    if time_code in presets:
+        days, label = presets[time_code]
+        start_date = today - timedelta(days=days)
+    elif time_code == "py":
+        last_year = today.year - 1
+        start_date = datetime(last_year, 1, 1).date()
+        end_date = datetime(last_year, 12, 31).date()
+        label = f"Năm trước ({last_year})"
+    elif time_code.startswith("c_"):
+        parts = time_code.split("_")
+        if len(parts) == 3:
+            try:
+                start_date = datetime.strptime(parts[1], "%d%m%y").date()
+                end_date = datetime.strptime(parts[2], "%d%m%y").date()
+                label = f"Tùy chọn ({start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})"
+            except Exception:
+                pass
+    return start_date, end_date, label
+
+
+async def _tn_hh_report_customer_screen(callback_query, browse_prefix: str, kind: str, command_hint: str):
+    """Chọn 1 Khách hàng → chạy báo cáo theo hộ dân với khoảng thời gian đang giữ trong ctx."""
+    hh_id = callback_query.matches[0].group(1)
+
+    time_code = await _tn_hh_ctx_get(callback_query, command_hint)
+    if time_code is None:
+        return
+
+    start_date, end_date, _ = _tn_parse_report_time_code(time_code)
+
+    db = SessionLocal()
+    try:
+        report = _build_household_amount_report(db, kind, hh_id, start_date, end_date)
+        await _tn_screen_edit(callback_query, report, None)
+        _TN_HH_REPORT_CTX.pop(_tn_hh_ctx_key(callback_query), None)
+    except Exception as e:
+        LogError(f"Error in {browse_prefix} household report: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+    finally:
+        db.close()
+
+
+# --- Nhánh Theo Hộ dân của Báo cáo đã thanh toán (tn_pah) ---
+
+@bot.on_callback_query(filters.regex(r"^tn_pah_x$"))
+async def tn_pah_cancel_callback(client, callback_query):
+    _TN_HH_REPORT_CTX.pop(_tn_hh_ctx_key(callback_query), None)
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_pah_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_pah_collection_points_callback(client, callback_query):
+    await _tn_report_collection_points_screen(callback_query, "tn_pah", "THỐNG KÊ ĐÃ THANH TOÁN")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_pah_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_pah_customer_list_callback(client, callback_query):
+    await _tn_report_customers_screen(callback_query, "tn_pah")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_pah_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_pah_report_callback(client, callback_query):
+    await _tn_hh_report_customer_screen(
+        callback_query, "tn_pah", "paid", "/tien_nga_bao_cao_da_thanh_toan"
+    )
+
+
+# --- Nhánh Theo Hộ dân của Báo cáo lưu sổ (tn_sah) ---
+
+@bot.on_callback_query(filters.regex(r"^tn_sah_x$"))
+async def tn_sah_cancel_callback(client, callback_query):
+    _TN_HH_REPORT_CTX.pop(_tn_hh_ctx_key(callback_query), None)
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_sah_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_sah_collection_points_callback(client, callback_query):
+    await _tn_report_collection_points_screen(callback_query, "tn_sah", "THỐNG KÊ LƯU SỔ")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_sah_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_sah_customer_list_callback(client, callback_query):
+    await _tn_report_customers_screen(callback_query, "tn_sah")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_sah_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_sah_report_callback(client, callback_query):
+    await _tn_hh_report_customer_screen(
+        callback_query, "tn_sah", "saved", "/tien_nga_bao_cao_luu_so"
+    )
+
+
 @bot.on_message(filters.command(["tien_nga_paid_amount_report", "tien_nga_bao_cao_da_thanh_toan"]) | filters.regex(r"^@\w+\s+/(tien_nga_paid_amount_report|tien_nga_bao_cao_da_thanh_toan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -4319,6 +6104,7 @@ async def tien_nga_paid_amount_report_handler(client, message: Message) -> None:
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Tất cả (Tổng hợp)", callback_data=f"tn_pa_all_{time_preset}")],
             [InlineKeyboardButton("Từng Xưởng (Chi tiết)", callback_data=f"tn_pa_sel_{time_preset}")],
+            [InlineKeyboardButton("Theo Hộ dân", callback_data=f"tn_pa_hh_{time_preset}")],
             [InlineKeyboardButton("Hủy", callback_data="tn_pa_cancel")]
         ])
         await message.reply_text(
@@ -4359,12 +6145,19 @@ async def tien_nga_paid_amount_callback(client, callback_query: CallbackQuery):
         await callback_query.message.delete()
         return
 
-    # ── Bước 2: Đã chọn time range → hiển thị "Tất cả" / "Từng xưởng" ──
+    # ── Nhánh Theo Hộ dân: nhớ khoảng thời gian rồi mở danh sách Xưởng ──
+    if data.startswith("tn_pa_hh_"):
+        _tn_hh_ctx_set(callback_query, data[len("tn_pa_hh_"):])
+        await _tn_report_collection_points_screen(callback_query, "tn_pah", "THỐNG KÊ ĐÃ THANH TOÁN")
+        return
+
+    # ── Bước 2: Đã chọn time range → hiển thị "Tất cả" / "Từng xưởng" / "Theo Hộ dân" ──
     if data.startswith("tn_pa_time_"):
         time_code = data[len("tn_pa_time_"):]
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Tất cả (Tổng hợp)", callback_data=f"tn_pa_all_{time_code}")],
             [InlineKeyboardButton("Từng Xưởng (Chi tiết)", callback_data=f"tn_pa_sel_{time_code}")],
+            [InlineKeyboardButton("Theo Hộ dân", callback_data=f"tn_pa_hh_{time_code}")],
             [InlineKeyboardButton("Quay lại", callback_data="tn_pa_back_time"),
              InlineKeyboardButton("Hủy", callback_data="tn_pa_cancel")]
         ])
@@ -4785,6 +6578,7 @@ async def tien_nga_save_amount_report_handler(client, message: Message) -> None:
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Tất cả (Tổng hợp)", callback_data=f"tn_sa_all_{time_preset}")],
             [InlineKeyboardButton("Từng Xưởng (Chi tiết)", callback_data=f"tn_sa_sel_{time_preset}")],
+            [InlineKeyboardButton("Theo Hộ dân", callback_data=f"tn_sa_hh_{time_preset}")],
             [InlineKeyboardButton("Hủy", callback_data="tn_sa_cancel")]
         ])
         await message.reply_text(
@@ -4825,12 +6619,19 @@ async def tien_nga_save_amount_callback(client, callback_query: CallbackQuery):
         await callback_query.message.delete()
         return
 
-    # ── Bước 2: Đã chọn time range → hiển thị "Tất cả" / "Từng xưởng" ──
+    # ── Nhánh Theo Hộ dân: nhớ khoảng thời gian rồi mở danh sách Xưởng ──
+    if data.startswith("tn_sa_hh_"):
+        _tn_hh_ctx_set(callback_query, data[len("tn_sa_hh_"):])
+        await _tn_report_collection_points_screen(callback_query, "tn_sah", "THỐNG KÊ LƯU SỔ")
+        return
+
+    # ── Bước 2: Đã chọn time range → hiển thị "Tất cả" / "Từng xưởng" / "Theo Hộ dân" ──
     if data.startswith("tn_sa_time_"):
         time_code = data[len("tn_sa_time_"):]
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Tất cả (Tổng hợp)", callback_data=f"tn_sa_all_{time_code}")],
             [InlineKeyboardButton("Từng Xưởng (Chi tiết)", callback_data=f"tn_sa_sel_{time_code}")],
+            [InlineKeyboardButton("Theo Hộ dân", callback_data=f"tn_sa_hh_{time_code}")],
             [InlineKeyboardButton("Quay lại", callback_data="tn_sa_back_time"),
              InlineKeyboardButton("Hủy", callback_data="tn_sa_cancel")]
         ])
@@ -5960,6 +7761,7 @@ async def _do_send_to_customers_by_cp(client, state, cp_ids: list):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_firewood_purcharse_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
@@ -6739,6 +8541,7 @@ async def tn_dt_list_callback(client, callback_query: CallbackQuery):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_partner_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
@@ -6833,6 +8636,7 @@ async def tien_nga_create_partner_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_update_partner_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
@@ -6975,6 +8779,7 @@ async def tien_nga_update_partner_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_delete_partner_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) < 2:
@@ -7032,6 +8837,7 @@ async def tien_nga_delete_partner_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_partner_handler(client, message: Message) -> None:
     from app.db.session import SessionLocal
     from app.models.business import Partners
@@ -7427,6 +9233,7 @@ async def check_partner_txn_callback(client, callback_query) -> None:
 @bot.on_message(filters.command(["tien_nga_check_debt", "tien_nga_kiem_tra_cong_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_debt|tien_nga_kiem_tra_cong_no)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Tiến Nga")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_debt_handler(client, message: Message) -> None:
     args = message.text.split()
     target_id = None
@@ -8068,6 +9875,7 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_cancel_partner_txn_handler(client, message: Message) -> None:
     """Hủy giao dịch đối tác bằng cách reply tin nhắn thành công với /huy_giao_dich_doi_tac"""
     if not message.reply_to_message:
@@ -8427,6 +10235,7 @@ async def tien_nga_partner_warehouse_callback(client, callback_query):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_partner_report_handler(client, message: Message) -> None:
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
@@ -8816,7 +10625,6 @@ async def tien_nga_chart_purcharse_handler(client, message: Message) -> None:
                 func.sum(DailyPurchases.actual_weight).label('t_actual_weight'),
                 func.sum(DailyPurchases.dry_rubber).label('t_dry_rubber')
             ).filter(
-                DailyPurchases.is_checked == True,
                 DailyPurchases.hoursehold_id == hhd_id,
                 DailyPurchases.day >= start_date.date(),
                 DailyPurchases.day <= end_date.date()
@@ -8878,6 +10686,7 @@ async def tien_nga_chart_purcharse_handler(client, message: Message) -> None:
                         row = []
             if len(row) > 0:
                 keyboard.append(row)
+            keyboard.append([InlineKeyboardButton("Theo Hộ dân", callback_data="cb_tnchart_hh")])
             keyboard.append([InlineKeyboardButton("Hủy", callback_data="cb_tnchart_scope_cancel")])
         else:
             keyboard.append([InlineKeyboardButton("Tổng (Toàn hệ thống)", callback_data="cb_tnchart_scope_all")])
@@ -8890,8 +10699,9 @@ async def tien_nga_chart_purcharse_handler(client, message: Message) -> None:
                         row = []
             if len(row) > 0:
                 keyboard.append(row)
+            keyboard.append([InlineKeyboardButton("Theo Hộ dân", callback_data="cb_tnchart_hh")])
             keyboard.append([InlineKeyboardButton("Hủy", callback_data="cb_tnchart_scope_cancel")])
-            
+
         reply_markup = InlineKeyboardMarkup(keyboard)
         txt = "<b>BIỂU ĐỒ THU MUA MỦ</b>\n"
         txt += "<i>Gợi ý tra cứu nhanh:</i>\n<code>/tien_nga_chart_purcharse [mã hộ] mm/yyyy - mm/yyyy</code>\n"
@@ -8913,16 +10723,15 @@ async def tien_nga_chart_purcharse_handler(client, message: Message) -> None:
         db.close()
 
 
-@bot.on_callback_query(filters.regex(r"^cb_tnchart_scope_(.*)$"))
-async def tien_nga_chart_scope_callback(client, callback_query: CallbackQuery):
-    scope_id = callback_query.matches[0].group(1)
-    
-    if scope_id == "cancel":
-        await callback_query.message.delete()
-        return
-
-    # Menu thời gian
-    keyboard = [
+def _build_tnchart_time_keyboard(scope_id: str) -> InlineKeyboardMarkup:
+    """
+    Bàn phím khung thời gian của biểu đồ thu mua.
+    `scope_id` là "all", id xưởng, hoặc "hh:<mã hộ>" khi vẽ cho 1 hộ dân.
+    Nút Quay Lại dẫn về đúng nơi đã chọn scope.
+    """
+    back_cb = "tn_ch_cps" if scope_id.startswith("hh:") else "cb_tnchart_back"
+    cancel_cb = "tn_ch_x" if scope_id.startswith("hh:") else "cb_tnchart_scope_cancel"
+    return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("1 Tháng", callback_data=f"cb_tnchart_time_{scope_id}_1m"),
             InlineKeyboardButton("3 Tháng", callback_data=f"cb_tnchart_time_{scope_id}_3m")
@@ -8936,14 +10745,23 @@ async def tien_nga_chart_scope_callback(client, callback_query: CallbackQuery):
             InlineKeyboardButton("Năm trước", callback_data=f"cb_tnchart_time_{scope_id}_ly")
         ],
         [
-            InlineKeyboardButton("Quay Lại", callback_data="cb_tnchart_back"),
-            InlineKeyboardButton("Hủy", callback_data="cb_tnchart_scope_cancel")
+            InlineKeyboardButton("Quay Lại", callback_data=back_cb),
+            InlineKeyboardButton("Hủy", callback_data=cancel_cb)
         ]
-    ]
-    
+    ])
+
+
+@bot.on_callback_query(filters.regex(r"^cb_tnchart_scope_(.*)$"))
+async def tien_nga_chart_scope_callback(client, callback_query: CallbackQuery):
+    scope_id = callback_query.matches[0].group(1)
+
+    if scope_id == "cancel":
+        await callback_query.message.delete()
+        return
+
     await callback_query.message.edit_text(
         "<b>Khung thời gian</b>\n\nBạn muốn vẽ biểu đồ trong khoảng thời gian nào?",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=_build_tnchart_time_keyboard(scope_id),
         parse_mode=ParseMode.HTML
     )
 
@@ -8964,9 +10782,10 @@ async def tien_nga_chart_back_callback(client, callback_query: CallbackQuery):
                     row = []
         if len(row) > 0:
             keyboard.append(row)
-            
+
+        keyboard.append([InlineKeyboardButton("Theo Hộ dân", callback_data="cb_tnchart_hh")])
         keyboard.append([InlineKeyboardButton("Hủy", callback_data="cb_tnchart_scope_cancel")])
-        
+
         await callback_query.message.edit_text(
             "<b>BIỂU ĐỒ THU MUA MỦ</b>\n\n"
             "Vui lòng chọn phạm vi lên biểu đồ:",
@@ -8975,6 +10794,70 @@ async def tien_nga_chart_back_callback(client, callback_query: CallbackQuery):
         )
     except Exception as e:
         await callback_query.message.edit_text("❌ Lỗi hệ thống.")
+    finally:
+        db.close()
+
+
+# --- Nhánh Theo Hộ dân của Biểu đồ thu mua (tn_ch) ---
+
+@bot.on_callback_query(filters.regex(r"^cb_tnchart_hh$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tien_nga_chart_household_entry_callback(client, callback_query):
+    """Nút Theo Hộ dân — mở danh sách Điểm Thu Mua."""
+    await _tn_report_collection_points_screen(callback_query, "tn_ch", "BIỂU ĐỒ THU MUA MỦ")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ch_x$"))
+async def tn_ch_cancel_callback(client, callback_query):
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ch_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_ch_collection_points_callback(client, callback_query):
+    await _tn_report_collection_points_screen(callback_query, "tn_ch", "BIỂU ĐỒ THU MUA MỦ")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ch_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_ch_customer_list_callback(client, callback_query):
+    await _tn_report_customers_screen(callback_query, "tn_ch")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ch_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_ch_period_menu_callback(client, callback_query):
+    """Chọn 1 Khách hàng → chuyển sang menu khung thời gian của biểu đồ (scope hh:<mã hộ>)."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+        await _tn_screen_edit(
+            callback_query,
+            f"<b>BIỂU ĐỒ THU MUA MỦ</b>\n"
+            f"Khách hàng: <b>{customer.fullname or '—'}</b>\n"
+            f"Mã hộ: <b>{hoursehold_id}</b>\n\n"
+            f"Bạn muốn vẽ biểu đồ trong khoảng thời gian nào?",
+            _build_tnchart_time_keyboard(f"hh:{hoursehold_id}")
+        )
+    except Exception as e:
+        LogError(f"Error in tn_ch_period_menu_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
     finally:
         db.close()
 
@@ -9018,20 +10901,26 @@ async def tien_nga_chart_time_callback(client, callback_query: CallbackQuery):
             func.sum(DailyPurchases.actual_weight).label('t_actual_weight'),
             func.sum(DailyPurchases.dry_rubber).label('t_dry_rubber')
         ).filter(
-            DailyPurchases.is_checked == True,
             DailyPurchases.day >= start_date.date(),
             DailyPurchases.day <= end_date.date()
         )
         
         scope_label = "Tổng Toàn Hệ Thống"
-        if scope_id != "all":
+        if scope_id.startswith("hh:"):
+            # Biểu đồ cho 1 hộ dân (đi từ nhánh Theo Hộ dân)
+            from app.models.business import Customers
+            hh_id = scope_id[3:]
+            customer = db.query(Customers).filter(Customers.hoursehold_id == hh_id).first()
+            scope_label = f"{customer.fullname} ({hh_id})" if customer else f"Hộ {hh_id}"
+            query = query.filter(DailyPurchases.hoursehold_id == hh_id)
+        elif scope_id != "all":
             cp = db.query(CollectionPoint).filter(CollectionPoint.id == scope_id).first()
             if cp:
                 scope_label = cp.collection_name
             query = query.filter(DailyPurchases.collection_point_id == scope_id)
-            
+
         group_results = query.group_by(DailyPurchases.day).order_by(DailyPurchases.day.asc()).all()
-        
+
         if not group_results:
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Quay Lại", callback_data=f"cb_tnchart_scope_{scope_id}")]])
             await callback_query.message.edit_text(
@@ -9120,7 +11009,6 @@ async def tien_nga_chart_custom_callback(client, callback_query: CallbackQuery):
             func.sum(DailyPurchases.actual_weight).label('t_actual_weight'),
             func.sum(DailyPurchases.dry_rubber).label('t_dry_rubber')
         ).filter(
-            DailyPurchases.is_checked == True,
             DailyPurchases.day >= start_date.date(),
             DailyPurchases.day <= end_date.date()
         )
@@ -10174,6 +12062,7 @@ import re
 @require_user_type(UserType.OWNER)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_confirm_payment_handler(client, message: Message) -> None:
     if not message.reply_to_message:
         await message.reply_text("⚠️ Vui lòng <b>Reply</b> một tin nhắn yêu cầu duyệt phiếu chi.", parse_mode=ParseMode.HTML)
@@ -10236,6 +12125,7 @@ async def tien_nga_confirm_payment_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_deny_payment_handler(client, message: Message) -> None:
     if not message.reply_to_message:
         await message.reply_text("⚠️ Vui lòng <b>Reply</b> một tin nhắn yêu cầu duyệt phiếu chi.", parse_mode=ParseMode.HTML)
@@ -12003,6 +13893,7 @@ async def tn_kho_list_callback(client, callback_query: CallbackQuery):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_inventory_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -12053,6 +13944,7 @@ async def tien_nga_create_inventory_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_inventory_handler(client, message: Message) -> None:
     from app.db.session import SessionLocal
     from app.models.inventory import Inventory
@@ -14616,6 +16508,7 @@ async def _generate_daily_product_report(message, start_date, end_date):
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE, CustomTitle.MAIN_SHAREHOLDER)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_history_transaction_handler(client, message: Message) -> None:
     """
     /tien_nga_check_history_transaction [mã cổ đông] [dd/mm/yyyy - dd/mm/yyyy]
@@ -15114,6 +17007,7 @@ async def rpt_sum_cb(client, callback_query: CallbackQuery):
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_agricultural_land_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -15217,6 +17111,7 @@ Loại cây trồng mặc định: cao_su hoặc sau_rieng.</i>"""
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_update_agricultural_land_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     from app.models.business import AgriculturalLand
@@ -15386,6 +17281,7 @@ async def del_land_callback(client, callback_query) -> None:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_agricultural_land_handler(client, message: Message) -> None:
     from app.models.business import AgriculturalLand
 
@@ -15456,6 +17352,7 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_agricultural_land_handler(client, message: Message) -> None:
     args = message.text.strip().split()
     if len(args) < 2:
@@ -15537,6 +17434,7 @@ async def tien_nga_check_agricultural_land_handler(client, message: Message) -> 
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_household_handler(client, message: Message) -> None:
     from app.models.business import Households
 
@@ -15614,6 +17512,7 @@ async def tien_nga_list_household_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_harvest_handler(client, message: Message) -> None:
     from datetime import datetime
     from app.models.business import AgriculturalLand
@@ -15983,6 +17882,7 @@ async def _do_check_harvest(client, message, start_date, end_date, land_code=Non
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
     from datetime import datetime
     from app.models.business import Households, DailyPurchases, AgriculturalLand
@@ -16594,6 +18494,7 @@ async def harvest_deny_callback(client, callback_query):
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("member")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST, CustomTitle.MEMBER_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_household_handler(client, message: Message) -> None:
     from app.models.business import Households, AgriculturalLand
 
@@ -16676,6 +18577,7 @@ async def tien_nga_check_household_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_daily_harvest_handler(client, message: Message) -> None:
     from datetime import datetime
     from app.models.business import AgriculturalLand
@@ -16865,6 +18767,7 @@ async def _kdh_select_period(client, cb):
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_update_household_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     from app.models.business import Households
@@ -17405,6 +19308,7 @@ Ngân Hàng: </pre>"""
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_update_household_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     from app.models.business import Households
@@ -17689,6 +19593,7 @@ async def rt_cancel_callback(client, callback_query: CallbackQuery):
 
 # Handler: Nhận form đã điền (xử lý khi gửi form multi-line)
 @bot.on_message(filters.regex(r"^/tien_nga_(?:rubber_tree|cay_cao_su)\n") & filters.group)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_rubber_tree_form_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -18054,6 +19959,7 @@ async def sr_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.delete()
 
 @bot.on_message(filters.regex(r"^/tien_nga_cay_sau_rieng\n") & filters.group)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_durian_tree_form_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -18301,6 +20207,7 @@ async def sr_check_callback(client, callback_query: CallbackQuery):
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_durian_harvest_main_handler(client, message: Message) -> None:
     """Thu hoạch sầu riêng — dành cho nhóm main (nhập trực tiếp, không cần xác nhận)."""
     from datetime import datetime as dt_cls
@@ -18774,6 +20681,7 @@ async def durian_harvest_deny_callback(client, callback_query):
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_durian_harvest_handler(client, message: Message) -> None:
     """Kiểm tra thu hoạch sầu riêng — xuất báo cáo Excel."""
     from datetime import datetime as dt_cls
@@ -19408,6 +21316,110 @@ async def execute_tien_nga_truy_xuat_tt_thu_mua(message_or_query, hoursehold_id:
         db.close()
 
 
+# ══════════════════════════════════════════════════════════════
+# TRUY XUẤT TT THU MUA — luồng nút bấm
+# Điểm Thu Mua → Khách hàng (phân trang) → Chọn khoảng thời gian
+# ══════════════════════════════════════════════════════════════
+
+def _build_txtt_period_view(hoursehold_id: str, customer_name: str = "", with_back: bool = False):
+    """Màn hình chọn khoảng thời gian truy xuất thông tin thu mua của 1 hộ dân."""
+    buttons = [
+        [InlineKeyboardButton("Hôm nay", callback_data=f"tn_txtt:{hoursehold_id}:today"),
+         InlineKeyboardButton("Tuần này", callback_data=f"tn_txtt:{hoursehold_id}:week")],
+        [InlineKeyboardButton("Tháng này", callback_data=f"tn_txtt:{hoursehold_id}:month"),
+         InlineKeyboardButton("Năm này", callback_data=f"tn_txtt:{hoursehold_id}:year")],
+        [InlineKeyboardButton("Khác", callback_data=f"tn_txtt:{hoursehold_id}:custom")],
+    ]
+    last_row = []
+    if with_back:
+        last_row.append(InlineKeyboardButton("Quay lại", callback_data=f"tn_tx_back|{hoursehold_id}"))
+    last_row.append(InlineKeyboardButton("Hủy", callback_data="tn_txtt_cancel"))
+    buttons.append(last_row)
+
+    name_line = f"Khách hàng: <b>{customer_name}</b>\n" if customer_name else ""
+    text = (
+        f"<b>TRUY XUẤT THÔNG TIN THU MUA</b>\n"
+        f"{name_line}"
+        f"Mã hộ: <b>{hoursehold_id}</b>\n\n"
+        f"Vui lòng chọn khoảng thời gian:"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+@bot.on_callback_query(filters.regex(r"^tn_tx_x$"))
+async def tn_tx_cancel_callback(client, callback_query):
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_tx_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_tx_collection_points_callback(client, callback_query):
+    await _tn_report_collection_points_screen(callback_query, "tn_tx", "TRUY XUẤT THÔNG TIN THU MUA")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_tx_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_tx_customer_list_callback(client, callback_query):
+    await _tn_report_customers_screen(callback_query, "tn_tx")
+
+
+@bot.on_callback_query(filters.regex(r"^tn_tx_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_tx_period_menu_callback(client, callback_query):
+    """Chọn 1 Khách hàng → màn chọn khoảng thời gian."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+        text, markup = _build_txtt_period_view(hoursehold_id, customer.fullname or "", with_back=True)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_tx_period_menu_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_tx_back\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def tn_tx_back_callback(client, callback_query):
+    """Từ màn chọn thời gian quay về đúng trang danh sách Khách hàng đang xem."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        if not customer.collection_point_id:
+            text, markup = _tn_collection_point_view(db, "tn_tx", "TRUY XUẤT THÔNG TIN THU MUA")
+        else:
+            page = _tn_cc_page_of_customer(db, customer)
+            text, markup = _tn_customer_list_view(db, str(customer.collection_point_id), page, "tn_tx")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_tx_back_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
 @bot.on_message(filters.command(["tien_nga_truy_xuat_tt_thu_mua"]) | filters.regex(r"^@\w+\s+/tien_nga_truy_xuat_tt_thu_mua\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
@@ -19416,35 +21428,28 @@ async def execute_tien_nga_truy_xuat_tt_thu_mua(message_or_query, hoursehold_id:
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_truy_xuat_tt_thu_mua_handler(client, message: Message) -> None:
     args = message.text.strip().split()
-    
+    # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+    if args and args[0].startswith("@"):
+        args = args[1:]
+
+    # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Khách hàng bằng nút bấm
     if len(args) < 2:
-        await message.reply_text(
-            "⚠️ <b>Cú pháp:</b>\n"
-            "<code>/tien_nga_truy_xuat_tt_thu_mua [Mã Hộ]</code>\n"
-            "<code>/tien_nga_truy_xuat_tt_thu_mua [Mã Hộ] [dd/mm/yyyy - dd/mm/yyyy]</code>",
-            parse_mode=ParseMode.HTML
-        )
+        db = SessionLocal()
+        try:
+            text, markup = _tn_collection_point_view(db, "tn_tx", "TRUY XUẤT THÔNG TIN THU MUA")
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error listing collection points for txtt: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
         return
 
     hoursehold_id = args[1].upper()
-    
+
     if len(args) == 2:
-        # Show buttons
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("1 Ngày", callback_data=f"tn_txtt:{hoursehold_id}:1d"),
-             InlineKeyboardButton("1 Tuần", callback_data=f"tn_txtt:{hoursehold_id}:1w")],
-            [InlineKeyboardButton("2 Tuần", callback_data=f"tn_txtt:{hoursehold_id}:2w"),
-             InlineKeyboardButton("1 Tháng", callback_data=f"tn_txtt:{hoursehold_id}:1m")],
-            [InlineKeyboardButton("1 Quý", callback_data=f"tn_txtt:{hoursehold_id}:1q"),
-             InlineKeyboardButton("Năm nay", callback_data=f"tn_txtt:{hoursehold_id}:cy")],
-            [InlineKeyboardButton("Năm trước", callback_data=f"tn_txtt:{hoursehold_id}:py")],
-            [InlineKeyboardButton("Hủy", callback_data="tn_txtt_cancel")]
-        ])
-        await message.reply_text(
-            f"Vui lòng chọn thời gian truy xuất thông tin thu mua cho hộ <b>{hoursehold_id}</b>:",
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
+        text, markup = _build_txtt_period_view(hoursehold_id)
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
         return
 
     # Parse date(s)
@@ -19469,35 +21474,31 @@ async def tien_nga_truy_xuat_tt_thu_mua_handler(client, message: Message) -> Non
     await execute_tien_nga_truy_xuat_tt_thu_mua(message, hoursehold_id, start_date, end_date)
 
 
+@bot.on_callback_query(filters.regex(r"^tn_txtt:([^:]+):custom$"))
+async def tn_txtt_custom_callback(client, callback_query: CallbackQuery):
+    """Nút Khác — hướng dẫn gõ lệnh kèm mã hộ và khoảng thời gian tùy chọn."""
+    hoursehold_id = callback_query.matches[0].group(1)
+    await _tn_screen_edit(
+        callback_query,
+        f"📝 Vui lòng nhập lệnh với khoảng thời gian tùy chọn:\n\n"
+        f"<code>/tien_nga_truy_xuat_tt_thu_mua {hoursehold_id} dd/mm/yyyy - dd/mm/yyyy</code>\n\n"
+        f"<i>Ví dụ:\n"
+        f"<code>/tien_nga_truy_xuat_tt_thu_mua {hoursehold_id} 01/07/2026 - 31/07/2026</code></i>",
+        None
+    )
+
+
 @bot.on_callback_query(filters.regex(r"^tn_txtt:([^:]+):(.+)$"))
 async def tn_txtt_callback(client, callback_query: CallbackQuery):
     hoursehold_id = callback_query.matches[0].group(1)
     period = callback_query.matches[0].group(2)
-    
-    await callback_query.message.delete()
-    
-    today = datetime.now().date()
-    end_date = today
-    
-    if period == "1d":
-        start_date = today
-    elif period == "1w":
-        start_date = today - timedelta(days=7)
-    elif period == "2w":
-        start_date = today - timedelta(days=14)
-    elif period == "1m":
-        start_date = today - timedelta(days=30)
-    elif period == "1q":
-        start_date = today - timedelta(days=90)
-    elif period == "cy":
-        start_date = datetime(today.year, 1, 1).date()
-    elif period == "py":
-        last_year = today.year - 1
-        start_date = datetime(last_year, 1, 1).date()
-        end_date = datetime(last_year, 12, 31).date()
-    else:
-        start_date = today
 
+    start_date, end_date, _ = _resolve_report_dates(period)
+    if not start_date:
+        await callback_query.answer("⚠️ Chu kỳ không hợp lệ.", show_alert=True)
+        return
+
+    await callback_query.message.delete()
     await execute_tien_nga_truy_xuat_tt_thu_mua(callback_query, hoursehold_id, start_date, end_date)
 
 
@@ -19895,6 +21896,7 @@ async def deny_harv_rep_callback(client, callback_query: CallbackQuery):
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_cash_advance_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_cash_advance", "tien_nga_ung_tien"])
     if args is None: return
@@ -20538,6 +22540,7 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
 @bot.on_message(filters.command(["confirmed"]) | filters.regex(r"^@\w+\s+/confirmed\b"))
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_confirmed_handler(client, message: Message) -> None:
     if not message.reply_to_message:
         await message.reply_text("⚠️ Vui lòng reply (phản hồi) tin nhắn cảnh báo vượt hạn mức để thực hiện xác nhận.", parse_mode=ParseMode.HTML)
@@ -20661,6 +22664,7 @@ async def tien_nga_confirmed_handler(client, message: Message) -> None:
 @bot.on_message(filters.command(["denied"]) | filters.regex(r"^@\w+\s+/denied\b"))
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_denied_handler(client, message: Message) -> None:
     if not message.reply_to_message:
         await message.reply_text("⚠️ Vui lòng reply (phản hồi) tin nhắn cảnh báo vượt hạn mức để từ chối.", parse_mode=ParseMode.HTML)
@@ -20712,6 +22716,7 @@ async def tien_nga_denied_handler(client, message: Message) -> None:
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_thong_ke_cong_no_handler(client, message: Message) -> None:
     """Thống kê công nợ hiện tại theo từng điểm thu mua.
     Gửi:
@@ -21453,6 +23458,7 @@ async def _generate_loss_statistics_excel(client, message, start_date, end_date)
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_add_supplies_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
@@ -21662,6 +23668,7 @@ async def del_sp_callback(client, callback_query) -> None:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_supplies_handler(client, message: Message) -> None:
     args = message.text.strip().split(maxsplit=1)
     
@@ -21827,6 +23834,7 @@ async def tien_nga_check_supplies_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_FINANCE)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_balance_sheet_handler(client, message: Message) -> None:
     """
     /tien_nga_can_bang_ke_toan mm/yyyy - mm/yyyy
@@ -22704,6 +24712,7 @@ async def tien_nga_balance_sheet_handler(client, message: Message) -> None:
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_loi_nhuan_thu_hoach_handler(client, message: Message) -> None:
     args = message.text.strip().split(maxsplit=1)
 
