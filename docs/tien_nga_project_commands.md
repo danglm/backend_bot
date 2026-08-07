@@ -131,7 +131,7 @@ Các lệnh dưới đây được áp dụng khi người dùng ở trong nhóm
 *   **Cú pháp:** `/tien_nga_tao_khach_hang`
 *   **Cách thức hoạt động:**
     - Gõ lệnh không kèm tham số: Bot hiển thị danh sách các Điểm Thu Mua để chọn.
-    - Sau khi chọn điểm thu mua, bot trả về Form tạo khách hàng: Mã Điểm Thu, Tên Khách Hàng, Mã Hộ (bắt buộc, duy nhất), SĐT, Địa chỉ, Nguyên Liệu, Username TG, Nhóm Telegram, Ngân Hàng, STK, Số tiền nợ cũ, Ứng tiền cuối mùa, Tổng công nợ, Trợ giá.
+    - Sau khi chọn điểm thu mua, bot trả về Form tạo khách hàng: Mã Điểm Thu, Tên Khách Hàng, Mã Hộ (bắt buộc, duy nhất), SĐT, Địa chỉ, Nguyên Liệu, Username TG, Nhóm Telegram, Ngân Hàng, STK, Số tiền nợ cũ, Ứng tiền cuối mùa, Ứng tiền trong tháng, Tổng công nợ, Trợ giá.
     - Người dùng điền Form gửi lại, bot kiểm tra trùng lặp Mã Hộ, lưu hồ sơ mới vào bảng `Customers`.
 
 #### `/tien_nga_kiem_tra_khach_hang` (hoặc `/tien_nga_check_customer`)
@@ -272,23 +272,34 @@ Các lệnh dưới đây được áp dụng khi người dùng ở trong nhóm
 #### `/tien_nga_ung_tien` (hoặc `/tien_nga_cash_advance`)
 *   **Mục đích:** Ghi nhận một khoản tạm ứng trước tiền bán mủ cho hộ dân/khách hàng.
 *   **Cú pháp:** `/tien_nga_ung_tien [Mã Hộ] [Số tiền ứng]`
+*   **Hai loại ứng tiền:** *Ứng tiền Cuối mùa* (cột `cash_advance`) và *Ứng tiền Trong tháng* (cột `cash_advance_monthly`). Hai loại dùng chung một hạn mức.
 *   **Cách thức hoạt động:**
-    - Kiểm tra hạn mức ứng tiền: Số tiền ứng tối đa được tính dựa trên tỷ lệ % (MaxCashAdvance trong config) tổng số tiền bán mủ của hộ dân ở mùa vụ trước.
-    - Nếu vượt quá hạn mức, bot chặn giao dịch và yêu cầu Owner duyệt vượt ngưỡng (gõ `/confirmed` reply tin nhắn cảnh báo).
-    - Nếu hợp lệ hoặc được Owner duyệt, bot cộng tiền ứng vào trường `cash_advance` của khách hàng và gửi thông báo cấn trừ/ghi nhận ứng tiền xuống nhóm thành viên của hộ dân.
+    - Sau khi nhập lệnh, bot hiện màn xác nhận kèm 3 nút: "Ứng tiền Cuối mùa", "Ứng tiền Trong tháng" và "Hủy". Chưa chọn loại thì chưa ghi nhận gì.
+    - Kiểm tra hạn mức ứng tiền: Số tiền ứng tối đa được tính dựa trên tỷ lệ % (MaxCashAdvance trong config) tổng số tiền bán mủ của hộ dân ở mùa vụ trước. Số đã ứng dùng để so hạn mức là **tổng cả hai loại**.
+    - Nếu vượt quá hạn mức, bot chặn giao dịch và yêu cầu Owner duyệt vượt ngưỡng (gõ `/confirmed` reply tin nhắn cảnh báo). Tin cảnh báo có dòng "Loại ứng" để `/confirmed` cộng đúng cột.
+    - Nếu hợp lệ hoặc được Owner duyệt, bot cộng tiền ứng vào đúng loại đã chọn, ghi một dòng vào bảng `cash_advance_logs`, và gửi thông báo ghi nhận ứng tiền xuống nhóm thành viên của hộ dân.
 
 #### `/tien_nga_khau_tru_tien_ung`
 *   **Mục đích:** Thực hiện khấu trừ số tiền đã ứng trước đó vào tiền bán mủ/tiền giao dịch.
 *   **Cú pháp:** `/tien_nga_khau_tru_tien_ung [Mã Hộ] [Số tiền khấu trừ]`
 *   **Cách thức hoạt động:**
-    - Bot kiểm tra số tiền ứng hiện tại của khách hàng. Nếu đủ điều kiện khấu trừ, bot hiển thị thông báo xác nhận kèm 2 nút bấm inline: "Xác nhận" và "Hủy".
-    - Khi bấm xác nhận, trừ số tiền khấu trừ vào trường `cash_advance` của khách hàng và gửi thông báo biến động số dư xuống nhóm member của hộ dân.
+    - Bot kiểm tra số dư ứng của từng loại. Màn xác nhận chỉ hiện nút của loại còn đủ số dư: "Khấu trừ Ứng Cuối mùa" / "Khấu trừ Ứng Trong tháng", kèm nút "Hủy".
+    - Nếu tổng đủ nhưng không loại nào một mình đủ, bot báo số dư từng loại và yêu cầu khấu trừ thành nhiều lần.
+    - Khi bấm xác nhận, trừ vào đúng loại đã chọn, ghi một dòng `DEDUCT` vào bảng `cash_advance_logs` và gửi thông báo biến động số dư xuống nhóm member của hộ dân.
 
 #### `/tien_nga_danh_sach_ung_tien` (hoặc `/tien_nga_ds_ung_tien`)
 *   **Mục đích:** Xuất báo cáo danh sách toàn bộ các khoản ứng tiền của hộ dân/khách hàng ra file Excel.
 *   **Cú pháp:** `/tien_nga_danh_sach_ung_tien`
 *   **Cách thức hoạt động:**
-    - Tổng hợp danh sách mã hộ, tên khách hàng, số tiền đã ứng, ngày thực hiện giao dịch và xuất ra file Excel đính kèm.
+    - Lấy các hộ còn tiền ứng ở bất kỳ loại nào, tổng hợp mã hộ, tên khách hàng, Ứng Tiền Cuối Mùa, Ứng Tiền Trong Tháng, Tổng Ứng và xuất ra file Excel đính kèm (mỗi tab là một điểm thu mua, có dòng tổng cộng).
+
+#### `/tien_nga_lich_su_ung_tien` (hoặc `/tien_nga_ls_ung_tien`)
+*   **Mục đích:** Xem nhật ký biến động tiền ứng (ứng thêm / khấu trừ) của một hộ dân.
+*   **Cú pháp:** `/tien_nga_lich_su_ung_tien` hoặc `/tien_nga_lich_su_ung_tien [Mã Hộ]`
+*   **Cách thức hoạt động:**
+    - Không truyền tham số thì mở luồng nút bấm: Điểm Thu Mua → Hộ dân → Nhật ký.
+    - Hiển thị số dư hiện tại của hai loại ứng và 20 giao dịch gần nhất: loại ứng, số tiền, số dư trước → sau, người thực hiện, và người duyệt nếu là khoản ứng vượt hạn mức.
+    - Nhật ký chỉ có dữ liệu từ thời điểm hệ thống tách hai loại ứng tiền; các khoản ứng trước đó không có bản ghi.
 
 ---
 

@@ -12,6 +12,7 @@ class CustomerBase(BaseModel):
     ingredient: Optional[str] = None
     amount_of_debt: Optional[int] = None
     cash_advance: Optional[int] = None
+    cash_advance_monthly: Optional[int] = None
     total_debt: Optional[int] = None
     status: Optional[str] = "ACTIVE"
     username: Optional[str] = None
@@ -36,6 +37,7 @@ class CustomerCreate(BaseModel):
     ingredient: Optional[str] = None
     amount_of_debt: Optional[int] = None
     cash_advance: Optional[int] = None
+    cash_advance_monthly: Optional[int] = None
     total_debt: Optional[int] = None
     status: Optional[str] = "ACTIVE"
     username: Optional[str] = None
@@ -55,6 +57,7 @@ class CustomerUpdate(BaseModel):
     ingredient: Optional[str] = None
     amount_of_debt: Optional[int] = None
     cash_advance: Optional[int] = None
+    cash_advance_monthly: Optional[int] = None
     total_debt: Optional[int] = None
     status: Optional[str] = "ACTIVE"
     username: Optional[str] = None

@@ -904,6 +904,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_ung_tien", "Ứng tiền"),
                     BotCommand("tien_nga_khau_tru_tien_ung", "Khấu trừ tiền ứng"),
                     BotCommand("tien_nga_danh_sach_ung_tien", "Danh sách ứng tiền Excel"),
+                    BotCommand("tien_nga_lich_su_ung_tien", "Lịch sử ứng tiền hộ dân"),
                 ])
 
             if custom_title in ("super_main", "main_partner"):
@@ -954,6 +955,7 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_can_bang_ke_toan", "Xuất bảng cân đối kế toán"),
                     BotCommand("tien_nga_ung_tien", "Ứng tiền"),
                     BotCommand("tien_nga_khau_tru_tien_ung", "Khấu trừ tiền ứng"),
+                    BotCommand("tien_nga_lich_su_ung_tien", "Lịch sử ứng tiền hộ dân"),
                     BotCommand("confirm_payment", "Duyệt phiếu chi"),
                     BotCommand("deny_payment", "Huỷ phiếu chi"),
                 ])

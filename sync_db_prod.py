@@ -274,7 +274,8 @@ def generate_sql(result: dict) -> list[str]:
 
 def generate_seed_sql() -> list[str]:
     """Sinh SQL seed: code_prefix điểm thu mua, backfill chat_id (credit + rental),
-    và Telegram group mappings. Mọi câu lệnh đều idempotent (chạy lại vẫn an toàn)."""
+    backfill ứng tiền trong tháng, và Telegram group mappings.
+    Mọi câu lệnh đều idempotent (chạy lại vẫn an toàn)."""
     seed_cmds = [
         "-- Seed code_prefix cho các điểm thu mua hiện có",
         "UPDATE collection_points SET code_prefix = 'LT' WHERE collection_name LIKE '%Lạc Tánh%' AND (code_prefix IS NULL OR code_prefix = '');",
@@ -283,6 +284,15 @@ def generate_seed_sql() -> list[str]:
         "UPDATE collection_points SET code_prefix = 'DLH' WHERE collection_name LIKE '%Hải%' AND (code_prefix IS NULL OR code_prefix = '');",
         "UPDATE collection_points SET code_prefix = 'DLT' WHERE collection_name LIKE '%Trang%' AND (code_prefix IS NULL OR code_prefix = '');",
         "UPDATE collection_points SET code_prefix = 'DLV' WHERE collection_name LIKE '%Vui%' AND (code_prefix IS NULL OR code_prefix = '');",
+    ]
+
+    # ── Backfill customers.cash_advance_monthly (khớp alembic d1e2f3a4b5c6) ─────
+    # ALTER TABLE ADD COLUMN ở trên không kèm DEFAULT (model không khai báo default),
+    # nên cột mới sẽ toàn NULL trong khi Dev đã backfill 0. Dữ liệu cũ đều là ứng
+    # cuối mùa -> ứng trong tháng khởi tạo bằng 0.
+    seed_cmds += [
+        "-- Backfill ứng tiền trong tháng cho hộ dân (cột mới, dữ liệu cũ = 0)",
+        "UPDATE customers SET cash_advance_monthly = 0 WHERE cash_advance_monthly IS NULL;",
     ]
 
     # ── Backfill credit_customers.chat_id (khớp alembic a1f2c3d4e5b6 + b2c3d4e5f6a7) ──

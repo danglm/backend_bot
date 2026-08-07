@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, Date, DateTime, func
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, Date, DateTime, func, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 import uuid
@@ -21,7 +21,8 @@ class Customers(Base):
     address = Column(String)
     ingredient = Column(String)
     amount_of_debt = Column(BigInteger)
-    cash_advance = Column(BigInteger)
+    cash_advance = Column(BigInteger)                   # Ứng Tiền Cuối Mùa
+    cash_advance_monthly = Column(BigInteger)           # Ứng Tiền Trong Tháng
     total_debt = Column(BigInteger)
     status = Column(String, default="ACTIVE")
     username = Column(String)    ## Tài Khoản Telegram
@@ -30,8 +31,47 @@ class Customers(Base):
     bank_name = Column(String)                          # Tên ngân hàng
     is_subsidized = Column(Integer) ## Trợ giá
 
+class CashAdvanceLog(Base):
+    """Nhật ký biến động tiền ứng của hộ dân (ứng thêm / khấu trừ).
+
+    Số dư ứng nằm rải ở hai cột customers.cash_advance (cuối mùa) và
+    customers.cash_advance_monthly (trong tháng) nên chỉ nhìn số dư không biết
+    ai ứng, ứng khi nào, ai duyệt vượt hạn mức. Bảng này giữ lại vết đó.
+    """
+    __tablename__ = "cash_advance_logs"
+
+    # Lịch sử luôn đọc theo hộ + mới nhất trước. Khai báo ngay trong model chứ không
+    # chỉ trong file alembic, để sync_db_prod.py (dò Base.metadata) cũng tạo index này
+    # trên Prod.
+    __table_args__ = (
+        Index("ix_cash_advance_logs_household_created", "hoursehold_id", "created_at"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hoursehold_id = Column(String, index=True)          # Mã hộ dân
+    collection_point_id = Column(UUID(as_uuid=True), nullable=True)  # Snapshot điểm thu mua
+    entry_type = Column(String)                         # ADVANCE (ứng) / DEDUCT (khấu trừ)
+    advance_type = Column(String)                       # SEASON_END (cuối mùa) / IN_MONTH (trong tháng)
+    amount = Column(BigInteger)                         # Số tiền, luôn dương
+    balance_before = Column(BigInteger)                 # Số dư của đúng loại trước thao tác
+    balance_after = Column(BigInteger)                  # Số dư của đúng loại sau thao tác
+    is_over_limit = Column(Boolean, default=False)      # Ứng vượt hạn mức, cần Owner duyệt
+    approved_by = Column(String, nullable=True)         # Owner đã duyệt (khi vượt hạn mức)
+    created_by = Column(String, nullable=True)          # Người thực hiện (Telegram)
+    chat_id = Column(String, nullable=True)             # Nhóm thực hiện
+    note = Column(String, nullable=True)                # Ghi chú
+    created_at = Column(DateTime, default=func.now(), server_default=func.now())
+
+
 class CollectionPoint(Base):
     __tablename__ = "collection_points"
+
+    # code_prefix trùng nhau -> hai xưởng sinh ra cùng product_code (prefix + YYYYMMDD)
+    # và bị gộp làm một lô hàng trong toàn bộ báo cáo hao hụt.
+    __table_args__ = (
+        UniqueConstraint("collection_name", name="uq_collection_points_name"),
+        UniqueConstraint("code_prefix", name="uq_collection_points_code_prefix"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     collection_name = Column(String)
@@ -66,6 +106,11 @@ class DailyPurchases(Base):
 
 class LossControls(Base):
     __tablename__ = "loss_controls"
+
+    # Mỗi lô hàng chỉ có một bản kiểm soát hao hụt; ghi đè thì update tại chỗ.
+    __table_args__ = (
+        UniqueConstraint("product_code", "day", name="uq_loss_controls_product_code_day"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_code = Column(String, index=True)               # Mã hàng (LT20260505)

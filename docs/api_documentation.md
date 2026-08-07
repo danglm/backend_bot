@@ -84,6 +84,9 @@ Xử lý các phiếu thu mua mủ, quản lý nợ hộ dân, quản lý xuất
   * `POST /api/v1/tien-nga/process-debt`: Cấn trừ nợ (thu/chi nợ) cho hộ dân hoặc đối tác.
   * `POST /api/v1/tien-nga/process-advance-amount`: Xử lý tạm ứng tiền mặt cho hộ dân (đầu mùa vụ).
   * `POST /api/v1/tien-nga/process-deduction-advance-amount`: Khấu trừ tiền tạm ứng vào công nợ mủ.
+  * `GET /api/v1/tien-nga/get-cash-advance-logs`: Nhật ký ứng / khấu trừ tiền ứng của hộ dân.
+  * `GET /api/v1/tien-nga/count-cash-advance-logs`: Đếm số dòng nhật ký khớp bộ lọc (dùng để phân trang).
+  * `GET /api/v1/tien-nga/get-cash-advance-summary`: Tổng hợp ứng/khấu trừ và số dư theo từng hộ dân.
   * `POST /api/v1/tien-nga/process-loss-control`: Tính toán hao hụt mủ chế biến theo lô sản xuất.
 
 ---
@@ -133,19 +136,42 @@ Khi trả tiền công nợ cho hộ dân (`amount`), hệ thống tự động 
 2. **Hạn mức tạm ứng tối đa (Max Cash Advance):**
    $$\text{Hạn mức tối đa} = \text{Tổng tiền bán mủ vụ trước} \times \text{Tỷ lệ ứng tối đa (MaxCashAdvance)}$$
    *(Tỷ lệ `MaxCashAdvance` được định cấu hình trong file `appsettings.json`, thường là 0.5 - tức 50%)*
-3. **Điều kiện phê duyệt:**
+3. **Hai loại tạm ứng:** Mỗi hộ dân có hai số dư ứng tách biệt trên bảng `customers`:
+   * `cash_advance` — **Ứng Tiền Cuối Mùa** (`advance_type = "SEASON_END"`, mặc định nếu client không truyền).
+   * `cash_advance_monthly` — **Ứng Tiền Trong Tháng** (`advance_type = "IN_MONTH"`).
+4. **Điều kiện phê duyệt:**
    * Số tiền yêu cầu ứng mới: `cash_advance_requested`.
-   * Tổng số tiền tạm ứng sau khi ứng thêm:
-     $$\text{Tổng ứng mới} = \text{Số tiền đã ứng trước đó} + \text{cash\_advance\_requested}$$
+   * Số đã ứng dùng để so hạn mức là **tổng cả hai loại**:
+     $$\text{Tổng ứng mới} = \text{cash\_advance} + \text{cash\_advance\_monthly} + \text{cash\_advance\_requested}$$
    * **Ràng buộc:** Nếu $\text{Tổng ứng mới} > \text{Hạn mức tối đa}$, hệ thống sẽ **từ chối giao dịch** và báo lỗi vượt hạn mức kèm theo báo cáo chi tiết nguyên nhân.
+5. **Ghi vết:** Mỗi lần ứng thành công sinh một dòng `ADVANCE` trong bảng `cash_advance_logs`.
 
 ---
 
 #### D. Khấu Trừ Tạm Ứng (`process-deduction-advance-amount`)
-* Khi tiến hành khấu trừ tạm ứng (`amount`), hệ thống kiểm tra ràng buộc:
-  $$\text{Điều kiện:} \quad \text{amount} \le \text{Công nợ hiện tại của khách hàng (total\_debt)}$$
-* Nếu thỏa mãn điều kiện, hệ thống khấu trừ trực tiếp vào số tiền đã tạm ứng:
-  $$\text{Tiền tạm ứng mới (cash\_advance)} = \text{Tiền tạm ứng cũ} - \text{amount}$$
+* Payload nhận thêm `advance_type` (`SEASON_END` mặc định / `IN_MONTH`) để chọn khấu trừ vào loại ứng nào.
+* Ràng buộc kiểm theo **số dư ứng của đúng loại đã chọn**, không phải theo công nợ:
+  $$\text{Điều kiện:} \quad 0 < \text{amount} \le \text{Số dư ứng của loại đã chọn}$$
+* Nếu thỏa mãn, hệ thống khấu trừ vào cột tương ứng và sinh một dòng `DEDUCT` trong `cash_advance_logs`:
+  $$\text{Số dư mới} = \text{Số dư cũ} - \text{amount}$$
+
+---
+
+#### D2. Nhật Ký Tiền Ứng (`cash_advance_logs`)
+Bảng ghi vết mọi biến động tiền ứng. Các dòng được sinh **tự động** bởi `process-advance-amount`,
+`process-deduction-advance-amount` và các lệnh ứng/khấu trừ trên bot Telegram — không có endpoint
+tạo/sửa/xóa để số dư trên `customers` và nhật ký không bao giờ lệch nhau.
+
+* Mỗi dòng lưu: `entry_type` (`ADVANCE`/`DEDUCT`), `advance_type` (`SEASON_END`/`IN_MONTH`), `amount`,
+  `balance_before`, `balance_after` (số dư **của đúng loại đó**), `is_over_limit`, `approved_by`,
+  `created_by`, `chat_id`, `note`, `created_at`.
+* `GET /get-cash-advance-logs` — lọc theo `hoursehold_id`, `collection_point_id` (nhiều mã cách nhau bởi dấu phẩy),
+  `entry_type`, `advance_type`, `start_date`, `end_date`, `is_over_limit`; phân trang bằng `limit` (1..1000, mặc định 200)
+  và `offset`. Trả về mới nhất trước, kèm `fullname` và `collection_name`.
+* `GET /count-cash-advance-logs` — cùng bộ lọc, trả `{"total": n}`.
+* `GET /get-cash-advance-summary` — gộp theo hộ dân: cộng dồn ứng/khấu trừ từng loại trong khoảng lọc,
+  kèm số dư hiện tại (`cash_advance`, `cash_advance_monthly`, `total_advance`), `over_limit_count`,
+  `entry_count`, `last_entry_at`, và các tổng chung của cả kết quả.
 
 ---
 

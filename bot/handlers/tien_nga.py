@@ -1,6 +1,7 @@
 from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode
+from pyrogram.errors import FloodWait
 from bot.utils.bot import bot
 from bot.utils.utils import check_command_target, require_user_type, require_project_name, require_custom_title, require_group_role, fmt_vn, fmt_money, fmt_num, fmt_weight, command_timeout
 from bot.utils.enums import UserType, CustomTitle
@@ -9,9 +10,41 @@ from app.db.session import SessionLocal
 from bot.utils.states import form_tracker
 import re
 from datetime import datetime, timedelta
+from typing import NamedTuple
 import traceback
 
 # TienNga project handlers
+
+
+# ══════════════════════════════════════════════════════════════
+# Chống bấm trùng trên các nút ghi dữ liệu (thanh toán, lưu hao hụt...).
+# Event loop chạy đơn luồng nên phần kiểm tra + đánh dấu dưới đây là atomic,
+# miễn là gọi TRƯỚC mọi lệnh await trong handler.
+# ══════════════════════════════════════════════════════════════
+_TN_CB_ONCE: dict[str, datetime] = {}
+_TN_CB_ONCE_TTL_SECONDS = 3600
+
+
+def _tn_cb_claim(callback_query, tag: str) -> bool:
+    """
+    Giành quyền xử lý một lần cho nút này. Trả True nếu đây là lần bấm đầu tiên,
+    False nếu nút đã được xử lý (bấm trùng / gửi lại callback_data).
+    """
+    now = datetime.now()
+    for k, ts in list(_TN_CB_ONCE.items()):
+        if (now - ts).total_seconds() > _TN_CB_ONCE_TTL_SECONDS:
+            _TN_CB_ONCE.pop(k, None)
+
+    key = f"{callback_query.message.chat.id}:{callback_query.message.id}:{tag}"
+    if key in _TN_CB_ONCE:
+        return False
+    _TN_CB_ONCE[key] = now
+    return True
+
+
+def _tn_cb_release(callback_query, tag: str) -> None:
+    """Nhả lại quyền khi thao tác thất bại, để người dùng bấm lại được."""
+    _TN_CB_ONCE.pop(f"{callback_query.message.chat.id}:{callback_query.message.id}:{tag}", None)
 
 
 def _sync_parent_investment(db, child_inv):
@@ -652,7 +685,8 @@ async def tien_nga_create_collection_point_handler(client, message: Message) -> 
 
     from app.db.session import SessionLocal
     from app.models.business import CollectionPoint
-    
+    from sqlalchemy.exc import IntegrityError
+
     db = SessionLocal()
     try:
         # Check if already exists
@@ -683,8 +717,19 @@ async def tien_nga_create_collection_point_handler(client, message: Message) -> 
             notes=notes or None
         )
         db.add(new_point)
-        db.commit()
-        
+        try:
+            db.commit()
+        except IntegrityError:
+            # Hai admin tạo cùng lúc: check ở trên đã lọt, DB chặn ở đây.
+            db.rollback()
+            await message.reply_text(
+                f"⚠️ Điểm thu mua <b>{collection_name}</b> hoặc mã viết tắt "
+                f"<b>{code_prefix or '—'}</b> vừa được người khác tạo. Vui lòng kiểm tra lại "
+                f"bằng /tien_nga_danh_sach_diem_thu_mua.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
         LogInfo(f"[TienNga] Created collection point '{collection_name}' (prefix={code_prefix}) by user {message.from_user.id}", LogType.SYSTEM_STATUS)
         
         await message.reply_text(
@@ -1055,6 +1100,7 @@ async def tien_nga_update_collection_point_handler(client, message: Message) -> 
     notes = data.get("Ghi Chú", "").strip()
 
     from app.models.business import CollectionPoint
+    from sqlalchemy.exc import IntegrityError
 
     db = SessionLocal()
     try:
@@ -1094,7 +1140,16 @@ async def tien_nga_update_collection_point_handler(client, message: Message) -> 
         cp.manager_phone = manager_phone or None
         cp.notes = notes or None
 
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            await message.reply_text(
+                f"⚠️ Tên <b>{collection_name or cp_id}</b> hoặc mã viết tắt "
+                f"<b>{code_prefix or '—'}</b> vừa bị điểm thu mua khác chiếm. Vui lòng thử lại.",
+                parse_mode=ParseMode.HTML
+            )
+            return
 
         LogInfo(f"[TienNga] Updated collection point '{cp.collection_name}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
 
@@ -1245,6 +1300,7 @@ async def tien_nga_create_customer_handler(client, message: Message) -> None:
     
     amount_of_debt = parse_float_vn(data.get("Số Tiền Nợ (VNĐ)", data.get("Số Tiền Nợ", "0")))
     cash_advance = parse_float_vn(data.get("Ứng Tiền Cuối Mùa (VNĐ)", data.get("Ứng Tiền Cuối Mùa", "0")))
+    cash_advance_monthly = parse_float_vn(data.get("Ứng Tiền Trong Tháng (VNĐ)", data.get("Ứng Tiền Trong Tháng", "0")))
     total_debt = parse_float_vn(data.get("Tổng Công Nợ (VNĐ)", data.get("Tổng Công Nợ", "0")))
     is_subsidized = parse_float_vn(data.get("Trợ Giá (VNĐ)", data.get("Trợ Giá", "0")))
 
@@ -1276,6 +1332,7 @@ async def tien_nga_create_customer_handler(client, message: Message) -> None:
             number_bank=number_bank if number_bank else None,
             amount_of_debt=int(amount_of_debt),
             cash_advance=int(cash_advance),
+            cash_advance_monthly=int(cash_advance_monthly),
             total_debt=int(total_debt),
             username=username if username else None,
             status=status.upper(),
@@ -1335,6 +1392,7 @@ SĐT Khách:
 Nguyên Liệu: 
 Số Tiền Nợ (VNĐ): 
 Ứng Tiền Cuối Mùa (VNĐ): 
+Ứng Tiền Trong Tháng (VNĐ): 
 Tổng Công Nợ (VNĐ): 
 Trợ Giá (VNĐ): 0
 Trạng Thái: ACTIVE
@@ -1389,6 +1447,7 @@ def _build_customer_info_text(db, customer) -> str:
         f"<b>Nguyên Liệu:</b> {customer.ingredient or '—'}\n"
         f"<b>Số Tiền Nợ:</b> <code>{fmt_vn(customer.amount_of_debt)}</code>\n"
         f"<b>Ứng Cuối Mùa:</b> <code>{fmt_vn(customer.cash_advance)}</code>\n"
+        f"<b>Ứng Trong Tháng:</b> <code>{fmt_vn(customer.cash_advance_monthly)}</code>\n"
         f"<b>Tổng Công Nợ:</b> <code>{fmt_vn(customer.total_debt)}</code>\n"
         f"<b>Trạng Thái:</b> {status_str}\n"
         f"<b>Tài khoản TG:</b> {customer.username or '—'}"
@@ -1413,13 +1472,18 @@ SĐT Khách: {customer.number_phone or ""}
 Nguyên Liệu: {customer.ingredient or ""}
 Số Tiền Nợ (VNĐ): {fmt_int(customer.amount_of_debt)}
 Ứng Tiền Cuối Mùa (VNĐ): {fmt_int(customer.cash_advance)}
-Tổng Công Nợ (VNĐ): {fmt_int(customer.total_debt)}
+Ứng Tiền Trong Tháng (VNĐ): {fmt_int(customer.cash_advance_monthly)}
 Trợ Giá (VNĐ): {fmt_int(customer.is_subsidized)}
 Trạng Thái: {customer.status or 'ACTIVE'}
 Username: {customer.username or ''}
 Nhóm Telegram: {customer.telegram_group or ''}
 Ngân Hàng: {customer.bank_name or ''}
-STK Ngân Hàng: {customer.number_bank or ''}</pre>"""
+STK Ngân Hàng: {customer.number_bank or ''}</pre>
+
+<i>Tổng Công Nợ hiện tại: <b>{fmt_int(customer.total_debt)}</b> — do hệ thống tự tính từ
+thu mua/thanh toán nên không sửa được ở đây. Cần điều chỉnh thì dùng
+/tien_nga_thanh_toan_cong_no.</i>
+<i>Dòng nào xóa khỏi form thì giữ nguyên giá trị cũ.</i>"""
 
 
 def _tn_collection_point_view(
@@ -1427,6 +1491,7 @@ def _tn_collection_point_view(
     item_cb_template: str = "{prefix}_cp|{cp_id}|0",
     subtitle: str = "Vui lòng chọn Điểm Thu Mua (Xưởng):",
     page: int | None = None,
+    back_cb: str | None = None,
 ):
     """
     Màn hình chọn Điểm Thu Mua, dùng chung cho các luồng nút bấm.
@@ -1434,13 +1499,23 @@ def _tn_collection_point_view(
     tn_dc = xóa KH, tn_lcp = quản lý điểm thu mua, tn_ucp = cập nhật điểm thu mua).
     `item_cb_template` là callback khi bấm vào 1 điểm — mặc định mở danh sách khách hàng.
     `page` khác None thì bật phân trang TN_PAGE_SIZE mỗi trang, điều hướng qua {prefix}_p|<trang>.
+    `back_cb` khác None thì thêm nút Quay lại — dùng cho luồng có màn hình trước đó.
     Trả về (text, markup) hoặc (text, None) nếu chưa có điểm nào.
     """
     from app.models.business import CollectionPoint
 
+    def tail_row():
+        row = []
+        if back_cb:
+            row.append(InlineKeyboardButton("Quay lại", callback_data=back_cb))
+        row.append(InlineKeyboardButton("Hủy", callback_data=f"{prefix}_x"))
+        return row
+
     points = db.query(CollectionPoint).order_by(CollectionPoint.collection_name).all()
     if not points:
-        return "⚠️ Chưa có Điểm Thu Mua nào. Vui lòng tạo trước bằng lệnh /tien_nga_create_collection_point.", None
+        empty = "⚠️ Chưa có Điểm Thu Mua nào. Vui lòng tạo trước bằng lệnh /tien_nga_create_collection_point."
+        # Luồng nhiều bước vẫn cần đường lùi, không để người dùng kẹt ở màn hình rỗng.
+        return empty, (InlineKeyboardMarkup([tail_row()]) if back_cb else None)
 
     text = f"<b>{title}</b>\n\n{subtitle}"
     nav_row = []
@@ -1468,7 +1543,7 @@ def _tn_collection_point_view(
     ]
     if nav_row:
         buttons.append(nav_row)
-    buttons.append([InlineKeyboardButton("Hủy", callback_data=f"{prefix}_x")])
+    buttons.append(tail_row())
     return text, InlineKeyboardMarkup(buttons)
 
 
@@ -1602,6 +1677,20 @@ async def _tn_screen_edit(callback_query, text: str, markup=None) -> None:
     """Thay nội dung tin nhắn đang hiển thị bằng màn hình mới."""
     try:
         await callback_query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    except FloodWait as e:
+        # Pyrogram đã tự ngủ-và-thử-lại với mọi FloodWait <= sleep_threshold (xem bot.py).
+        # Tới đây là Telegram chặn dài hơn thế -> báo bằng toast (SetBotCallbackAnswer là
+        # API khác, không dính giới hạn của EditMessage) thay vì để lỗi nổ lên decorator
+        # và hiện thành "lỗi kiểm tra custom title" gây hiểu nhầm.
+        LogError(f"FloodWait {e.value}s khi vẽ lại màn hình nút bấm.", LogType.SYSTEM_STATUS)
+        try:
+            await callback_query.answer(
+                f"⏳ Telegram đang giới hạn tốc độ. Vui lòng bấm lại sau {e.value} giây.",
+                show_alert=True
+            )
+        except Exception:
+            pass
+        return
     except Exception as e:
         # Bấm lại đúng nút của màn hình đang hiển thị -> Telegram trả MESSAGE_NOT_MODIFIED
         if "MESSAGE_NOT_MODIFIED" not in str(e):
@@ -2247,20 +2336,34 @@ async def tien_nga_update_customer_handler(client, message: Message) -> None:
         await message.reply_text("⚠️ <b>Mã Hộ</b> là bắt buộc.", parse_mode=ParseMode.HTML)
         return
         
-    fullname = data.get("Tên Khách Hàng", "").strip()
-    phone = data.get("SĐT Khách", "").strip()
-    address = data.get("Địa Chỉ", "").strip()
-    ingredient = data.get("Nguyên Liệu", "").strip()
-    username = data.get("Username", "").strip()
-    telegram_group = data.get("Nhóm Telegram", "").strip()
-    bank_name = data.get("Ngân Hàng", "").strip()
-    number_bank = data.get("STK Ngân Hàng", "").strip()
-    status = data.get("Trạng Thái", "ACTIVE").strip()
-    
-    amount_of_debt = parse_float_vn(data.get("Số Tiền Nợ (VNĐ)", data.get("Số Tiền Nợ", "0")))
-    cash_advance = parse_float_vn(data.get("Ứng Tiền Cuối Mùa (VNĐ)", data.get("Ứng Tiền Cuối Mùa", "0")))
-    total_debt = parse_float_vn(data.get("Tổng Công Nợ (VNĐ)", data.get("Tổng Công Nợ", "0")))
-    is_subsidized = parse_float_vn(data.get("Trợ Giá (VNĐ)", data.get("Trợ Giá", "0")))
+    # Tổng Công Nợ là số dẫn xuất (thu mua cộng vào, thanh toán trừ ra). Cho sửa tay ở
+    # đây thì form cũ sẽ ghi đè mất các giao dịch phát sinh sau lúc form được tạo.
+    if "Tổng Công Nợ (VNĐ)" in data or "Tổng Công Nợ" in data:
+        await message.reply_text(
+            "⚠️ <b>Tổng Công Nợ</b> do hệ thống tự tính, không cập nhật qua form này.\n\n"
+            "<i>Vui lòng xóa dòng đó khỏi form rồi gửi lại. Cần điều chỉnh công nợ thì "
+            "dùng /tien_nga_thanh_toan_cong_no.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    VALID_STATUSES = ("ACTIVE", "INACTIVE", "DELETED")
+    if "Trạng Thái" in data:
+        status = data["Trạng Thái"].strip().upper()
+        if status not in VALID_STATUSES:
+            await message.reply_text(
+                f"⚠️ <b>Trạng Thái</b> không hợp lệ: <code>{status}</code>\n\n"
+                f"<i>Chỉ nhận: {', '.join(VALID_STATUSES)}.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+    def _num(*keys):
+        """Giá trị số của field nếu có mặt trong form, None nếu người dùng bỏ dòng đó."""
+        for k in keys:
+            if k in data:
+                return int(parse_float_vn(data[k]))
+        return None
 
     from app.models.business import Customers
 
@@ -2270,21 +2373,39 @@ async def tien_nga_update_customer_handler(client, message: Message) -> None:
         if not customer:
             await message.reply_text(f"⚠️ Khách hàng mã hộ <b>{hoursehold_id}</b> không tồn tại.", parse_mode=ParseMode.HTML)
             return
-            
-        if fullname: customer.fullname = fullname
-        customer.number_phone = phone
-        customer.address = address
-        customer.ingredient = ingredient
-        customer.telegram_group = telegram_group if telegram_group else None
-        customer.bank_name = bank_name if bank_name else None
-        customer.number_bank = number_bank if number_bank else None
-        customer.amount_of_debt = int(amount_of_debt)
-        customer.cash_advance = int(cash_advance)
-        customer.total_debt = int(total_debt)
-        customer.username = username
-        customer.status = status.upper()
-        customer.is_subsidized = int(is_subsidized)
-        
+
+        # Chỉ đụng vào field thực sự có trong form gửi lên — dòng nào bị xóa thì giữ nguyên
+        # giá trị cũ, tránh việc gửi form rút gọn làm trắng dữ liệu.
+        # Tên là field bắt buộc — bỏ trống thì giữ tên cũ chứ không xóa.
+        if data.get("Tên Khách Hàng", "").strip():
+            customer.fullname = data["Tên Khách Hàng"].strip()
+
+        text_fields = {
+            "SĐT Khách": "number_phone",
+            "Địa Chỉ": "address",
+            "Nguyên Liệu": "ingredient",
+            "Username": "username",
+            "Nhóm Telegram": "telegram_group",
+            "Ngân Hàng": "bank_name",
+            "STK Ngân Hàng": "number_bank",
+        }
+        for form_key, attr in text_fields.items():
+            if form_key in data:
+                setattr(customer, attr, data[form_key].strip() or None)
+
+        for form_key, attr in (
+            (("Số Tiền Nợ (VNĐ)", "Số Tiền Nợ"), "amount_of_debt"),
+            (("Ứng Tiền Cuối Mùa (VNĐ)", "Ứng Tiền Cuối Mùa"), "cash_advance"),
+            (("Ứng Tiền Trong Tháng (VNĐ)", "Ứng Tiền Trong Tháng"), "cash_advance_monthly"),
+            (("Trợ Giá (VNĐ)", "Trợ Giá"), "is_subsidized"),
+        ):
+            val = _num(*form_key)
+            if val is not None:
+                setattr(customer, attr, val)
+
+        if "Trạng Thái" in data:
+            customer.status = status
+
         db.commit()
         
         LogInfo(f"[TienNga] Updated customer '{hoursehold_id}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
@@ -2300,6 +2421,7 @@ async def tien_nga_update_customer_handler(client, message: Message) -> None:
             f"<b>Ngân hàng:</b> {customer.bank_name or '—'} <i>({customer.number_bank or '—'})</i>\n"
             f"<b>Số Tiền Nợ:</b> <code>{fmt_vn(customer.amount_of_debt)}</code>\n"
             f"<b>Ứng Cuối Mùa:</b> <code>{fmt_vn(customer.cash_advance)}</code>\n"
+            f"<b>Ứng Trong Tháng:</b> <code>{fmt_vn(customer.cash_advance_monthly)}</code>\n"
             f"<b>Tổng Công Nợ:</b> <code>{fmt_vn(customer.total_debt)}</code>\n"
             f"<b>Trợ Giá:</b> <code>{fmt_vn(customer.is_subsidized)}</code>\n"
             f"<b>Trạng Thái:</b> {customer.status}\n"
@@ -2552,6 +2674,9 @@ async def tien_nga_list_employee_handler(client, message: Message) -> None:
             tmp_path = tmp.name
         wb.save(tmp_path)
 
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
+
         now_str = datetime.now().strftime("%Y%m%d_%H%M")
         await message.reply_document(
             document=tmp_path,
@@ -2641,12 +2766,13 @@ async def tien_nga_list_customers_handler(client, message: Message) -> None:
             "Nguyên Liệu",
             "Số Tiền Nợ",
             "Ứng Tiền Cuối Mùa",
+            "Ứng Tiền Trong Tháng",
             "Tổng Công Nợ",
             "Username TG",
             "Trạng Thái",
         ]
 
-        col_widths = [6, 10, 22, 10, 16, 25, 15, 18, 20, 18, 18, 12]
+        col_widths = [6, 10, 22, 10, 16, 25, 15, 18, 20, 22, 18, 18, 12]
 
         total_customers = 0
 
@@ -2683,6 +2809,7 @@ async def tien_nga_list_customers_handler(client, message: Message) -> None:
                     cust.ingredient,
                     fmt_money(cust.amount_of_debt),
                     fmt_money(cust.cash_advance),
+                    fmt_money(cust.cash_advance_monthly),
                     fmt_money(cust.total_debt),
                     cust.username,
                     cust.status,
@@ -2691,7 +2818,7 @@ async def tien_nga_list_customers_handler(client, message: Message) -> None:
                 for col_idx, val in enumerate(values, 1):
                     cell = ws.cell(row=row, column=col_idx, value=val)
                     cell.border = thin_border
-                    if col_idx in (8, 9, 10):  # Money columns
+                    if col_idx in (8, 9, 10, 11):  # Money columns
                         cell.alignment = money_align
                     elif col_idx == 1:
                         cell.alignment = center_align
@@ -2714,6 +2841,9 @@ async def tien_nga_list_customers_handler(client, message: Message) -> None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
+
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
 
         now_str = datetime.now().strftime("%Y%m%d_%H%M")
         summary_lines = "\n".join(
@@ -3386,6 +3516,10 @@ async def tien_nga_control_losses_handler(client, message: Message) -> None:
 # Callback: Chọn mã hàng → hiển thị thống kê hao hụt
 # cl:dtl:{product_code}:{purchase_date}:{est_date}
 @bot.on_callback_query(filters.regex(r"^cl:dtl:([^:]+):(\d{8}):(\d{8}|0)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_detail_callback(client, callback_query):
     from datetime import datetime
     from app.models.business import DailyPurchases
@@ -3473,6 +3607,10 @@ async def control_losses_detail_callback(client, callback_query):
 
 # Callback: Chọn điểm thu mua để kiểm soát hao hụt Tiến Nga
 @bot.on_callback_query(filters.regex(r"^cl:cps_sel:(\d{8}):(\d{8}|0):(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_cps_select_callback(client, callback_query):
     from datetime import datetime
     from app.models.business import DailyPurchases, CollectionPoint
@@ -3540,6 +3678,10 @@ async def control_losses_cps_select_callback(client, callback_query):
 
 # Callback: Xác nhận chọn điểm thu mua -> tính toán chi tiết hao hụt Tiến Nga
 @bot.on_callback_query(filters.regex(r"^cl:cps_conf:(\d{8}):(\d{8}|0):(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_cps_confirm_callback(client, callback_query):
     from datetime import datetime
     from app.models.business import DailyPurchases, CollectionPoint
@@ -3655,6 +3797,10 @@ async def control_losses_cps_confirm_callback(client, callback_query):
 
 # Callback: Quay lại danh sách mã hàng
 @bot.on_callback_query(filters.regex(r"^cl:back:(\d{8}):(\d{8}|0)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_back_callback(client, callback_query):
     from datetime import datetime
     from app.models.business import DailyPurchases, CollectionPoint
@@ -3729,8 +3875,13 @@ async def control_losses_back_callback(client, callback_query):
 
 # Callback: Lưu kiểm soát hao hụt vào DB
 @bot.on_callback_query(filters.regex(r"^cl:save:([^:]+):(\d{8}):(\d{8}|0):(dry|wet)(?::(\d+))?$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_save_callback(client, callback_query):
     from datetime import datetime
+    from sqlalchemy.exc import IntegrityError
     from app.models.business import DailyPurchases, LossControls, CollectionPoint
 
     product_code = callback_query.matches[0].group(1)
@@ -3837,8 +3988,17 @@ async def control_losses_save_callback(client, callback_query):
             processing_type=processing_type
         )
         db.add(new_loss_control)
-        db.commit()
-        
+        try:
+            db.commit()
+        except IntegrityError:
+            # Unique (product_code, day): một người khác vừa lưu xong trước.
+            db.rollback()
+            await callback_query.answer(
+                "⚠️ Lô hàng này vừa được người khác lưu. Bấm lại để chọn ghi đè.",
+                show_alert=True
+            )
+            return
+
         LogInfo(f"[TienNga] User {callback_query.from_user.id} saved loss control for {product_code}", LogType.SYSTEM_STATUS)
         
         await callback_query.answer("✅ Đã lưu thông tin kiểm soát hao hụt thành công!", show_alert=True)
@@ -3861,12 +4021,20 @@ async def control_losses_save_callback(client, callback_query):
 
 # Callback: Hủy kiểm soát hao hụt
 @bot.on_callback_query(filters.regex(r"^cl:cancel$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_cancel_callback(client, callback_query):
     await callback_query.message.delete()
 
 
 # Callback: Xác nhận ghi đè
 @bot.on_callback_query(filters.regex(r"^cl:ovr:([^:]+):(\d{8}):(\d{8}|0):(dry|wet)(?::(\d+))?$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_overwrite_callback(client, callback_query):
     from datetime import datetime
     from app.models.business import DailyPurchases, LossControls, CollectionPoint
@@ -4319,15 +4487,20 @@ async def tien_nga_export_daily_purchase_handler(client, message: Message) -> No
             "tong_luu_so": tong_luu_so,
             "tong_thanh_toan": tong_thanh_toan,
             "tong_ung_tien": tong_ung_tien,
-            "tien_da_ung": customer.cash_advance or 0,
+            "tien_da_ung": (customer.cash_advance or 0) + (customer.cash_advance_monthly or 0),
         }
 
         from bot.utils.daily_purchase_report_generator import generate_daily_purchase_report_image
+        # Giữ lại giá trị cần dùng: sau db.close() object đã detach khỏi session.
+        cust_name = customer.fullname
+        # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+        db.close()
+
         img_buf = await generate_daily_purchase_report_image(report_data)
 
         caption_text = (
                 f"<b>BÁO CÁO MUA MỦ</b>\n"
-                f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
+                f"<b>Khách hàng:</b> {cust_name} ({hoursehold_id})\n"
                 f"<b>Xưởng:</b> {cp_name}\n"
                 f"<b>Thời gian:</b> {timeframe}\n"
                 f"<b>Số lần mua:</b> {len(records)}"
@@ -4520,15 +4693,20 @@ async def tien_nga_export_saved_bill_handler(client, message: Message) -> None:
             "tong_thanh_tien_kht": tong_thanh_tien_kht,
             "tong_luu_so": tong_luu_so,
             "tong_thanh_toan": tong_thanh_toan,
-            "tien_da_ung": customer.cash_advance or 0,
+            "tien_da_ung": (customer.cash_advance or 0) + (customer.cash_advance_monthly or 0),
         }
 
         from bot.utils.saved_bill_report_generator import generate_saved_bill_report_image
+        # Giữ lại giá trị cần dùng: sau db.close() object đã detach khỏi session.
+        cust_name = customer.fullname
+        # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+        db.close()
+
         img_buf = await generate_saved_bill_report_image(report_data)
 
         caption_text = (
                 f"<b>HÓA ĐƠN LƯU SỔ</b>\n"
-                f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
+                f"<b>Khách hàng:</b> {cust_name} ({hoursehold_id})\n"
                 f"<b>Xưởng:</b> {cp_name}\n"
                 f"<b>Thời gian:</b> {timeframe}\n"
                 f"<b>Số lần mua:</b> {len(records)}"
@@ -4709,15 +4887,20 @@ async def tien_nga_export_paid_bill_handler(client, message: Message) -> None:
             "tong_kl_tt": tong_kl_tt,
             "tong_thanh_tien": tong_thanh_tien,
             "tong_thanh_toan": tong_thanh_toan,
-            "tien_da_ung": customer.cash_advance or 0,
+            "tien_da_ung": (customer.cash_advance or 0) + (customer.cash_advance_monthly or 0),
         }
 
         from bot.utils.paid_bill_report_generator import generate_paid_bill_report_image
+        # Giữ lại giá trị cần dùng: sau db.close() object đã detach khỏi session.
+        cust_name = customer.fullname
+        # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+        db.close()
+
         img_buf = await generate_paid_bill_report_image(report_data)
 
         caption_text = (
             f"<b>HÓA ĐƠN ĐÃ THANH TOÁN</b>\n"
-            f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
+            f"<b>Khách hàng:</b> {cust_name} ({hoursehold_id})\n"
             f"<b>Xưởng:</b> {cp_name}\n"
             f"<b>Thời gian:</b> {timeframe}\n"
             f"<b>Số lần mua:</b> {len(records)}"
@@ -4908,15 +5091,20 @@ async def rpt_tm_period_callback(client, callback_query):
             "tong_luu_so": tong_luu_so,
             "tong_thanh_toan": tong_thanh_toan,
             "tong_ung_tien": tong_ung_tien,
-            "tien_da_ung": customer.cash_advance or 0,
+            "tien_da_ung": (customer.cash_advance or 0) + (customer.cash_advance_monthly or 0),
         }
 
         from bot.utils.daily_purchase_report_generator import generate_daily_purchase_report_image
+        # Giữ lại giá trị cần dùng: sau db.close() object đã detach khỏi session.
+        cust_name = customer.fullname
+        # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+        db.close()
+
         img_buf = await generate_daily_purchase_report_image(report_data)
 
         caption_text = (
             f"<b>BÁO CÁO MUA MỦ</b>\n"
-            f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
+            f"<b>Khách hàng:</b> {cust_name} ({hoursehold_id})\n"
             f"<b>Xưởng:</b> {cp_name}\n"
             f"<b>Thời gian:</b> {timeframe}\n"
             f"<b>Số lần mua:</b> {len(records)}"
@@ -5081,15 +5269,20 @@ async def rpt_ls_period_callback(client, callback_query):
             "tong_thanh_tien_kht": tong_thanh_tien_kht,
             "tong_luu_so": tong_luu_so,
             "tong_thanh_toan": tong_thanh_toan,
-            "tien_da_ung": customer.cash_advance or 0,
+            "tien_da_ung": (customer.cash_advance or 0) + (customer.cash_advance_monthly or 0),
         }
 
         from bot.utils.saved_bill_report_generator import generate_saved_bill_report_image
+        # Giữ lại giá trị cần dùng: sau db.close() object đã detach khỏi session.
+        cust_name = customer.fullname
+        # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+        db.close()
+
         img_buf = await generate_saved_bill_report_image(report_data)
 
         caption_text = (
             f"<b>HÓA ĐƠN LƯU SỔ</b>\n"
-            f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
+            f"<b>Khách hàng:</b> {cust_name} ({hoursehold_id})\n"
             f"<b>Xưởng:</b> {cp_name}\n"
             f"<b>Thời gian:</b> {timeframe}\n"
             f"<b>Số lần mua:</b> {len(records)}"
@@ -5242,15 +5435,20 @@ async def rpt_tt_period_callback(client, callback_query):
             "tong_kl_tt": tong_kl_tt,
             "tong_thanh_tien": tong_thanh_tien,
             "tong_thanh_toan": tong_thanh_toan,
-            "tien_da_ung": customer.cash_advance or 0,
+            "tien_da_ung": (customer.cash_advance or 0) + (customer.cash_advance_monthly or 0),
         }
 
         from bot.utils.paid_bill_report_generator import generate_paid_bill_report_image
+        # Giữ lại giá trị cần dùng: sau db.close() object đã detach khỏi session.
+        cust_name = customer.fullname
+        # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+        db.close()
+
         img_buf = await generate_paid_bill_report_image(report_data)
 
         caption_text = (
             f"<b>HÓA ĐƠN ĐÃ THANH TOÁN</b>\n"
-            f"<b>Khách hàng:</b> {customer.fullname} ({hoursehold_id})\n"
+            f"<b>Khách hàng:</b> {cust_name} ({hoursehold_id})\n"
             f"<b>Xưởng:</b> {cp_name}\n"
             f"<b>Thời gian:</b> {timeframe}\n"
             f"<b>Số lần mua:</b> {len(records)}"
@@ -5605,6 +5803,9 @@ async def tien_nga_export_callback(client, callback_query: CallbackQuery):
                 kb = InlineKeyboardMarkup([[InlineKeyboardButton("Quay lại", callback_data=f"tn_exp_ncc_mu_{time_code}")]])
                 
                 if records:
+                    # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+                    db.close()
+
                     buf = await generate_report_image(
                         target_name=target_name.upper(),
                         timeframe=timeframe_str,
@@ -6426,6 +6627,9 @@ async def tien_nga_paid_amount_callback(client, callback_query: CallbackQuery):
 
             if records:
                 from bot.utils.paid_report_generator import generate_paid_report_image
+                # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+                db.close()
+
                 buf = await generate_paid_report_image(
                     target_name=target_name.upper(),
                     timeframe=timeframe_str,
@@ -6894,6 +7098,9 @@ async def tien_nga_save_amount_callback(client, callback_query: CallbackQuery):
 
             if records:
                 from bot.utils.save_report_generator import generate_save_report_image
+                # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+                db.close()
+
                 buf = await generate_save_report_image(
                     target_name=target_name.upper(),
                     timeframe=timeframe_str,
@@ -8269,6 +8476,9 @@ async def _do_generate_and_send_summary(client, chat_id, start_date, end_date, p
             tmp_path = tmp.name
         wb.save(tmp_path)
 
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
+
         timeframe_str = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
 
         if progress_msg:
@@ -8945,6 +9155,9 @@ async def tien_nga_list_partner_handler(client, message: Message) -> None:
             tmp_path = tmp.name
         wb.save(tmp_path)
 
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
+
         now_str = datetime.now().strftime("%Y%m%d_%H%M")
         await message.reply_document(
             document=tmp_path,
@@ -9206,11 +9419,16 @@ async def check_partner_txn_callback(client, callback_query) -> None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
+
+        # Giữ lại giá trị cần dùng: sau db.close() object đã detach khỏi session.
+        partner_name_txt = partner.partner_name
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
         
         from datetime import datetime
         now_str = datetime.now().strftime("%Y%m%d_%H%M")
         
-        caption_text = f"<b>GIAO DỊCH {txn_type.upper()}</b>\nĐối tác: <b>{partner.partner_name}</b>"
+        caption_text = f"<b>GIAO DỊCH {txn_type.upper()}</b>\nĐối tác: <b>{partner_name_txt}</b>"
         if start_dt and end_dt:
             caption_text += f"\nThời gian: {start_dt.strftime('%d/%m/%Y')} - {end_dt.strftime('%d/%m/%Y')}"
             
@@ -10539,6 +10757,9 @@ async def tien_nga_partner_report_handler(client, message: Message) -> None:
             tmp_path = tmp.name
         wb.save(tmp_path)
 
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
+
         total_import = sum(r[7] for r in all_rows if isinstance(r[7], (int, float)))
         total_export = sum(r[8] for r in all_rows if isinstance(r[8], (int, float)))
 
@@ -10662,6 +10883,9 @@ async def tien_nga_chart_purcharse_handler(client, message: Message) -> None:
                 "subtitle": f"Từ {start_date.strftime('%d/%m/%Y')} đến {end_date.strftime('%d/%m/%Y')}",
                 "charts": charts_list
             }
+            # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+            db.close()
+
             img_buf = await generate_chart_image(chart_data)
             await message.reply_document(
                 document=img_buf,
@@ -10959,6 +11183,9 @@ async def tien_nga_chart_time_callback(client, callback_query: CallbackQuery):
             "charts": charts_list
         }
         
+        # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+        db.close()
+
         img_buf = await generate_chart_image(chart_data)
         
         await callback_query.message.reply_document(
@@ -11058,6 +11285,9 @@ async def tien_nga_chart_custom_callback(client, callback_query: CallbackQuery):
             "charts": charts_list
         }
         
+        # Trả connection về pool trước khi render/upload (mất vài giây) để không cạn pool.
+        db.close()
+
         img_buf = await generate_chart_image(chart_data)
         
         await callback_query.message.reply_document(
@@ -11199,17 +11429,26 @@ async def ttcn_cancel_callback(client, callback_query: CallbackQuery):
 
 # --- Thu Công Nợ / Trả Công Nợ ---
 @bot.on_callback_query(filters.regex(r"^cb_ttcn_(thu|tra)_(partner|customer|employee|household)_(.+)_(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
 async def ttcn_action_callback(client, callback_query: CallbackQuery):
     action = callback_query.matches[0].group(1)       # "thu" or "tra"
     target_type = callback_query.matches[0].group(2)   # partner/customer/employee/household
     target_id = callback_query.matches[0].group(3)     # e.g. DT004
     amount = int(callback_query.matches[0].group(4))
 
+    # Bấm hai lần sẽ trừ nợ hai lần và phân bổ FIFO hai lần — chốt trước khi await.
+    if not _tn_cb_claim(callback_query, "ttcn"):
+        await callback_query.answer("⚠️ Thao tác này đã được xử lý rồi.", show_alert=True)
+        return
+
     from app.models.business import Customers, Partners, Households, Projects
     from app.models.employee import Employee
     from app.models.telegram import TelegramProjectMember
 
     db = SessionLocal()
+    committed = False
     try:
         entity = None
         name = ""
@@ -11237,6 +11476,7 @@ async def ttcn_action_callback(client, callback_query: CallbackQuery):
                 name = f"{entity.last_name or ''} {entity.first_name or ''}".strip() or entity.id
 
         if not entity:
+            _tn_cb_release(callback_query, "ttcn")
             await callback_query.message.edit_text(f"⚠️ Không tìm thấy đối tượng với mã <b>{target_id}</b>.", parse_mode=ParseMode.HTML)
             return
 
@@ -11300,6 +11540,7 @@ async def ttcn_action_callback(client, callback_query: CallbackQuery):
                     })
 
         db.commit()
+        committed = True
 
         success_msg = (
             f"✅ <b>{action_label} THÀNH CÔNG</b>\n\n"
@@ -11392,6 +11633,10 @@ async def ttcn_action_callback(client, callback_query: CallbackQuery):
 
     except Exception as e:
         db.rollback()
+        # Lỗi trước khi commit thì chưa có gì thay đổi -> cho bấm lại.
+        # Lỗi sau commit (gửi tin nhắn hỏng) thì giữ khoá, tránh trừ nợ lần hai.
+        if not committed:
+            _tn_cb_release(callback_query, "ttcn")
         LogError(f"Error in ttcn_action_callback: {e}", LogType.SYSTEM_STATUS)
         try:
             await callback_query.message.edit_text("❌ Hệ thống gặp lỗi khi cập nhật công nợ.", parse_mode=ParseMode.HTML)
@@ -14206,20 +14451,14 @@ async def _check_inv_back_cb(client, callback_query):
 async def tien_nga_material_purchase_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
     if len(lines) < 2:
-        from app.db.session import SessionLocal
-        from app.models.inventory import Inventory
+        # Mở wizard: Kho → Điểm Thu Mua → Khách hàng → Form
         db = SessionLocal()
         try:
-            invs = db.query(Inventory).all()
-            if not invs:
-                await message.reply_text("⚠️ Chưa có hàng tồn kho nào.")
-                return
-            buttons = []
-            for inv in invs:
-                btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
-                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_purmat_{inv.id}")])
-            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_purmat_cancel")])
-            await message.reply_text("<b>Vui lòng chọn Loại Nguyên Liệu cần nhập mua:</b>", reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+            text, markup = _tn_mp_inventory_view(db)
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error opening material purchase wizard: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
         finally:
             db.close()
         return
@@ -14256,7 +14495,8 @@ async def tien_nga_material_purchase_handler(client, message: Message) -> None:
     except:
         transaction_date = datetime.now().date()
 
-    from app.db.session import SessionLocal
+    # Không import SessionLocal ở đây: import cục bộ sẽ biến nó thành biến local của
+    # cả hàm, khiến nhánh mở wizard ở đầu hàm ném UnboundLocalError. Dùng bản module-level.
     from app.models.inventory import Inventory, MaterialPurchase
     from app.models.business import Customers
     import uuid
@@ -14317,37 +14557,256 @@ async def tien_nga_material_purchase_handler(client, message: Message) -> None:
     finally:
         db.close()
 
-@bot.on_callback_query(filters.regex(r"^tn_purmat_(.+)$"))
-async def _purmat_cb(client, callback_query):
-    inv_id = callback_query.matches[0].group(1)
-    if inv_id == "cancel":
-        await callback_query.message.delete()
-        return
-    from app.db.session import SessionLocal
+# ══════════════════════════════════════════════════════════════
+# THU MUA NGUYÊN LIỆU — luồng nút bấm
+# Kho → Điểm Thu Mua → Khách hàng (phân trang) → Form nhập
+# ══════════════════════════════════════════════════════════════
+
+# Kho đang chọn của từng wizard, key "{chat_id}:{message_id}".
+# Không nhét inv_id vào callback_data được: hai UUID cộng lại đã vượt giới hạn 64 byte.
+_TN_MP_CTX: dict[str, dict] = {}
+_TN_MP_CTX_TTL_SECONDS = 3600
+
+
+def _tn_mp_key(callback_query) -> str:
+    return f"{callback_query.message.chat.id}:{callback_query.message.id}"
+
+
+def _tn_mp_ctx_set(callback_query, inv_id: str) -> None:
+    now = datetime.now()
+    for key, ctx in list(_TN_MP_CTX.items()):
+        if (now - ctx["updated_at"]).total_seconds() > _TN_MP_CTX_TTL_SECONDS:
+            _TN_MP_CTX.pop(key, None)
+    _TN_MP_CTX[_tn_mp_key(callback_query)] = {"inv_id": inv_id, "updated_at": now}
+
+
+async def _tn_mp_ctx_get(callback_query):
+    """Lấy Kho đang chọn; báo alert và trả None nếu phiên đã hết hạn."""
+    ctx = _TN_MP_CTX.get(_tn_mp_key(callback_query))
+    if not ctx:
+        await callback_query.answer(
+            "⚠️ Phiên chọn đã hết hạn. Vui lòng gõ lại lệnh /tien_nga_thu_mua_nguyen_lieu.",
+            show_alert=True
+        )
+        return None
+    return ctx["inv_id"]
+
+
+class _TnMpInventory(NamedTuple):
+    """Ảnh chụp của dòng tồn kho — dùng được sau khi session đã đóng."""
+    material_name: str
+    storage_name: str | None
+
+
+def _tn_mp_load_inventory(db, inv_id: str):
+    """Đọc Kho theo id. Trả None nếu id hỏng hoặc bản ghi đã bị xóa."""
     from app.models.inventory import Inventory
-    import uuid
-    from datetime import datetime
+    import uuid as uuid_lib
+
+    try:
+        key = uuid_lib.UUID(inv_id)
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+    inv = db.query(Inventory).filter(Inventory.id == key).first()
+    if not inv:
+        return None
+    return _TnMpInventory(material_name=inv.material_name, storage_name=inv.storage_name)
+
+
+def _tn_mp_inventory_view(db):
+    """Bước 1 — chọn Kho (mỗi dòng tồn kho là một cặp Kho + Nguyên liệu)."""
+    from app.models.inventory import Inventory
+
+    invs = db.query(Inventory).order_by(Inventory.storage_name, Inventory.material_name).all()
+    if not invs:
+        return "⚠️ Chưa có Kho nào. Vui lòng tạo trước bằng lệnh /tien_nga_tao_kho.", None
+
+    buttons = []
+    for inv in invs:
+        label = f"{inv.storage_name} — {inv.material_name}" if inv.storage_name else inv.material_name
+        buttons.append([InlineKeyboardButton(label, callback_data=f"tn_mp_inv|{inv.id}")])
+    buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_mp_x")])
+
+    text = (
+        "<b>THU MUA NGUYÊN LIỆU</b>\n\n"
+        "Vui lòng chọn Kho cần nhập vào:"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+async def _tn_mp_collection_points_screen(callback_query, inv):
+    """Bước 2 — chọn Điểm Thu Mua, kèm nút Quay lại về danh sách Kho."""
     db = SessionLocal()
     try:
-        inv = db.query(Inventory).filter(Inventory.id == uuid.UUID(inv_id)).first()
-        if not inv: return
-        today_str = datetime.now().strftime("%d/%m/%Y")
-        form = (
-            "<b>FORM NHẬP THU MUA</b>\n\n"
-            "<pre>/tien_nga_material_purchase\n"
-            f"Loại Nguyên Liệu: {inv.material_name}\n"
-            f"Tên Kho: {inv.storage_name or ''}\n"
-            f"Ngày Giao Dịch: {today_str}\n"
-            "Mã Khách Hàng: \n"
-            "Số Chuyến: 1\n"
-            "Khối Lượng (Kg): 0\n"
-            "Đơn Giá (VNĐ): 0\n"
-            "Ghi Chú: </pre>\n"
-            "<i>Lưu ý: Thành tiền = Khối lượng x Đơn giá</i>\n"
-            "<i>Lưu ý: Thành tiền, Tạm ứng và Công nợ sẽ được hệ thống xử lý ngầm, vui lòng không điền thêm.</i>"
+        kho_label = f"{inv.storage_name} — {inv.material_name}" if inv.storage_name else inv.material_name
+        text, markup = _tn_collection_point_view(
+            db, "tn_mp", "THU MUA NGUYÊN LIỆU",
+            subtitle=f"Kho: <b>{kho_label}</b>\n\nVui lòng chọn Điểm Thu Mua (Xưởng):",
+            back_cb="tn_mp_invs",
         )
-        await callback_query.message.reply_text(form, parse_mode=ParseMode.HTML)
-        await callback_query.answer()
+        await _tn_screen_edit(callback_query, text, markup)
+    finally:
+        db.close()
+
+
+def _build_material_purchase_form(inv, customer) -> str:
+    """Form nhập thu mua nguyên liệu, điền sẵn Kho + Nguyên liệu + Khách hàng đã chọn."""
+    today_str = datetime.now().strftime("%d/%m/%Y")
+    return (
+        "<b>FORM NHẬP THU MUA NGUYÊN LIỆU</b>\n"
+        f"Khách hàng: <b>{customer.fullname or '—'}</b> ({customer.hoursehold_id})\n\n"
+        "Vui lòng sao chép form dưới đây, điền số liệu và gửi lại:\n\n"
+        "<pre>/tien_nga_material_purchase\n"
+        f"Loại Nguyên Liệu: {inv.material_name}\n"
+        f"Tên Kho: {inv.storage_name or ''}\n"
+        f"Ngày Giao Dịch: {today_str}\n"
+        f"Mã Khách Hàng: {customer.hoursehold_id}\n"
+        "Số Chuyến: 1\n"
+        "Khối Lượng (Kg): 0\n"
+        "Đơn Giá (VNĐ): 0\n"
+        "Ghi Chú: </pre>\n"
+        "<i>Lưu ý: Thành tiền = Khối lượng x Đơn giá</i>\n"
+        "<i>Lưu ý: Thành tiền, Tạm ứng và Công nợ sẽ được hệ thống xử lý ngầm, vui lòng không điền thêm.</i>"
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_mp_x$"))
+async def tn_mp_cancel_callback(client, callback_query):
+    """Hủy luồng thu mua nguyên liệu."""
+    _TN_MP_CTX.pop(_tn_mp_key(callback_query), None)
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_mp_invs$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_SUPPLIER)
+async def tn_mp_inventories_callback(client, callback_query):
+    """Bước 1 / Quay lại — danh sách Kho."""
+    db = SessionLocal()
+    try:
+        _TN_MP_CTX.pop(_tn_mp_key(callback_query), None)
+        text, markup = _tn_mp_inventory_view(db)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_mp_inventories_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_mp_inv\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_SUPPLIER)
+async def tn_mp_pick_inventory_callback(client, callback_query):
+    """Bước 2 — chọn Kho xong thì mở danh sách Điểm Thu Mua."""
+    inv_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        inv = _tn_mp_load_inventory(db, inv_id)
+        if not inv:
+            await callback_query.answer("⚠️ Kho này không còn tồn tại.", show_alert=True)
+            return
+        _tn_mp_ctx_set(callback_query, inv_id)
+    except Exception as e:
+        LogError(f"Error in tn_mp_pick_inventory_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+        return
+    finally:
+        db.close()
+
+    await _tn_mp_collection_points_screen(callback_query, inv)
+
+
+@bot.on_callback_query(filters.regex(r"^tn_mp_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_SUPPLIER)
+async def tn_mp_collection_points_callback(client, callback_query):
+    """Quay lại từ danh sách Khách hàng về danh sách Điểm Thu Mua."""
+    inv_id = await _tn_mp_ctx_get(callback_query)
+    if inv_id is None:
+        return
+
+    db = SessionLocal()
+    try:
+        inv = _tn_mp_load_inventory(db, inv_id)
+    except Exception as e:
+        LogError(f"Error in tn_mp_collection_points_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+        return
+    finally:
+        db.close()
+
+    if not inv:
+        await callback_query.answer("⚠️ Kho này không còn tồn tại.", show_alert=True)
+        return
+
+    await _tn_mp_collection_points_screen(callback_query, inv)
+
+
+@bot.on_callback_query(filters.regex(r"^tn_mp_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_SUPPLIER)
+async def tn_mp_customer_list_callback(client, callback_query):
+    """Bước 3 — danh sách Khách hàng của 1 Điểm Thu Mua (phân trang Trước/Sau)."""
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    if await _tn_mp_ctx_get(callback_query) is None:
+        return
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_customer_list_view(db, cp_id, page, "tn_mp", only_active=True)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_mp_customer_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_mp_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_SUPPLIER)
+async def tn_mp_customer_form_callback(client, callback_query):
+    """Bước 4 — chọn Khách hàng → hiện form nhập điền sẵn."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    inv_id = await _tn_mp_ctx_get(callback_query)
+    if inv_id is None:
+        return
+
+    db = SessionLocal()
+    try:
+        inv = _tn_mp_load_inventory(db, inv_id)
+        if not inv:
+            await callback_query.answer("⚠️ Kho này không còn tồn tại.", show_alert=True)
+            return
+
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_mp_cp|{customer.collection_point_id}|0"),
+            InlineKeyboardButton("Hủy", callback_data="tn_mp_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_material_purchase_form(inv, customer), markup)
+    except Exception as e:
+        LogError(f"Error in tn_mp_customer_form_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
     finally:
         db.close()
 
@@ -16475,6 +16934,9 @@ async def _generate_daily_product_report(message, start_date, end_date):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
+
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
         
         now_str = datetime.now().strftime("%Y%m%d_%H%M")
         period_str = f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
@@ -17334,6 +17796,9 @@ async def tien_nga_list_agricultural_land_handler(client, message: Message) -> N
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
                 tmp_path = tmp.name
             wb.save(tmp_path)
+
+            # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+            db.close()
             await message.reply_document(document=tmp_path, file_name=f"dat_trong_trot_{len(lands)}.xlsx",
                 caption=f"<b>DANH SÁCH ĐẤT TRỒNG TRỌT ({len(lands)})</b>", parse_mode=ParseMode.HTML)
             os.remove(tmp_path)
@@ -17498,6 +17963,9 @@ async def tien_nga_list_household_handler(client, message: Message) -> None:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
                 tmp_path = tmp.name
             wb.save(tmp_path)
+
+            # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+            db.close()
             await message.reply_document(document=tmp_path, file_name=f"ho_dan_{len(households)}.xlsx",
                 caption=f"<b>DANH SÁCH HỘ DÂN ({len(households)})</b>", parse_mode=ParseMode.HTML)
             os.remove(tmp_path)
@@ -17860,6 +18328,9 @@ async def _do_check_harvest(client, message, start_date, end_date, land_code=Non
             tmp_path = tmp.name
         wb.save(tmp_path)
 
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
+
         await message.reply_document(
             document=tmp_path,
             file_name=f"thu_hoach_{start_date.strftime('%d%m%Y')}_{end_date.strftime('%d%m%Y')}.xlsx",
@@ -18127,6 +18598,9 @@ async def tien_nga_compare_harvest_handler(client, message: Message) -> None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
+
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
 
         await message.reply_document(
             document=tmp_path,
@@ -19106,6 +19580,9 @@ async def _do_check_daily_harvest(client, message, start_date, end_date, land_co
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
+
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
 
         def fmt_money(val):
             if val is None or val == 0: return "0 VNĐ"
@@ -20911,6 +21388,9 @@ async def _do_check_durian_harvest(client, message, start_date, end_date, land_c
             tmp_path = tmp.name
         wb.save(tmp_path)
 
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
+
         def fmt_money(val):
             if val is None or val == 0: return "0 VNĐ"
             return f"{int(val):,} VNĐ".replace(",", ".")
@@ -21295,6 +21775,9 @@ async def execute_tien_nga_truy_xuat_tt_thu_mua(message_or_query, hoursehold_id:
 
         file_stream = BytesIO()
         wb.save(file_stream)
+
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
         file_stream.seek(0)
         
         now_str = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
@@ -21475,6 +21958,10 @@ async def tien_nga_truy_xuat_tt_thu_mua_handler(client, message: Message) -> Non
 
 
 @bot.on_callback_query(filters.regex(r"^tn_txtt:([^:]+):custom$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tn_txtt_custom_callback(client, callback_query: CallbackQuery):
     """Nút Khác — hướng dẫn gõ lệnh kèm mã hộ và khoảng thời gian tùy chọn."""
     hoursehold_id = callback_query.matches[0].group(1)
@@ -21489,6 +21976,10 @@ async def tn_txtt_custom_callback(client, callback_query: CallbackQuery):
 
 
 @bot.on_callback_query(filters.regex(r"^tn_txtt:([^:]+):(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tn_txtt_callback(client, callback_query: CallbackQuery):
     hoursehold_id = callback_query.matches[0].group(1)
     period = callback_query.matches[0].group(2)
@@ -21503,6 +21994,10 @@ async def tn_txtt_callback(client, callback_query: CallbackQuery):
 
 
 @bot.on_callback_query(filters.regex(r"^tn_txtt_cancel$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tn_txtt_cancel_callback(client, callback_query: CallbackQuery):
     await callback_query.message.delete()
 
@@ -21892,6 +22387,258 @@ async def deny_harv_rep_callback(client, callback_query: CallbackQuery):
     await callback_query.answer("Đã từ chối báo cáo!")
 
 # ===================== ỨNG TIỀN MÙA MỚI =====================
+# ══════════════════════════════════════════════════════════════
+# ỨNG TIỀN — luồng nút bấm
+# Điểm Thu Mua → Hộ dân (phân trang) → Form nhập số tiền ứng
+# ══════════════════════════════════════════════════════════════
+
+def _tn_cash_advance_limit(db, hoursehold_id: str):
+    """
+    Hạn mức ứng của 1 hộ dân: tối đa MaxCashAdvance% tổng tiền bán mủ của mùa vụ
+    trước (01/05 → hết tháng 2 năm sau).
+    Trả về (start_date, end_date, total_sales, max_advance, rate).
+    """
+    from app.models.business import DailyPurchases
+    from app.core.config import settings
+    from datetime import date
+    import calendar
+    from sqlalchemy import func
+
+    today = date.today()
+    start_year = today.year - 1 if today.month >= 5 else today.year - 2
+    start_date = date(start_year, 5, 1)
+    end_year = start_year + 1
+    end_date = date(end_year, 2, calendar.monthrange(end_year, 2)[1])
+
+    total_sales = db.query(func.sum(DailyPurchases.total_amount)).filter(
+        DailyPurchases.hoursehold_id == hoursehold_id,
+        DailyPurchases.day >= start_date,
+        DailyPurchases.day <= end_date
+    ).scalar() or 0.0
+
+    rate = settings.IMP_Config.MaxCashAdvance
+    return start_date, end_date, total_sales, total_sales * rate, rate
+
+
+# Hai loại ứng tiền. Khóa ngắn (SEASON/MONTH) dùng trong callback_data vì
+# Telegram giới hạn 64 byte; kèm tên cột trên Customers và nhãn hiển thị.
+_TN_ADV_KINDS = {
+    "SEASON": ("SEASON_END", "cash_advance", "Ứng Tiền Cuối Mùa"),
+    "MONTH": ("IN_MONTH", "cash_advance_monthly", "Ứng Tiền Trong Tháng"),
+}
+
+
+def _tn_adv_kind(key):
+    """'SEASON'/'MONTH' -> (advance_type, tên cột, nhãn). Sai khóa -> None."""
+    return _TN_ADV_KINDS.get((key or "").upper())
+
+
+def _tn_adv_label(advance_type: str) -> str:
+    """'SEASON_END'/'IN_MONTH' -> nhãn hiển thị."""
+    for _, (adv_type, _col, label) in _TN_ADV_KINDS.items():
+        if adv_type == advance_type:
+            return label
+    return advance_type or "—"
+
+
+def _tn_adv_balances(customer):
+    """(ứng cuối mùa, ứng trong tháng, tổng). Cột mới có thể NULL ở dữ liệu cũ."""
+    season = customer.cash_advance or 0
+    monthly = customer.cash_advance_monthly or 0
+    return season, monthly, season + monthly
+
+
+def _tn_actor_label(user) -> str:
+    """Người thực hiện, dạng 'Tên (@username)' để đọc log không phải tra ID."""
+    if not user:
+        return None
+    name = (user.first_name or "").strip()
+    handle = f"@{user.username}" if user.username else str(user.id)
+    return f"{name} ({handle})".strip()
+
+
+def _tn_log_cash_advance(db, customer, entry_type, advance_type, amount,
+                         balance_before, balance_after, actor=None, chat_id=None,
+                         is_over_limit=False, approved_by=None, note=None) -> None:
+    """
+    Ghi một dòng nhật ký biến động tiền ứng. Gọi TRƯỚC db.commit() của nghiệp vụ
+    để log và số dư cùng nằm trong một transaction.
+    """
+    from app.models.business import CashAdvanceLog
+
+    db.add(CashAdvanceLog(
+        hoursehold_id=customer.hoursehold_id,
+        collection_point_id=customer.collection_point_id,
+        entry_type=entry_type,
+        advance_type=advance_type,
+        amount=int(amount),
+        balance_before=int(balance_before),
+        balance_after=int(balance_after),
+        is_over_limit=is_over_limit,
+        approved_by=approved_by,
+        created_by=_tn_actor_label(actor),
+        chat_id=str(chat_id) if chat_id is not None else None,
+        note=note,
+    ))
+
+
+def _build_cash_advance_form(db, customer) -> str:
+    """Form ứng tiền — kèm hạn mức để khỏi phải gửi rồi mới biết bị từ chối."""
+    start_date, end_date, total_sales, max_advance, rate = _tn_cash_advance_limit(
+        db, customer.hoursehold_id
+    )
+    season, monthly, current = _tn_adv_balances(customer)
+    remaining = max(0, max_advance - current)
+
+    return (
+        f"<b>FORM ỨNG TIỀN</b>\n"
+        f"Hộ dân: <b>{customer.fullname or '—'}</b> ({customer.hoursehold_id})\n"
+        f"{'━' * 15}\n"
+        f"<b>Mùa vụ trước:</b> {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}\n"
+        f"<b>Tổng tiền bán mủ:</b> <code>{fmt_money(total_sales)}</code>\n"
+        f"<b>Hạn mức ứng ({rate * 100:.0f}%):</b> <code>{fmt_money(max_advance)}</code>\n"
+        f"<b>Đã ứng cuối mùa:</b> <code>{fmt_money(season)}</code>\n"
+        f"<b>Đã ứng trong tháng:</b> <code>{fmt_money(monthly)}</code>\n"
+        f"<b>Tổng đã ứng:</b> <code>{fmt_money(current)}</code>\n"
+        f"<b>Còn có thể ứng:</b> <code>{fmt_money(remaining)}</code>\n"
+        f"{'━' * 15}\n\n"
+        f"Sao chép dòng dưới đây, thay <b>0</b> bằng số tiền cần ứng rồi gửi lại:\n\n"
+        f"<pre>/tien_nga_ung_tien {customer.hoursehold_id} 0</pre>\n"
+        f"<i>Sau khi gửi sẽ có bước chọn loại ứng (Cuối mùa / Trong tháng).\n"
+        f"Ứng vượt hạn mức vẫn gửi được, nhưng sẽ cần Owner reply /confirmed để duyệt.</i>"
+    )
+
+
+def _build_cash_advance_confirm(db, customer, amount) -> str:
+    """Màn xác nhận: chốt số tiền, còn loại ứng thì chọn bằng nút bên dưới."""
+    season, monthly, current = _tn_adv_balances(customer)
+    *_, max_advance, rate = _tn_cash_advance_limit(db, customer.hoursehold_id)
+    remaining = max(0, max_advance - current)
+
+    warn = ""
+    if current + amount > max_advance:
+        warn = (
+            f"\n⚠️ <i>Số tiền này vượt hạn mức {rate * 100:.0f}% — sau khi chọn loại ứng "
+            f"sẽ cần Owner phê duyệt.</i>\n"
+        )
+
+    return (
+        f"<b>XÁC NHẬN ỨNG TIỀN</b>\n\n"
+        f"<b>Mã Hộ:</b> <code>{customer.hoursehold_id}</code>\n"
+        f"<b>Tên KH:</b> {customer.fullname or '—'}\n"
+        f"{'━' * 15}\n"
+        f"<b>Số tiền ứng:</b> <code>{fmt_money(amount)}</code>\n"
+        f"<b>Đã ứng cuối mùa:</b> <code>{fmt_money(season)}</code>\n"
+        f"<b>Đã ứng trong tháng:</b> <code>{fmt_money(monthly)}</code>\n"
+        f"<b>Hạn mức còn lại:</b> <code>{fmt_money(remaining)}</code>\n"
+        f"{'━' * 15}\n"
+        f"{warn}\n"
+        f"Vui lòng chọn <b>loại ứng tiền</b>:"
+    )
+
+
+def _cash_advance_kind_markup(hoursehold_id: str, amount) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Ứng tiền Cuối mùa", callback_data=f"tn_cat:SEASON:{hoursehold_id}:{int(amount)}")],
+        [InlineKeyboardButton("Ứng tiền Trong tháng", callback_data=f"tn_cat:MONTH:{hoursehold_id}:{int(amount)}")],
+        [InlineKeyboardButton("Hủy", callback_data="tn_cat:x")],
+    ])
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ca_x$"))
+async def tn_ca_cancel_callback(client, callback_query):
+    """Hủy luồng ứng tiền."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ca_req_x\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_ca_request_cancel_callback(client, callback_query):
+    """Hủy yêu cầu duyệt ứng vượt hạn mức."""
+    hoursehold_id = callback_query.matches[0].group(1)
+    who = callback_query.from_user
+
+    # Sửa nội dung thay vì xóa: giữ lại dấu vết ai hủy, đồng thời bỏ chuỗi
+    # "SỐ TIỀN ỨNG VƯỢT QUÁ HẠN MỨC CHO PHÉP" mà /confirmed và /denied dò theo,
+    # nên yêu cầu đã hủy không thể được duyệt lại bằng cách reply tin nhắn cũ.
+    await _tn_screen_edit(
+        callback_query,
+        f"<b>ĐÃ HỦY YÊU CẦU ỨNG VƯỢT HẠN MỨC</b>\n\n"
+        f"<b>Mã Hộ:</b> {hoursehold_id}\n"
+        f"<i>Hủy bởi: {who.first_name or ''} (@{who.username or who.id})</i>",
+        None
+    )
+    LogInfo(
+        f"[TienNga] User {who.id} cancelled over-limit cash advance request for {hoursehold_id}",
+        LogType.SYSTEM_STATUS
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ca_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_ca_collection_points_callback(client, callback_query):
+    """Bước 1 / Quay lại — danh sách Điểm Thu Mua."""
+    db = SessionLocal()
+    try:
+        text, markup = _tn_collection_point_view(db, "tn_ca", "ỨNG TIỀN")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_ca_collection_points_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ca_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_ca_customer_list_callback(client, callback_query):
+    """Bước 2 — danh sách Hộ dân của 1 Điểm Thu Mua (phân trang Trước/Sau)."""
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_customer_list_view(db, cp_id, page, "tn_ca", only_active=True)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_ca_customer_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ca_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_ca_customer_form_callback(client, callback_query):
+    """Bước 3 — chọn Hộ dân → hiện form ứng tiền."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_ca_cp|{customer.collection_point_id}|0"),
+            InlineKeyboardButton("Hủy", callback_data="tn_ca_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_cash_advance_form(db, customer), markup)
+    except Exception as e:
+        LogError(f"Error in tn_ca_customer_form_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
 @bot.on_message(filters.command(["tien_nga_cash_advance", "tien_nga_ung_tien"]) | filters.regex(r"^@\w+\s+/(tien_nga_cash_advance|tien_nga_ung_tien)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
@@ -21901,8 +22648,38 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_cash_advance", "tien_nga_ung_tien"])
     if args is None: return
 
-    if len(args) < 3:
-        await message.reply_text("⚠️ <b>Cú pháp:</b> /tien_nga_cash_advance [mã hộ dân] [số tiền ứng]", parse_mode=ParseMode.HTML)
+    from app.models.business import Customers
+
+    # Không truyền tham số -> mở wizard: Điểm Thu Mua → Hộ dân → Form
+    if len(args) == 1:
+        db = SessionLocal()
+        try:
+            text, markup = _tn_collection_point_view(db, "tn_ca", "ỨNG TIỀN")
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error opening cash advance wizard: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    # Chỉ có mã hộ -> hiện form nhập số tiền
+    if len(args) == 2:
+        hoursehold_id = args[1].strip()
+        db = SessionLocal()
+        try:
+            customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+            if not customer:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy hộ dân có mã <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML
+                )
+                return
+            await message.reply_text(_build_cash_advance_form(db, customer), parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error building cash advance form: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
         return
 
     hoursehold_id = args[1].strip()
@@ -21914,13 +22691,12 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
         await message.reply_text("⚠️ Số tiền ứng không hợp lệ.", parse_mode=ParseMode.HTML)
         return
 
-    from app.db.session import SessionLocal
-    from app.models.business import Customers, DailyPurchases
-    from app.core.config import settings
-    from datetime import date
-    import calendar
-    from sqlalchemy import func
+    if cash_advance_requested <= 0:
+        await message.reply_text("⚠️ Số tiền ứng phải lớn hơn 0.", parse_mode=ParseMode.HTML)
+        return
 
+    # Không import SessionLocal ở đây: import cục bộ sẽ biến nó thành biến local của
+    # cả hàm, khiến nhánh mở wizard ở đầu hàm ném UnboundLocalError. Dùng bản module-level.
     db = SessionLocal()
     try:
         customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
@@ -21928,28 +22704,73 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
             await message.reply_text(f"⚠️ Không tìm thấy hộ dân có mã <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML)
             return
 
-        current_date = date.today()
-        if current_date.month >= 5:
-            start_year = current_date.year - 1
-        else:
-            start_year = current_date.year - 2
+        # Chưa ghi nhận gì ở bước này: phải chọn loại ứng (cuối mùa / trong tháng) đã.
+        # Gửi bằng client.send_message chứ KHÔNG dùng message.reply_text: reply_text đã bị
+        # command_timeout vá lại để tự xóa sau COMMAND_TIMEOUT_SECONDS, người dùng chưa kịp
+        # bấm nút thì màn chọn loại đã biến mất.
+        await client.send_message(
+            chat_id=message.chat.id,
+            reply_to_message_id=message.id,
+            text=_build_cash_advance_confirm(db, customer, cash_advance_requested),
+            reply_markup=_cash_advance_kind_markup(hoursehold_id, cash_advance_requested),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        LogError(f"Error handling tien_nga_cash_advance: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra khi thực hiện ứng tiền.", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
 
-        start_date = date(start_year, 5, 1)
-        end_year = start_year + 1
-        end_month = 2
-        last_day = calendar.monthrange(end_year, end_month)[1]
-        end_date = date(end_year, end_month, last_day)
 
-        total_sales = db.query(func.sum(DailyPurchases.total_amount)).filter(
-            DailyPurchases.hoursehold_id == hoursehold_id,
-            DailyPurchases.day >= start_date,
-            DailyPurchases.day <= end_date
-        ).scalar() or 0.0
+@bot.on_callback_query(filters.regex(r"^tn_cat:x$"))
+async def tn_cat_cancel_callback(client, callback_query):
+    """Hủy ở bước chọn loại ứng tiền."""
+    await callback_query.message.edit_text("❌ Đã hủy ứng tiền.", parse_mode=ParseMode.HTML)
+    await callback_query.answer("Đã hủy.")
 
-        max_cash_advance_rate = settings.IMP_Config.MaxCashAdvance
-        max_cash_advance = total_sales * max_cash_advance_rate
-        current_advance = customer.cash_advance or 0
-        total_after_advance = current_advance + cash_advance_requested
+
+@bot.on_callback_query(filters.regex(r"^tn_cat:(SEASON|MONTH):([^:]+):(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_cat_kind_callback(client, callback_query):
+    """Chọn loại ứng -> kiểm tra hạn mức (chung cho cả hai loại) rồi ghi nhận."""
+    kind = _tn_adv_kind(callback_query.matches[0].group(1))
+    hoursehold_id = callback_query.matches[0].group(2)
+    amount = float(callback_query.matches[0].group(3))
+
+    if not kind:
+        await callback_query.answer("⚠️ Loại ứng tiền không hợp lệ.", show_alert=True)
+        return
+    advance_type, column, label = kind
+
+    # Bấm hai lần sẽ ứng hai lần — chốt trước khi await.
+    if not _tn_cb_claim(callback_query, "tncat"):
+        await callback_query.answer("⚠️ Thao tác này đã được xử lý rồi.", show_alert=True)
+        return
+
+    from app.models.business import Customers
+    from app.models.telegram import TelegramProjectMember
+
+    db = SessionLocal()
+    committed = False
+    try:
+        # Khóa dòng hộ dân: bot và API là hai tiến trình riêng, nếu cùng lúc đọc số dư
+        # rồi cùng ghi thì một lần ứng sẽ mất và hạn mức bị vượt qua mặt. Chỉ khóa đúng
+        # một dòng và mọi nhánh đều commit/rollback trước khi await -> không deadlock.
+        customer = db.query(Customers).filter(
+            Customers.hoursehold_id == hoursehold_id
+        ).with_for_update().first()
+        if not customer:
+            _tn_cb_release(callback_query, "tncat")
+            await callback_query.answer("⚠️ Không tìm thấy hộ dân.", show_alert=True)
+            return
+
+        start_date, end_date, total_sales, max_cash_advance, max_cash_advance_rate = (
+            _tn_cash_advance_limit(db, hoursehold_id)
+        )
+        season, monthly, current_advance = _tn_adv_balances(customer)
+        total_after_advance = current_advance + amount
 
         if total_after_advance > max_cash_advance:
             reason = (
@@ -21963,12 +22784,11 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
                 reason += f"Còn lại có thể ứng: <b>{fmt_money(max_cash_advance - current_advance)}</b>"
 
             # Query Owner's Telegram username or ID to mention
-            from app.models.telegram import TelegramProjectMember
             owner_member = db.query(TelegramProjectMember).filter(
-                TelegramProjectMember.chat_id == str(message.chat.id),
+                TelegramProjectMember.chat_id == str(callback_query.message.chat.id),
                 TelegramProjectMember.member_status == "OWNER"
             ).first()
-            
+
             owner_mention = "Owner"
             if owner_member:
                 if owner_member.user_name:
@@ -21976,36 +22796,70 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
                 elif owner_member.user_id:
                     owner_mention = f"<a href=\"tg://user?id={owner_member.user_id}\">Owner</a>"
 
-            await message.reply_text(
+            # Nhánh này không ghi gì -> nhả khóa dòng NGAY, trước khi gọi Telegram.
+            # Giữ khóa qua await sẽ chặn mọi thao tác khác trên cùng hộ dân, mà lệnh
+            # chờ khóa lại là lệnh DB đồng bộ -> đứng luôn cả event loop của bot.
+            db.rollback()
+
+            # Màn chọn loại được gửi bằng client.send_message nên không bị tự xóa: sửa tại
+            # chỗ thành yêu cầu chờ Owner duyệt là đủ, khỏi gửi thêm tin mới.
+            # Dòng "Loại ứng" bên dưới là thứ /confirmed dò lại để cộng đúng cột.
+            await callback_query.message.edit_text(
                 f"⚠️ <b>SỐ TIỀN ỨNG VƯỢT QUÁ HẠN MỨC CHO PHÉP</b>\n\n"
                 f"<b>Mã Hộ:</b> {hoursehold_id}\n"
-                f"<b>Số tiền yêu cầu ứng:</b> {fmt_money(cash_advance_requested)}\n\n"
+                f"<b>Loại ứng:</b> {label}\n"
+                f"<b>Số tiền yêu cầu ứng:</b> {fmt_money(amount)}\n\n"
                 f"{reason}\n\n"
                 f"⚠️ <b>Yêu cầu phê duyệt từ Owner:</b> Để đồng ý cho phép ứng vượt ngưỡng, {owner_mention} vui lòng <b>reply tin nhắn này</b> và gõ lệnh <code>/confirmed</code> (hoặc <code>/denied</code> để từ chối).",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Hủy yêu cầu", callback_data=f"tn_ca_req_x|{hoursehold_id}"),
+                ]]),
                 parse_mode=ParseMode.HTML
             )
+            await callback_query.answer("Đã gửi yêu cầu phê duyệt cho Owner.")
             return
 
-        customer.cash_advance = total_after_advance
+        balance_before = season if column == "cash_advance" else monthly
+        balance_after = int(balance_before + amount)
+        setattr(customer, column, balance_after)
+        _tn_log_cash_advance(
+            db, customer, "ADVANCE", advance_type, amount,
+            balance_before, balance_after,
+            actor=callback_query.from_user,
+            chat_id=callback_query.message.chat.id,
+        )
         db.commit()
+        committed = True
 
-        LogInfo(f"[TienNga] User {message.from_user.id} gave cash advance {cash_advance_requested} to household {hoursehold_id}", LogType.SYSTEM_STATUS)
+        LogInfo(
+            f"[TienNga] User {callback_query.from_user.id} gave cash advance {amount} "
+            f"({advance_type}) to household {hoursehold_id}",
+            LogType.SYSTEM_STATUS
+        )
 
-        await message.reply_text(
+        new_season, new_monthly, new_total = _tn_adv_balances(customer)
+
+        await callback_query.message.edit_text(
             f"✅ <b>ỨNG TIỀN THÀNH CÔNG</b>\n\n"
             f"<b>Mã Hộ:</b> {customer.hoursehold_id}\n"
             f"<b>Tên KH:</b> {customer.fullname}\n"
-            f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
-            f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(customer.cash_advance)}</code>\n\n"
+            f"{'━' * 15}\n"
+            f"<b>Loại ứng:</b> {label}\n"
+            f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(amount)}</code>\n"
+            f"<b>Ứng cuối mùa:</b> <code>{fmt_money(new_season)}</code>\n"
+            f"<b>Ứng trong tháng:</b> <code>{fmt_money(new_monthly)}</code>\n"
+            f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(new_total)}</code>\n"
+            f"{'━' * 15}\n"
+            f"<i>Thực hiện bởi: {_tn_actor_label(callback_query.from_user)}</i>\n\n"
             f"<i>Gợi ý: Cần thực hiện thêm lệnh /tien_nga_yeu_cau_thu_chi để ghi nhận chi quỹ.</i>",
             parse_mode=ParseMode.HTML
         )
+        await callback_query.answer("✅ Đã ứng tiền thành công!")
 
         # Gửi thông báo xuống nhóm member của hộ dân
         if customer.telegram_group:
             try:
-                from app.models.telegram import TelegramProjectMember
-                main_chat_id = str(message.chat.id)
+                main_chat_id = str(callback_query.message.chat.id)
                 members = db.query(TelegramProjectMember).filter(
                     TelegramProjectMember.group_name == customer.telegram_group,
                     TelegramProjectMember.parent_id == main_chat_id
@@ -22017,8 +22871,11 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
                     f"<b>Mã Hộ:</b> <code>{customer.hoursehold_id}</code>\n"
                     f"<b>Tên KH:</b> {customer.fullname}\n"
                     f"{'━' * 15}\n"
-                    f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
-                    f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(customer.cash_advance)}</code>"
+                    f"<b>Loại ứng:</b> {label}\n"
+                    f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(amount)}</code>\n"
+                    f"<b>Ứng cuối mùa:</b> <code>{fmt_money(new_season)}</code>\n"
+                    f"<b>Ứng trong tháng:</b> <code>{fmt_money(new_monthly)}</code>\n"
+                    f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(new_total)}</code>"
                 )
 
                 for chat_id in chat_ids:
@@ -22046,14 +22903,115 @@ async def tien_nga_cash_advance_handler(client, message: Message) -> None:
                     LogType.SYSTEM_STATUS
                 )
     except Exception as e:
-        LogError(f"Error handling tien_nga_cash_advance: {e}", LogType.SYSTEM_STATUS)
         db.rollback()
-        await message.reply_text("❌ Có lỗi xảy ra khi thực hiện ứng tiền.", parse_mode=ParseMode.HTML)
+        # Lỗi trước commit thì chưa ghi gì -> cho bấm lại. Lỗi sau commit (gửi thông báo
+        # hỏng) thì giữ khoá, tránh ứng lần hai.
+        if not committed:
+            _tn_cb_release(callback_query, "tncat")
+        LogError(f"Error in tn_cat_kind_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi khi thực hiện ứng tiền.", show_alert=True)
     finally:
         db.close()
 
 
 # ===================== KHẤU TRỪ TIỀN ỨNG (Cash Advance Deduction) =====================
+
+# ══════════════════════════════════════════════════════════════
+# KHẤU TRỪ TIỀN ỨNG — luồng nút bấm
+# Điểm Thu Mua → Hộ dân (phân trang) → Form nhập số tiền khấu trừ
+# ══════════════════════════════════════════════════════════════
+
+def _build_cash_deduction_form(customer) -> str:
+    """Form khấu trừ tiền ứng. Hộ không còn tiền ứng thì báo luôn, khỏi gõ rồi bị từ chối."""
+    season, monthly, cash_adv = _tn_adv_balances(customer)
+    header = (
+        f"<b>FORM KHẤU TRỪ TIỀN ỨNG</b>\n"
+        f"Hộ dân: <b>{customer.fullname or '—'}</b> ({customer.hoursehold_id})\n"
+        f"{'━' * 15}\n"
+        f"<b>Ứng cuối mùa:</b> <code>{fmt_money(season)}</code>\n"
+        f"<b>Ứng trong tháng:</b> <code>{fmt_money(monthly)}</code>\n"
+        f"<b>Tổng tiền ứng hiện tại:</b> <code>{fmt_money(cash_adv)}</code>\n"
+        f"{'━' * 15}\n\n"
+    )
+    if cash_adv <= 0:
+        return header + "⚠️ Hộ dân này không có tiền ứng để khấu trừ."
+
+    return header + (
+        f"Sao chép dòng dưới đây, thay <b>0</b> bằng số tiền cần khấu trừ rồi gửi lại:\n\n"
+        f"<pre>/tien_nga_khau_tru_tien_ung {customer.hoursehold_id} 0</pre>\n"
+        f"<i>Sau khi gửi sẽ có bước chọn khấu trừ vào loại nào.\n"
+        f"Số tiền khấu trừ phải lớn hơn 0 và không vượt quá số dư của loại đã chọn.</i>"
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_kt_x$"))
+async def tn_kt_cancel_callback(client, callback_query):
+    """Hủy luồng khấu trừ tiền ứng."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_kt_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_kt_collection_points_callback(client, callback_query):
+    """Bước 1 / Quay lại — danh sách Điểm Thu Mua."""
+    db = SessionLocal()
+    try:
+        text, markup = _tn_collection_point_view(db, "tn_kt", "KHẤU TRỪ TIỀN ỨNG")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_kt_collection_points_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_kt_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_kt_customer_list_callback(client, callback_query):
+    """Bước 2 — danh sách Hộ dân của 1 Điểm Thu Mua (phân trang Trước/Sau)."""
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_customer_list_view(db, cp_id, page, "tn_kt", only_active=True)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_kt_customer_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_kt_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_kt_customer_form_callback(client, callback_query):
+    """Bước 3 — chọn Hộ dân → hiện form khấu trừ."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_kt_cp|{customer.collection_point_id}|0"),
+            InlineKeyboardButton("Hủy", callback_data="tn_kt_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_cash_deduction_form(customer), markup)
+    except Exception as e:
+        LogError(f"Error in tn_kt_customer_form_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
 
 @bot.on_message(filters.command(["tien_nga_khau_tru_tien_ung"]) | filters.regex(r"^@\w+\s+/tien_nga_khau_tru_tien_ung\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -22064,12 +23022,38 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_khau_tru_tien_ung"])
     if args is None: return
 
-    if len(args) < 3:
-        await message.reply_text(
-            "⚠️ <b>Cú pháp:</b> <code>/tien_nga_khau_tru_tien_ung [Mã Hộ Dân] [Số Tiền]</code>\n\n"
-            "<i>Ví dụ: <code>/tien_nga_khau_tru_tien_ung X051 5,000,000</code></i>",
-            parse_mode=ParseMode.HTML
-        )
+    from app.models.business import Customers
+
+    # Không truyền tham số -> mở wizard: Điểm Thu Mua → Hộ dân → Form
+    if len(args) == 1:
+        db = SessionLocal()
+        try:
+            text, markup = _tn_collection_point_view(db, "tn_kt", "KHẤU TRỪ TIỀN ỨNG")
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error opening cash deduction wizard: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    # Chỉ có mã hộ -> hiện form nhập số tiền
+    if len(args) == 2:
+        hoursehold_id = args[1].strip().upper()
+        db = SessionLocal()
+        try:
+            customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+            if not customer:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy hộ dân có mã <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML
+                )
+                return
+            await message.reply_text(_build_cash_deduction_form(customer), parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error building cash deduction form: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
         return
 
     hoursehold_id = args[1].strip().upper()
@@ -22085,8 +23069,6 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
         await message.reply_text("⚠️ Số tiền khấu trừ phải lớn hơn 0.", parse_mode=ParseMode.HTML)
         return
 
-    from app.models.business import Customers
-
     db = SessionLocal()
     try:
         customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
@@ -22097,7 +23079,7 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
             )
             return
 
-        cash_adv = customer.cash_advance or 0
+        season, monthly, cash_adv = _tn_adv_balances(customer)
 
         if cash_adv <= 0:
             await message.reply_text(
@@ -22117,25 +23099,48 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
             )
             return
 
-        # Tính toán kết quả sau khấu trừ
-        new_cash_advance = cash_adv - deducted_amount
+        # Chỉ chào loại nào còn đủ số dư — bấm vào loại không đủ chỉ để nhận báo lỗi.
+        buttons = []
+        if deducted_amount <= season:
+            buttons.append([InlineKeyboardButton(
+                "Khấu trừ Ứng Cuối mùa",
+                callback_data=f"kttu:ok:SEASON:{hoursehold_id}:{int(deducted_amount)}"
+            )])
+        if deducted_amount <= monthly:
+            buttons.append([InlineKeyboardButton(
+                "Khấu trừ Ứng Trong tháng",
+                callback_data=f"kttu:ok:MONTH:{hoursehold_id}:{int(deducted_amount)}"
+            )])
+        buttons.append([InlineKeyboardButton("Hủy", callback_data="kttu:cancel")])
 
-        buttons = [
-            [InlineKeyboardButton("Xác nhận", callback_data=f"kttu:ok:{hoursehold_id}:{deducted_amount}")],
-            [InlineKeyboardButton("Hủy", callback_data="kttu:cancel")]
-        ]
-        keyboard = InlineKeyboardMarkup(buttons)
+        if len(buttons) == 1:
+            # Tổng đủ nhưng không loại nào một mình gánh nổi -> phải tách làm hai lần.
+            await message.reply_text(
+                f"⚠️ Không loại ứng nào của hộ <b>{customer.fullname}</b> "
+                f"(<code>{hoursehold_id}</code>) đủ <code>{fmt_money(deducted_amount)}</code>.\n\n"
+                f"<b>Ứng cuối mùa:</b> <code>{fmt_money(season)}</code>\n"
+                f"<b>Ứng trong tháng:</b> <code>{fmt_money(monthly)}</code>\n\n"
+                f"<i>Vui lòng khấu trừ thành nhiều lần theo từng loại.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
 
-        await message.reply_text(
-            f"<b>KHẤU TRỪ TIỀN ỨNG</b>\n\n"
-            f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
-            f"<b>Tên KH:</b> {customer.fullname}\n"
-            f"{'━' * 15}\n"
-            f"<b>Số tiền ứng hiện tại:</b> <code>{fmt_money(cash_adv)}</code>\n"
-            f"<b>Số tiền khấu trừ:</b> <code>{fmt_money(deducted_amount)}</code>\n"
-            f"<b>→ Số tiền ứng sau khấu trừ:</b> <code>{fmt_money(new_cash_advance)}</code>\n\n"
-            f"Bạn có muốn xác nhận khấu trừ không?",
-            reply_markup=keyboard,
+        # Gửi bằng client.send_message: reply_text đã bị command_timeout vá lại để tự xóa
+        # sau COMMAND_TIMEOUT_SECONDS, màn chọn loại sẽ biến mất trước khi kịp bấm.
+        await client.send_message(
+            chat_id=message.chat.id,
+            reply_to_message_id=message.id,
+            text=(
+                f"<b>KHẤU TRỪ TIỀN ỨNG</b>\n\n"
+                f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
+                f"<b>Tên KH:</b> {customer.fullname}\n"
+                f"{'━' * 15}\n"
+                f"<b>Ứng cuối mùa:</b> <code>{fmt_money(season)}</code>\n"
+                f"<b>Ứng trong tháng:</b> <code>{fmt_money(monthly)}</code>\n"
+                f"<b>Số tiền khấu trừ:</b> <code>{fmt_money(deducted_amount)}</code>\n\n"
+                f"Vui lòng chọn <b>khấu trừ vào loại ứng nào</b>:"
+            ),
+            reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
@@ -22145,61 +23150,100 @@ async def tien_nga_khau_tru_tien_ung_handler(client, message: Message) -> None:
         db.close()
 
 
-@bot.on_callback_query(filters.regex(r"^kttu:ok:(.+):(.+)$"))
+@bot.on_callback_query(filters.regex(r"^kttu:ok:(SEASON|MONTH):([^:]+):(\d+)$"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_group_role("main")
 async def kttu_confirm_callback(client, callback_query):
-    hoursehold_id = callback_query.matches[0].group(1)
+    kind = _tn_adv_kind(callback_query.matches[0].group(1))
+    hoursehold_id = callback_query.matches[0].group(2)
     try:
-        deducted = float(callback_query.matches[0].group(2))
+        deducted = float(callback_query.matches[0].group(3))
     except ValueError:
         await callback_query.answer("⚠️ Số tiền khấu trừ trong yêu cầu không hợp lệ.", show_alert=True)
+        return
+
+    if not kind:
+        await callback_query.answer("⚠️ Loại ứng tiền không hợp lệ.", show_alert=True)
+        return
+    advance_type, column, label = kind
+
+    # Bấm hai lần sẽ khấu trừ hai lần — chốt trước khi await.
+    if not _tn_cb_claim(callback_query, "kttu"):
+        await callback_query.answer("⚠️ Thao tác này đã được xử lý rồi.", show_alert=True)
         return
 
     from app.models.business import Customers
     from app.models.telegram import TelegramProjectMember
 
     db = SessionLocal()
+    committed = False
     try:
-        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        # Khóa dòng hộ dân: bot và API là hai tiến trình riêng, nếu cùng lúc đọc số dư
+        # rồi cùng ghi thì một lần ứng sẽ mất và hạn mức bị vượt qua mặt. Chỉ khóa đúng
+        # một dòng và mọi nhánh đều commit/rollback trước khi await -> không deadlock.
+        customer = db.query(Customers).filter(
+            Customers.hoursehold_id == hoursehold_id
+        ).with_for_update().first()
         if not customer:
+            _tn_cb_release(callback_query, "kttu")
             await callback_query.answer("⚠️ Không tìm thấy hộ dân.", show_alert=True)
             return
 
-        cash_adv = customer.cash_advance or 0
+        season, monthly, _total = _tn_adv_balances(customer)
+        balance_before = season if column == "cash_advance" else monthly
 
-        if cash_adv <= 0:
-            await callback_query.answer("⚠️ Hộ dân không còn tiền ứng để khấu trừ.", show_alert=True)
+        # Hai nhánh từ chối dưới đây không ghi gì -> nhả khóa dòng trước khi gọi
+        # Telegram, đừng giữ khóa qua await.
+        if balance_before <= 0:
+            db.rollback()
+            _tn_cb_release(callback_query, "kttu")
+            await callback_query.answer(
+                f"⚠️ Hộ dân không còn {label.lower()} để khấu trừ.", show_alert=True
+            )
             return
 
-        if deducted > cash_adv:
+        if deducted > balance_before:
+            db.rollback()
+            _tn_cb_release(callback_query, "kttu")
             await callback_query.answer(
-                f"⚠️ Số tiền khấu trừ vượt quá số tiền ứng hiện tại ({fmt_money(cash_adv)}).",
+                f"⚠️ Số tiền khấu trừ vượt quá {label.lower()} hiện tại ({fmt_money(balance_before)}).",
                 show_alert=True
             )
             return
 
-        # Thực hiện khấu trừ
-        customer.cash_advance = cash_adv - deducted
+        # Thực hiện khấu trừ trên đúng loại đã chọn
+        balance_after = int(balance_before - deducted)
+        setattr(customer, column, balance_after)
+        _tn_log_cash_advance(
+            db, customer, "DEDUCT", advance_type, deducted,
+            balance_before, balance_after,
+            actor=callback_query.from_user,
+            chat_id=callback_query.message.chat.id,
+        )
         db.commit()
+        committed = True
 
         LogInfo(
             f"[TienNga] User {callback_query.from_user.id} deducted cash advance "
-            f"for household {hoursehold_id}: deducted={deducted}, "
-            f"new_cash_advance={customer.cash_advance}",
+            f"for household {hoursehold_id}: type={advance_type}, deducted={deducted}, "
+            f"new_balance={balance_after}",
             LogType.SYSTEM_STATUS
         )
+
+        new_season, new_monthly, new_total = _tn_adv_balances(customer)
 
         result_text = (
             f"✅ <b>KHẤU TRỪ TIỀN ỨNG THÀNH CÔNG</b>\n\n"
             f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
             f"<b>Tên KH:</b> {customer.fullname}\n"
             f"{'━' * 15}\n"
+            f"<b>Khấu trừ vào:</b> {label}\n"
             f"<b>Số tiền đã khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
-            f"<b>Số tiền ứng còn lại:</b> <code>{fmt_money(customer.cash_advance)}</code>\n"
+            f"<b>Ứng cuối mùa còn lại:</b> <code>{fmt_money(new_season)}</code>\n"
+            f"<b>Ứng trong tháng còn lại:</b> <code>{fmt_money(new_monthly)}</code>\n"
+            f"<b>Tổng tiền ứng còn lại:</b> <code>{fmt_money(new_total)}</code>\n"
             f"{'━' * 15}\n"
-            f"<i>Thực hiện bởi: {callback_query.from_user.first_name or ''} "
-            f"(@{callback_query.from_user.username or 'N/A'})</i>"
+            f"<i>Thực hiện bởi: {_tn_actor_label(callback_query.from_user)}</i>"
         )
 
         await callback_query.message.edit_text(result_text, parse_mode=ParseMode.HTML)
@@ -22220,8 +23264,11 @@ async def kttu_confirm_callback(client, callback_query):
                     f"<b>Mã Hộ:</b> <code>{hoursehold_id}</code>\n"
                     f"<b>Tên KH:</b> {customer.fullname}\n"
                     f"{'━' * 15}\n"
+                    f"<b>Khấu trừ vào:</b> {label}\n"
                     f"<b>Số tiền đã khấu trừ:</b> <code>{fmt_money(deducted)}</code>\n"
-                    f"<b>Số tiền ứng còn lại:</b> <code>{fmt_money(customer.cash_advance)}</code>"
+                    f"<b>Ứng cuối mùa còn lại:</b> <code>{fmt_money(new_season)}</code>\n"
+                    f"<b>Ứng trong tháng còn lại:</b> <code>{fmt_money(new_monthly)}</code>\n"
+                    f"<b>Tổng tiền ứng còn lại:</b> <code>{fmt_money(new_total)}</code>"
                 )
 
                 for chat_id in chat_ids:
@@ -22251,10 +23298,25 @@ async def kttu_confirm_callback(client, callback_query):
 
     except Exception as e:
         db.rollback()
+        # Lỗi trước commit thì chưa trừ gì -> cho bấm lại. Lỗi sau commit (gửi thông báo
+        # hỏng) thì giữ khoá, tránh khấu trừ lần hai.
+        if not committed:
+            _tn_cb_release(callback_query, "kttu")
         LogError(f"Error in kttu_confirm_callback: {e}", LogType.SYSTEM_STATUS)
         await callback_query.answer("❌ Lỗi khi thực hiện khấu trừ.", show_alert=True)
     finally:
         db.close()
+
+
+# Yêu cầu khấu trừ tạo trước khi tách hai loại ứng có callback_data thiếu loại.
+# Không bắt lại thì bấm nút cũ sẽ im lặng, người dùng tưởng bot chết.
+@bot.on_callback_query(filters.regex(r"^kttu:ok:(?!SEASON:|MONTH:)(.+):(.+)$"))
+async def kttu_confirm_legacy_callback(client, callback_query):
+    await callback_query.answer(
+        "⚠️ Yêu cầu này được tạo trước khi tách loại ứng tiền. Vui lòng gõ lại lệnh "
+        "/tien_nga_khau_tru_tien_ung để chọn loại cần khấu trừ.",
+        show_alert=True
+    )
 
 
 @bot.on_callback_query(filters.regex(r"^kttu:cancel$"))
@@ -22334,10 +23396,11 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
             if cp_obj:
                 target_cp_name = cp_obj.collection_name
                 
-        # 2. Truy vấn khách hàng có cash_advance > 0
+        # 2. Truy vấn khách hàng còn tiền ứng ở bất kỳ loại nào
+        from sqlalchemy import or_
         query = db.query(Customers, CollectionPoint.collection_name).outerjoin(
             CollectionPoint, Customers.collection_point_id == CollectionPoint.id
-        ).filter(Customers.cash_advance > 0)
+        ).filter(or_(Customers.cash_advance > 0, Customers.cash_advance_monthly > 0))
         
         if target_cp_id:
             query = query.filter(Customers.collection_point_id == target_cp_id)
@@ -22347,7 +23410,7 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
         if not customers:
             await callback_query.message.edit_text(
                 f"⚠️ <b>Điểm thu mua:</b> {target_cp_name}\n\n"
-                f"Không có hộ dân nào có tiền ứng (`cash_advance > 0`) trong hệ thống.",
+                f"Không có hộ dân nào còn tiền ứng (cuối mùa hoặc trong tháng) trong hệ thống.",
                 parse_mode=ParseMode.HTML
             )
             await callback_query.answer("Không có dữ liệu.", show_alert=True)
@@ -22390,12 +23453,16 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
             "Nguyên Liệu",
             "Số Tiền Nợ",
             "Ứng Tiền Cuối Mùa",
+            "Ứng Tiền Trong Tháng",
+            "Tổng Ứng",
             "Tổng Công Nợ",
             "Username TG",
             "Trạng Thái",
         ]
-        
-        col_widths = [6, 10, 22, 10, 16, 25, 15, 18, 20, 18, 18, 12]
+
+        col_widths = [6, 10, 22, 10, 16, 25, 15, 18, 20, 22, 18, 18, 18, 12]
+        # Các cột tiền, dùng lại khi ghi dòng dữ liệu và dòng tổng cộng
+        money_cols = (8, 9, 10, 11, 12)
         total_customers = 0
         
         for group_name, custs in grouped.items():
@@ -22432,15 +23499,17 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
                     cust.ingredient,
                     fmt_money_excel(cust.amount_of_debt),
                     fmt_money_excel(cust.cash_advance),
+                    fmt_money_excel(cust.cash_advance_monthly),
+                    fmt_money_excel((cust.cash_advance or 0) + (cust.cash_advance_monthly or 0)),
                     fmt_money_excel(cust.total_debt),
                     cust.username,
                     cust.status,
                 ]
-                
+
                 for col_idx, val in enumerate(values, 1):
                     cell = ws.cell(row=row, column=col_idx, value=val)
                     cell.border = thin_border
-                    if col_idx in (8, 9, 10):
+                    if col_idx in money_cols:
                         cell.alignment = money_align
                         cell.number_format = '#,##0'
                     elif col_idx == 1:
@@ -22453,8 +23522,9 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
             # Ghi dòng tổng cộng của tab này
             total_debt_amount = sum(c.amount_of_debt or 0 for c in custs)
             total_advance_amount = sum(c.cash_advance or 0 for c in custs)
+            total_monthly_amount = sum(c.cash_advance_monthly or 0 for c in custs)
             total_net_debt = sum(c.total_debt or 0 for c in custs)
-            
+
             total_row = len(custs) + 2
             total_values = [
                 "",
@@ -22466,6 +23536,8 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
                 "",
                 total_debt_amount if total_debt_amount else 0,
                 total_advance_amount if total_advance_amount else 0,
+                total_monthly_amount if total_monthly_amount else 0,
+                total_advance_amount + total_monthly_amount,
                 total_net_debt if total_net_debt else 0,
                 "",
                 ""
@@ -22475,7 +23547,7 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
                 cell.font = total_font
                 cell.fill = total_fill
                 cell.border = thin_border
-                if col_idx in (8, 9, 10):
+                if col_idx in money_cols:
                     cell.alignment = money_align
                     cell.number_format = '#,##0'
                 elif col_idx in (1, 3):
@@ -22496,6 +23568,9 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
+
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
         
         now_str = datetime.now().strftime("%Y%m%d_%H%M")
         summary_lines = "\n".join(
@@ -22531,6 +23606,187 @@ async def ds_ung_tien_callback(client, callback_query: CallbackQuery):
     except Exception as e:
         LogError(f"Error in ds_ung_tien_callback: {e}", LogType.SYSTEM_STATUS)
         await callback_query.message.edit_text(f"❌ Có lỗi xảy ra khi tạo báo cáo Excel: {e}", parse_mode=ParseMode.HTML)
+    finally:
+        db.close()
+
+
+# ===================== LỊCH SỬ ỨNG TIỀN (Cash Advance History) =====================
+
+# ══════════════════════════════════════════════════════════════
+# LỊCH SỬ ỨNG TIỀN — luồng nút bấm
+# Điểm Thu Mua → Hộ dân (phân trang) → Nhật ký ứng / khấu trừ
+# ══════════════════════════════════════════════════════════════
+
+TN_ADV_LOG_LIMIT = 20
+
+
+def _build_cash_advance_history(db, customer) -> str:
+    """Nhật ký ứng tiền của 1 hộ dân, mới nhất trước."""
+    from app.models.business import CashAdvanceLog
+
+    logs = db.query(CashAdvanceLog).filter(
+        CashAdvanceLog.hoursehold_id == customer.hoursehold_id
+    ).order_by(CashAdvanceLog.created_at.desc()).limit(TN_ADV_LOG_LIMIT).all()
+
+    season, monthly, total = _tn_adv_balances(customer)
+    header = (
+        f"<b>LỊCH SỬ ỨNG TIỀN</b>\n"
+        f"Hộ dân: <b>{customer.fullname or '—'}</b> ({customer.hoursehold_id})\n"
+        f"{'━' * 15}\n"
+        f"<b>Ứng cuối mùa:</b> <code>{fmt_money(season)}</code>\n"
+        f"<b>Ứng trong tháng:</b> <code>{fmt_money(monthly)}</code>\n"
+        f"<b>Tổng đang ứng:</b> <code>{fmt_money(total)}</code>\n"
+        f"{'━' * 15}\n\n"
+    )
+
+    if not logs:
+        return header + (
+            "<i>Chưa có giao dịch nào được ghi nhận.</i>\n"
+            "<i>(Nhật ký chỉ ghi từ thời điểm hệ thống tách hai loại ứng tiền.)</i>"
+        )
+
+    # Telegram chặn tin nhắn quá 4096 ký tự. 20 giao dịch có ghi chú duyệt vượt
+    # hạn mức đã hơn 5000 ký tự -> cắt theo hạn mức ký tự thay vì theo số dòng,
+    # còn thiếu bao nhiêu thì nói rõ ở cuối.
+    budget = 3800 - len(header)
+    lines = []
+    shown = 0
+    for lg in logs:
+        when = lg.created_at.strftime('%d/%m/%Y %H:%M') if lg.created_at else '—'
+        sign = "➕" if lg.entry_type == "ADVANCE" else "➖"
+        action = "Ứng" if lg.entry_type == "ADVANCE" else "Khấu trừ"
+        line = (
+            f"{sign} <b>{action} {fmt_money(lg.amount)}</b> — {_tn_adv_label(lg.advance_type)}\n"
+            f"   <i>{when}</i> | Số dư: "
+            f"{fmt_money(lg.balance_before)} → <b>{fmt_money(lg.balance_after)}</b>\n"
+        )
+        if lg.created_by:
+            line += f"   <i>Bởi: {lg.created_by}</i>\n"
+        if lg.is_over_limit:
+            line += f"   <i>⚠️ Vượt hạn mức — duyệt bởi: {lg.approved_by or '—'}</i>\n"
+
+        # Luôn giữ ít nhất 1 giao dịch, kể cả khi nó dài bất thường
+        if shown and len(line) + 1 > budget:
+            break
+        budget -= len(line) + 1
+        lines.append(line)
+        shown += 1
+
+    if shown < len(logs):
+        footer = (
+            f"\n<i>Hiển thị {shown}/{len(logs)} giao dịch gần nhất (tin nhắn đã đầy).</i>"
+        )
+    else:
+        footer = f"\n<i>Hiển thị {shown} giao dịch gần nhất.</i>"
+    return header + "\n".join(lines) + footer
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ls_x$"))
+async def tn_ls_cancel_callback(client, callback_query):
+    """Hủy luồng xem lịch sử ứng tiền."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ls_cps$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_ls_collection_points_callback(client, callback_query):
+    """Bước 1 / Quay lại — danh sách Điểm Thu Mua."""
+    db = SessionLocal()
+    try:
+        text, markup = _tn_collection_point_view(db, "tn_ls", "LỊCH SỬ ỨNG TIỀN")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_ls_collection_points_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ls_cp\|([^|]+)\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_ls_customer_list_callback(client, callback_query):
+    """Bước 2 — danh sách Hộ dân của 1 Điểm Thu Mua (phân trang Trước/Sau)."""
+    cp_id = callback_query.matches[0].group(1)
+    page = int(callback_query.matches[0].group(2))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_customer_list_view(db, cp_id, page, "tn_ls")
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_ls_customer_list_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ls_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tn_ls_customer_history_callback(client, callback_query):
+    """Bước 3 — chọn Hộ dân → hiện nhật ký ứng tiền."""
+    hoursehold_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        customer = await _tn_load_customer(callback_query, db, hoursehold_id)
+        if not customer:
+            return
+
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_ls_cp|{customer.collection_point_id}|0"),
+            InlineKeyboardButton("Hủy", callback_data="tn_ls_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_cash_advance_history(db, customer), markup)
+    except Exception as e:
+        LogError(f"Error in tn_ls_customer_history_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_message(filters.command(["tien_nga_lich_su_ung_tien", "tien_nga_ls_ung_tien"]) | filters.regex(r"^@\w+\s+/(tien_nga_lich_su_ung_tien|tien_nga_ls_ung_tien)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
+async def tien_nga_lich_su_ung_tien_handler(client, message: Message) -> None:
+    args = await check_command_target(client, message.text, ["tien_nga_lich_su_ung_tien", "tien_nga_ls_ung_tien"])
+    if args is None: return
+
+    from app.models.business import Customers
+
+    # Không truyền tham số -> mở wizard: Điểm Thu Mua → Hộ dân → Nhật ký
+    if len(args) == 1:
+        db = SessionLocal()
+        try:
+            text, markup = _tn_collection_point_view(db, "tn_ls", "LỊCH SỬ ỨNG TIỀN")
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error opening cash advance history wizard: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
+        return
+
+    hoursehold_id = args[1].strip()
+    db = SessionLocal()
+    try:
+        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        if not customer:
+            await message.reply_text(
+                f"⚠️ Không tìm thấy hộ dân có mã <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML
+            )
+            return
+        await message.reply_text(_build_cash_advance_history(db, customer), parse_mode=ParseMode.HTML)
+    except Exception as e:
+        LogError(f"Error in tien_nga_lich_su_ung_tien_handler: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra khi lấy lịch sử ứng tiền.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -22590,27 +23846,79 @@ async def tien_nga_confirmed_handler(client, message: Message) -> None:
         amt_str = m_amt.group(1).replace("VNĐ", "").replace(".", "").replace(",", "").strip()
         cash_advance_requested = float(amt_str)
 
-        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        # Yêu cầu tạo trước khi có hai loại ứng thì không có dòng "Loại ứng" -> mặc định
+        # cuối mùa, đúng với ý nghĩa cột cash_advance cũ.
+        m_kind = re.search(r"Loại ứng:\s*([^\n]+)", txt)
+        kind_key = "MONTH" if (m_kind and "tháng" in m_kind.group(1).lower()) else "SEASON"
+        advance_type, column, label = _tn_adv_kind(kind_key)
+
+        # Khóa dòng hộ dân: bot và API là hai tiến trình riêng, nếu cùng lúc đọc số dư
+        # rồi cùng ghi thì một lần ứng sẽ mất và hạn mức bị vượt qua mặt. Chỉ khóa đúng
+        # một dòng và mọi nhánh đều commit/rollback trước khi await -> không deadlock.
+        customer = db.query(Customers).filter(
+            Customers.hoursehold_id == hoursehold_id
+        ).with_for_update().first()
         if not customer:
             await message.reply_text(f"⚠️ Không tìm thấy hộ dân có mã <b>{hoursehold_id}</b>.", parse_mode=ParseMode.HTML)
             return
 
-        current_advance = customer.cash_advance or 0
-        total_after_advance = current_advance + cash_advance_requested
+        season, monthly, _total = _tn_adv_balances(customer)
+        balance_before = season if column == "cash_advance" else monthly
+        balance_after = int(balance_before + cash_advance_requested)
 
-        # Cập nhật số tiền ứng
-        customer.cash_advance = total_after_advance
+        # Cập nhật số tiền ứng của đúng loại đã yêu cầu
+        setattr(customer, column, balance_after)
+        _tn_log_cash_advance(
+            db, customer, "ADVANCE", advance_type, cash_advance_requested,
+            balance_before, balance_after,
+            actor=message.from_user,
+            chat_id=message.chat.id,
+            is_over_limit=True,
+            approved_by=_tn_actor_label(message.from_user),
+            note="Ứng vượt hạn mức, Owner phê duyệt qua /confirmed",
+        )
         db.commit()
 
-        LogInfo(f"[TienNga] Owner {message.from_user.id} approved cash advance {cash_advance_requested} (OVER LIMIT) to household {hoursehold_id}", LogType.SYSTEM_STATUS)
+        new_season, new_monthly, new_total = _tn_adv_balances(customer)
+
+        LogInfo(f"[TienNga] Owner {message.from_user.id} approved cash advance {cash_advance_requested} ({advance_type}, OVER LIMIT) to household {hoursehold_id}", LogType.SYSTEM_STATUS)
+
+        # Vô hiệu hóa yêu cầu đã duyệt: bỏ chuỗi "SỐ TIỀN ỨNG VƯỢT QUÁ HẠN MỨC CHO PHÉP"
+        # mà chính handler này dò theo. Không làm vậy thì reply /confirmed lần hai vào
+        # cùng tin nhắn sẽ cộng tiền ứng thêm một lần nữa. (Nút "Hủy yêu cầu" cũng
+        # dùng đúng cách này.)
+        try:
+            await client.edit_message_text(
+                chat_id=replied_message.chat.id,
+                message_id=replied_message.id,
+                text=(
+                    f"✅ <b>YÊU CẦU ỨNG VƯỢT HẠN MỨC ĐÃ ĐƯỢC DUYỆT</b>\n\n"
+                    f"<b>Mã Hộ:</b> {hoursehold_id}\n"
+                    f"<b>Loại ứng:</b> {label}\n"
+                    f"<b>Số tiền đã ứng:</b> {fmt_money(cash_advance_requested)}\n"
+                    f"<i>Duyệt bởi Owner @{message.from_user.username or message.from_user.id}</i>"
+                ),
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as edit_err:
+            # Sửa hỏng thì tiền đã cộng rồi, chỉ mất chốt chặn duyệt trùng -> ghi log
+            # để còn lần theo, không rollback.
+            LogError(
+                f"[TienNga] Approved advance for {hoursehold_id} but failed to neutralize "
+                f"the request message (nguy cơ duyệt trùng): {edit_err}",
+                LogType.SYSTEM_STATUS
+            )
 
         await message.reply_text(
             f"✅ <b>XÁC NHẬN PHÊ DUYỆT ỨNG VƯỢT HẠN MỨC THÀNH CÔNG</b>\n\n"
             f"<b>Phê duyệt bởi Owner:</b> @{message.from_user.username or message.from_user.id}\n"
             f"<b>Mã Hộ:</b> {customer.hoursehold_id}\n"
             f"<b>Tên KH:</b> {customer.fullname}\n"
+            f"<b>Loại ứng:</b> {label}\n"
             f"<b>Số tiền ứng thêm (Vượt ngưỡng):</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
-            f"<b>Tổng tiền đã ứng mới:</b> <code>{fmt_money(customer.cash_advance)}</code>\n\n"
+            f"<b>Ứng cuối mùa:</b> <code>{fmt_money(new_season)}</code>\n"
+            f"<b>Ứng trong tháng:</b> <code>{fmt_money(new_monthly)}</code>\n"
+            f"<b>Tổng tiền đã ứng mới:</b> <code>{fmt_money(new_total)}</code>\n\n"
             f"<i>Gợi ý: Cần thực hiện thêm lệnh /tien_nga_yeu_cau_thu_chi để ghi nhận chi quỹ.</i>",
             parse_mode=ParseMode.HTML
         )
@@ -22630,8 +23938,11 @@ async def tien_nga_confirmed_handler(client, message: Message) -> None:
                     f"<b>Mã Hộ:</b> <code>{customer.hoursehold_id}</code>\n"
                     f"<b>Tên KH:</b> {customer.fullname}\n"
                     f"{'━' * 15}\n"
+                    f"<b>Loại ứng:</b> {label}\n"
                     f"<b>Số tiền vừa ứng:</b> <code>{fmt_money(cash_advance_requested)}</code>\n"
-                    f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(customer.cash_advance)}</code>\n"
+                    f"<b>Ứng cuối mùa:</b> <code>{fmt_money(new_season)}</code>\n"
+                    f"<b>Ứng trong tháng:</b> <code>{fmt_money(new_monthly)}</code>\n"
+                    f"<b>Tổng tiền đã ứng:</b> <code>{fmt_money(new_total)}</code>\n"
                     f"<b>Người phê duyệt:</b> Owner (@{message.from_user.username or message.from_user.id})"
                 )
 
@@ -22927,6 +24238,9 @@ async def tien_nga_thong_ke_cong_no_handler(client, message: Message) -> None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
+
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
 
         await client.send_document(
             chat_id=message.chat.id,
@@ -23413,6 +24727,9 @@ async def _generate_loss_statistics_excel(client, message, start_date, end_date)
             tmp_path = tmp.name
         wb.save(tmp_path)
 
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
+
         wet_count = len(wet_sale_records)
         dry_count = len(dry_production_records)
 
@@ -23802,6 +25119,9 @@ async def tien_nga_check_supplies_handler(client, message: Message) -> None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
+
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
 
         caption = (
             f"<b>BÁO CÁO CHI PHÍ VẬT TƯ NÔNG NGHIỆP</b>\n\n"
@@ -24672,6 +25992,9 @@ async def tien_nga_balance_sheet_handler(client, message: Message) -> None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp_path = tmp.name
         wb.save(tmp_path)
+
+        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
+        db.close()
 
         now_str = datetime.now().strftime("%Y%m%d_%H%M")
         file_name = f"can_bang_ke_toan_{now_str}.xlsx"

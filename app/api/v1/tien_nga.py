@@ -6,6 +6,13 @@ from app.schemas.customer import CustomerResponse, CustomerCreate, CustomerUpdat
 from app.schemas.collection_point import CollectionPointResponse
 from app.schemas import DailyPurchaseResponse, DailyPurchaseCreate, DailyPurchaseUpdate, MaterialPurchaseResponse, MaterialPurchaseCreate, InventoryResponse, InventoryCreate, InventoryUpdate, PartnerResponse, PartnerCreate, PartnerUpdate, PartnerBusinessResponse, PartnerBusinessCreate, PartnerBusinessUpdate, InvestmentResponse, InvestmentCreate, InvestmentUpdate, DailyPaymentResponse, DailyPaymentCreate, InventoryExportResponse, InventoryExportCreate, ProductTransactionResponse, ProductTransactionCreate
 from app.schemas.process_debt import ProcessDebtRequest, ProcessDebtResponse, DailyPurchaseAllocation
+from app.schemas.cash_advance_log import (
+    CashAdvanceLogResponse, CashAdvanceLogSummaryResponse
+)
+from app.crud.cash_advance_log import (
+    get_cash_advance_logs, count_cash_advance_logs, get_cash_advance_summary,
+    ENTRY_TYPES, ADVANCE_TYPES,
+)
 from app.schemas.loss_control import (
     ProcessLossControlRequest, LossControlItem, ProcessLossControlResponse,
     LossControlCreate, LossControlBulkUpdate, LossControlResponse
@@ -52,7 +59,7 @@ from app.crud.customer import (
     update_investment_financials,
 )
 from app.models.employee import Credential
-from app.models.business import Customers, CollectionPoint, DailyPurchases, Partners, PartnerBusinesses, Investment, DailyPayment, LossControls, Shareholder
+from app.models.business import Customers, CollectionPoint, DailyPurchases, Partners, PartnerBusinesses, Investment, DailyPayment, LossControls, Shareholder, CashAdvanceLog
 from app.models.inventory import Inventory, MaterialPurchase, InventoryExport, ProductTransaction
 from bot.utils.logger import LogInfo
 from app.schemas.shareholder import ShareholderCreate, ShareholderUpdate, ShareholderResponse
@@ -151,6 +158,7 @@ async def add_customers(
                 "ingredient": new_customer.ingredient,
                 "amount_of_debt": new_customer.amount_of_debt,
                 "cash_advance": new_customer.cash_advance,
+                "cash_advance_monthly": new_customer.cash_advance_monthly,
                 "total_debt": new_customer.total_debt,
                 "status": new_customer.status,
                 "username": new_customer.username,
@@ -235,6 +243,7 @@ async def update_customers(
                 "ingredient": updated_customer.ingredient,
                 "amount_of_debt": updated_customer.amount_of_debt,
                 "cash_advance": updated_customer.cash_advance,
+                "cash_advance_monthly": updated_customer.cash_advance_monthly,
                 "total_debt": updated_customer.total_debt,
                 "status": updated_customer.status,
                 "username": updated_customer.username,
@@ -315,6 +324,7 @@ async def delete_customers(
                 "ingredient": customer.ingredient,
                 "amount_of_debt": customer.amount_of_debt,
                 "cash_advance": customer.cash_advance,
+                "cash_advance_monthly": customer.cash_advance_monthly,
                 "total_debt": customer.total_debt,
                 "status": customer.status,
                 "username": customer.username,
@@ -3038,6 +3048,9 @@ async def delete_inventories(
 class ProcessAdvanceAmountRequest(BaseModel):
     hoursehold_id: str
     amount: float
+    # SEASON_END (ứng cuối mùa) hoặc IN_MONTH (ứng trong tháng). Client cũ không
+    # gửi field này -> giữ nguyên hành vi cũ là ghi vào ứng cuối mùa.
+    advance_type: Optional[str] = "SEASON_END"
 
 
 @router.post("/process-advance-amount")
@@ -3058,13 +3071,21 @@ async def process_advance_amount(
         hoursehold_id = payload.hoursehold_id.strip()
         cash_advance_requested = payload.amount
 
-        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        # Khóa dòng hộ dân: bot và API là hai tiến trình riêng, nếu cùng lúc đọc số dư
+        # rồi cùng ghi thì một lần ứng sẽ mất và hạn mức bị vượt qua mặt.
+        # MỌI nhánh thoát bên dưới đều phải commit hoặc rollback trước khi sang hộ kế
+        # tiếp: giữ khóa tích lũy nhiều hộ trong một request thì hai request khóa cùng
+        # bộ hộ theo thứ tự ngược nhau sẽ deadlock.
+        customer = db.query(Customers).filter(
+            Customers.hoursehold_id == hoursehold_id
+        ).with_for_update().first()
         if not customer:
             results.append({
                 "hoursehold_id": hoursehold_id,
                 "success": False,
                 "message": f"Không tìm thấy hộ dân có mã {hoursehold_id}."
             })
+            db.rollback()          # nhả khóa dòng trước khi sang hộ kế tiếp
             continue
 
         current_date = date.today()
@@ -3087,8 +3108,21 @@ async def process_advance_amount(
 
         max_cash_advance_rate = settings.IMP_Config.MaxCashAdvance
         max_cash_advance = total_sales * max_cash_advance_rate
-        current_advance = customer.cash_advance or 0
+        # Hạn mức tính chung cho cả hai loại ứng, giống luồng bot.
+        season_advance = customer.cash_advance or 0
+        monthly_advance = customer.cash_advance_monthly or 0
+        current_advance = season_advance + monthly_advance
         total_after_advance = current_advance + cash_advance_requested
+
+        advance_type = (payload.advance_type or "SEASON_END").upper()
+        if advance_type not in ("SEASON_END", "IN_MONTH"):
+            results.append({
+                "hoursehold_id": hoursehold_id,
+                "success": False,
+                "message": "advance_type phải là SEASON_END hoặc IN_MONTH."
+            })
+            db.rollback()          # nhả khóa dòng trước khi sang hộ kế tiếp
+            continue
 
         if total_after_advance > max_cash_advance:
             reason = (
@@ -3111,19 +3145,39 @@ async def process_advance_amount(
                 "current_advance": current_advance,
                 "allowed_remaining": max_cash_advance - current_advance if max_cash_advance > current_advance else 0
             })
+            db.rollback()          # nhả khóa dòng trước khi sang hộ kế tiếp
             continue
 
-        customer.cash_advance = total_after_advance
+        column = "cash_advance" if advance_type == "SEASON_END" else "cash_advance_monthly"
+        balance_before = season_advance if advance_type == "SEASON_END" else monthly_advance
+        balance_after = int(balance_before + cash_advance_requested)
+        setattr(customer, column, balance_after)
+
+        db.add(CashAdvanceLog(
+            hoursehold_id=customer.hoursehold_id,
+            collection_point_id=customer.collection_point_id,
+            entry_type="ADVANCE",
+            advance_type=advance_type,
+            amount=int(cash_advance_requested),
+            balance_before=int(balance_before),
+            balance_after=balance_after,
+            is_over_limit=False,
+            created_by=current_user.username or str(current_user.employee_id or ""),
+            note="Ứng tiền qua API",
+        ))
         db.commit()
         db.refresh(customer)
 
-        LogInfo(f"[TienNga API] User {current_user.username} processed cash advance {cash_advance_requested} for household {hoursehold_id}")
+        LogInfo(f"[TienNga API] User {current_user.username} processed cash advance {cash_advance_requested} ({advance_type}) for household {hoursehold_id}")
 
         results.append({
             "hoursehold_id": hoursehold_id,
             "success": True,
             "message": "Ứng tiền thành công!",
-            "new_advance": total_after_advance
+            "advance_type": advance_type,
+            "new_advance": (customer.cash_advance or 0) + (customer.cash_advance_monthly or 0),
+            "new_season_advance": customer.cash_advance or 0,
+            "new_monthly_advance": customer.cash_advance_monthly or 0
         })
 
     # Send Telegram notification
@@ -3150,6 +3204,9 @@ async def process_advance_amount(
 class ProcessDeductionAdvanceAmountRequest(BaseModel):
     hoursehold_id: str
     amount: float
+    # SEASON_END (ứng cuối mùa) hoặc IN_MONTH (ứng trong tháng). Client cũ không
+    # gửi field này -> giữ nguyên hành vi cũ là trừ vào ứng cuối mùa.
+    advance_type: Optional[str] = "SEASON_END"
 
 
 @router.post("/process-deduction-advance-amount")
@@ -3164,38 +3221,86 @@ async def process_deduction_advance_amount(
         hoursehold_id = payload.hoursehold_id.strip()
         amount = payload.amount
 
-        customer = db.query(Customers).filter(Customers.hoursehold_id == hoursehold_id).first()
+        # Khóa dòng hộ dân: bot và API là hai tiến trình riêng, nếu cùng lúc đọc số dư
+        # rồi cùng ghi thì một lần ứng sẽ mất và hạn mức bị vượt qua mặt.
+        # MỌI nhánh thoát bên dưới đều phải commit hoặc rollback trước khi sang hộ kế
+        # tiếp: giữ khóa tích lũy nhiều hộ trong một request thì hai request khóa cùng
+        # bộ hộ theo thứ tự ngược nhau sẽ deadlock.
+        customer = db.query(Customers).filter(
+            Customers.hoursehold_id == hoursehold_id
+        ).with_for_update().first()
         if not customer:
             results.append({
                 "hoursehold_id": hoursehold_id,
                 "success": False,
                 "message": f"Không tìm thấy hộ dân có mã {hoursehold_id}."
             })
+            db.rollback()          # nhả khóa dòng trước khi sang hộ kế tiếp
             continue
 
-        current_debt = customer.total_debt or 0
-
-        if amount > current_debt:
+        advance_type = (payload.advance_type or "SEASON_END").upper()
+        if advance_type not in ("SEASON_END", "IN_MONTH"):
             results.append({
                 "hoursehold_id": hoursehold_id,
                 "success": False,
-                "message": "Công nợ không đủ dư."
+                "message": "advance_type phải là SEASON_END hoặc IN_MONTH."
             })
+            db.rollback()          # nhả khóa dòng trước khi sang hộ kế tiếp
             continue
 
-        # customer.total_debt = current_debt - int(amount)
-        customer.cash_advance = (customer.cash_advance or 0) - int(amount)
+        column = "cash_advance" if advance_type == "SEASON_END" else "cash_advance_monthly"
+        balance_before = getattr(customer, column) or 0
+
+        # Chặn theo số dư ứng của đúng loại. Trước đây API so với total_debt rồi
+        # trừ vào cash_advance, nên khấu trừ được cả khi hộ không còn tiền ứng và
+        # đẩy số dư xuống âm.
+        if amount <= 0:
+            results.append({
+                "hoursehold_id": hoursehold_id,
+                "success": False,
+                "message": "Số tiền khấu trừ phải lớn hơn 0."
+            })
+            db.rollback()          # nhả khóa dòng trước khi sang hộ kế tiếp
+            continue
+
+        if amount > balance_before:
+            results.append({
+                "hoursehold_id": hoursehold_id,
+                "success": False,
+                "message": f"Số tiền ứng của loại này chỉ còn {balance_before:,.0f} VNĐ, không đủ để khấu trừ."
+            })
+            db.rollback()          # nhả khóa dòng trước khi sang hộ kế tiếp
+            continue
+
+        balance_after = int(balance_before - int(amount))
+        setattr(customer, column, balance_after)
+
+        db.add(CashAdvanceLog(
+            hoursehold_id=customer.hoursehold_id,
+            collection_point_id=customer.collection_point_id,
+            entry_type="DEDUCT",
+            advance_type=advance_type,
+            amount=int(amount),
+            balance_before=int(balance_before),
+            balance_after=balance_after,
+            is_over_limit=False,
+            created_by=current_user.username or str(current_user.employee_id or ""),
+            note="Khấu trừ tiền ứng qua API",
+        ))
         db.commit()
         db.refresh(customer)
 
-        LogInfo(f"[TienNga API] User {current_user.username} processed deduction advance amount {amount} for household {hoursehold_id}")
+        LogInfo(f"[TienNga API] User {current_user.username} processed deduction advance amount {amount} ({advance_type}) for household {hoursehold_id}")
 
         results.append({
             "hoursehold_id": hoursehold_id,
             "success": True,
             "message": "Khấu trừ công nợ thành công!",
+            "advance_type": advance_type,
             "new_debt": customer.total_debt,
-            "new_advance": customer.cash_advance
+            "new_advance": (customer.cash_advance or 0) + (customer.cash_advance_monthly or 0),
+            "new_season_advance": customer.cash_advance or 0,
+            "new_monthly_advance": customer.cash_advance_monthly or 0
         })
 
     # Send Telegram notification
@@ -3217,6 +3322,151 @@ async def process_deduction_advance_amount(
         LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
 
     return results
+
+
+# ===================== NHẬT KÝ ỨNG TIỀN (cash_advance_logs) =====================
+# Bảng này là sổ ghi vết: các dòng được sinh tự động bởi /process-advance-amount,
+# /process-deduction-advance-amount và các lệnh ứng/khấu trừ trên bot. Không mở
+# endpoint tạo/sửa/xóa để số dư trên customers và nhật ký không bao giờ lệch nhau.
+
+
+def _validate_log_filters(entry_type: Optional[str], advance_type: Optional[str]) -> None:
+    if entry_type and entry_type.upper() not in ENTRY_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"entry_type phải thuộc {list(ENTRY_TYPES)}."
+        )
+    if advance_type and advance_type.upper() not in ADVANCE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"advance_type phải thuộc {list(ADVANCE_TYPES)}."
+        )
+
+
+@router.get("/get-cash-advance-logs", response_model=List[CashAdvanceLogResponse])
+def get_cash_advance_logs_api(
+    hoursehold_id: Optional[str] = None,
+    collection_point_id: Optional[str] = None,
+    entry_type: Optional[str] = None,
+    advance_type: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    is_over_limit: Optional[bool] = None,
+    limit: int = 200,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    """Nhật ký ứng / khấu trừ tiền ứng của hộ dân, mới nhất trước."""
+    LogInfo(
+        f"[TienNga API] Received get-cash-advance-logs request. Filters: hoursehold_id={hoursehold_id}, "
+        f"collection_point_id={collection_point_id}, entry_type={entry_type}, advance_type={advance_type}, "
+        f"start_date={start_date}, end_date={end_date}, is_over_limit={is_over_limit}"
+    )
+    try:
+        _validate_log_filters(entry_type, advance_type)
+        if limit < 1 or limit > 1000:
+            raise HTTPException(status_code=400, detail="limit phải nằm trong khoảng 1..1000.")
+        if offset < 0:
+            raise HTTPException(status_code=400, detail="offset không được âm.")
+
+        cp_ids = None
+        if collection_point_id:
+            cp_ids = [cp.strip() for cp in collection_point_id.split(",") if cp.strip()]
+
+        results = get_cash_advance_logs(
+            db,
+            hoursehold_id=hoursehold_id,
+            collection_point_id=cp_ids,
+            entry_type=entry_type,
+            advance_type=advance_type,
+            start_date=start_date,
+            end_date=end_date,
+            is_over_limit=is_over_limit,
+            limit=limit,
+            offset=offset,
+        )
+        LogInfo(f"[TienNga API] Found {len(results)} cash advance log records.")
+        return results
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in get-cash-advance-logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/count-cash-advance-logs")
+def count_cash_advance_logs_api(
+    hoursehold_id: Optional[str] = None,
+    collection_point_id: Optional[str] = None,
+    entry_type: Optional[str] = None,
+    advance_type: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    is_over_limit: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    """Tổng số dòng khớp bộ lọc — để client phân trang cùng /get-cash-advance-logs."""
+    try:
+        _validate_log_filters(entry_type, advance_type)
+
+        cp_ids = None
+        if collection_point_id:
+            cp_ids = [cp.strip() for cp in collection_point_id.split(",") if cp.strip()]
+
+        total = count_cash_advance_logs(
+            db,
+            hoursehold_id=hoursehold_id,
+            collection_point_id=cp_ids,
+            entry_type=entry_type,
+            advance_type=advance_type,
+            start_date=start_date,
+            end_date=end_date,
+            is_over_limit=is_over_limit,
+        )
+        return {"total": total}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in count-cash-advance-logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/get-cash-advance-summary", response_model=CashAdvanceLogSummaryResponse)
+def get_cash_advance_summary_api(
+    hoursehold_id: Optional[str] = None,
+    collection_point_id: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    """
+    Tổng hợp theo hộ dân: cộng dồn ứng/khấu trừ từng loại trong khoảng thời gian
+    lọc, kèm số dư hiện tại của hai loại ứng.
+    """
+    LogInfo(
+        f"[TienNga API] Received get-cash-advance-summary request. Filters: hoursehold_id={hoursehold_id}, "
+        f"collection_point_id={collection_point_id}, start_date={start_date}, end_date={end_date}"
+    )
+    try:
+        cp_ids = None
+        if collection_point_id:
+            cp_ids = [cp.strip() for cp in collection_point_id.split(",") if cp.strip()]
+
+        summary = get_cash_advance_summary(
+            db,
+            hoursehold_id=hoursehold_id,
+            collection_point_id=cp_ids,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        LogInfo(f"[TienNga API] Cash advance summary for {summary['total_households']} households.")
+        return summary
+    except Exception as e:
+        LogInfo(f"[TienNga API] Error in get-cash-advance-summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class BillRecord(BaseModel):

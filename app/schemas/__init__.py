@@ -12,6 +12,9 @@ from .daily_payment import DailyPaymentResponse, DailyPaymentCreate
 from .inventory_export import InventoryExportResponse, InventoryExportCreate
 from .product_transaction import ProductTransactionResponse, ProductTransactionCreate
 from .payroll import PayrollResponse, PayrollCreate
+from .cash_advance_log import (
+    CashAdvanceLogResponse, CashAdvanceHouseholdSummary, CashAdvanceLogSummaryResponse
+)
 from .loss_control import (
     ProcessLossControlRequest, LossControlItem, ProcessLossControlResponse,
     LossControlBase, LossControlCreate, LossControlUpdate, LossControlBulkUpdate, LossControlResponse
