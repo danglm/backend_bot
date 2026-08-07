@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
-from datetime import time
+from datetime import date, time
 from uuid import UUID
 
 class SalaryBase(BaseModel):
@@ -52,6 +52,12 @@ class GetSalaryResponse(BaseModel):
     received_salary: float
     total_received: float
     status: str
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    # Month the period is filed under — the month it starts in
+    period_year: Optional[int] = None
+    period_month: Optional[int] = None
+    is_range: bool = False
 
     class Config:
         from_attributes = True

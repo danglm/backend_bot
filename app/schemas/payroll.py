@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import date
 from uuid import UUID
 
 class PayrollResponse(BaseModel):
@@ -35,4 +36,8 @@ class PayrollCreate(BaseModel):
     base_salary_amount: Optional[float] = 0.0
     overtime_salary_amount: Optional[float] = 0.0
     total_salary: Optional[float] = 0.0
+    # Actual pay period when the payroll was exported from a day range instead
+    # of a whole month. Recorded in Payroll.note as a readable label.
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 

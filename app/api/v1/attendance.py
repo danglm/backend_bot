@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 from app.api import deps
 from app.api.deps import require_permission
 from app.models.employee import Employee, Credential
@@ -197,19 +198,50 @@ def delete_attendance(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _parse_day(date_str: str, field: str) -> datetime.date:
+    """Parse a yyyy-mm-dd string into a date."""
+    try:
+        return datetime.date.fromisoformat(date_str.strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {field} format. Expected yyyy-mm-dd."
+        )
+
+
+def _months_between(start: datetime.date, end: datetime.date) -> List[tuple]:
+    """List the (year, month) pairs touched by the [start, end] range."""
+    months = []
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        months.append((year, month))
+        if month == 12:
+            year, month = year + 1, 1
+        else:
+            month += 1
+    return months
+
+
 @router.get("/get-payrolls", response_model=List[PayrollResponse])
 def get_payrolls(
     *,
     db: Session = Depends(deps.get_db),
     date: Optional[str] = Query(None, description="Date in mm/yyyy format. If not provided, fetch all dates."),
+    start_date: Optional[str] = Query(None, description="Range start in yyyy-mm-dd format. Must be paired with end_date. Takes precedence over date."),
+    end_date: Optional[str] = Query(None, description="Range end in yyyy-mm-dd format. Must be paired with start_date. Takes precedence over date."),
     employee_id: Optional[str] = Query(None, description="ID of the employee. If not provided, fetch all."),
     current_user: Credential = Depends(require_permission("attendance"))
 ):
     """
-    Get payroll records for a specific employee or all employees in a given month.
+    Get payroll records for a specific employee or all employees, filtered by a
+    month (`date`) or by every month touched by a day range
+    (`start_date` + `end_date`).
     """
-    LogInfo(f"[Attendance API] Request to get payrolls for employee_id={employee_id} and date={date}")
-    
+    LogInfo(
+        f"[Attendance API] Request to get payrolls for employee_id={employee_id}, "
+        f"date={date}, start_date={start_date}, end_date={end_date}"
+    )
+
     # Base query joining Payroll and Employee to get the names, allowances/bonuses, and BHXH
     query = db.query(
         Payroll,
@@ -224,7 +256,28 @@ def get_payrolls(
         Payroll.employee_id == Employee.id
     )
 
-    if date and date.strip():
+    has_range = bool(start_date and start_date.strip()) or bool(end_date and end_date.strip())
+
+    if has_range:
+        if not (start_date and start_date.strip()) or not (end_date and end_date.strip()):
+            raise HTTPException(
+                status_code=400,
+                detail="Both start_date and end_date are required when filtering by range."
+            )
+        range_start = _parse_day(start_date, "start_date")
+        range_end = _parse_day(end_date, "end_date")
+        if range_start > range_end:
+            raise HTTPException(
+                status_code=400,
+                detail="start_date must not be after end_date."
+            )
+        query = query.filter(
+            or_(*[
+                and_(Payroll.year == y, Payroll.month == m)
+                for y, m in _months_between(range_start, range_end)
+            ])
+        )
+    elif date and date.strip():
         # Parse month and year from date string (mm/yyyy or m/yyyy)
         match = re.match(r"^(\d{1,2})/(\d{4})$", date.strip())
         if not match:
@@ -232,10 +285,10 @@ def get_payrolls(
                 status_code=400,
                 detail="Invalid date format. Expected mm/yyyy or m/yyyy."
             )
-            
+
         month = int(match.group(1))
         year = int(match.group(2))
-        
+
         if month < 1 or month > 12:
             raise HTTPException(
                 status_code=400,
@@ -317,15 +370,42 @@ async def add_payrolls(
                 detail=f"Payroll record for employee {payroll_in.employee_id} in {payroll_in.month}/{payroll_in.year} already exists."
             )
 
-        # 3. Query Attendance to calculate leave count
-        leave_count = db.query(Attendance).filter(
+        # 3. Query Attendance to calculate leave count, narrowed to the pay
+        #    period when the payroll was exported from a day range
+        leave_query = db.query(Attendance).filter(
             Attendance.employee_id == payroll_in.employee_id,
             Attendance.year == payroll_in.year,
             Attendance.month == payroll_in.month,
             Attendance.check_in_time.is_(None),
             Attendance.check_out_time.is_(None)
-        ).count()
-            
+        )
+
+        period_note = None
+        if payroll_in.start_date and payroll_in.end_date:
+            if payroll_in.start_date > payroll_in.end_date:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"start_date must not be after end_date for employee {payroll_in.employee_id}."
+                )
+
+            last_day_of_month = calendar.monthrange(payroll_in.year, payroll_in.month)[1]
+            month_start = datetime.date(payroll_in.year, payroll_in.month, 1)
+            month_end = datetime.date(payroll_in.year, payroll_in.month, last_day_of_month)
+            # Clamp the period to the month this record belongs to
+            first_day = max(payroll_in.start_date, month_start).day
+            last_day = min(payroll_in.end_date, month_end).day
+
+            leave_query = leave_query.filter(
+                Attendance.day >= first_day,
+                Attendance.day <= last_day
+            )
+            period_note = (
+                f"Kỳ lương: {payroll_in.start_date.strftime('%d/%m/%Y')}"
+                f" - {payroll_in.end_date.strftime('%d/%m/%Y')}"
+            )
+
+        leave_count = leave_query.count()
+
         # 4. Create the record
         db_payroll = Payroll(
             employee_id=payroll_in.employee_id,
@@ -339,7 +419,7 @@ async def add_payrolls(
             overtime_salary_amount=payroll_in.overtime_salary_amount,
             late_penalty=0.0,
             total_salary=payroll_in.total_salary,
-            note=None
+            note=period_note
         )
         db.add(db_payroll)
 

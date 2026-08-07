@@ -35,9 +35,27 @@ Quản lý người dùng, hồ sơ nhân viên và cấp phát quyền hạn tr
 Quản lý ngày công, giờ làm việc thực tế, tính toán lương dự thảo và quản lý bảng lương chính thức.
 * **Các Endpoint chính:**
   * `GET /api/v1/get-attendance`: Lấy lịch sử chấm công theo tháng của nhân viên.
-  * `GET /api/v1/get-salaries`: Dự thảo bảng tính lương hàng tháng (Draft).
+  * `GET /api/v1/get-salaries`: Dự thảo bảng tính lương theo tháng **hoặc theo khoảng ngày** (Draft).
+  * `GET /api/v1/get-payrolls`: Lấy bảng lương đã khóa, lọc theo tháng **hoặc theo khoảng ngày**.
   * `POST /api/v1/add-payrolls`: Kết khóa và xuất bảng lương chính thức (Bulk).
   * `DELETE /api/v1/delete-payrolls`: Xóa bảng lương đã khóa và hoàn trả số dư nợ lương của nhân viên.
+
+#### Tham số thời gian (`get-salaries`, `get-payrolls`)
+| Tham số | Định dạng | Bắt buộc | Ghi chú |
+|---|---|---|---|
+| `date` | `mm/yyyy` | Không | Một mình: kỳ là trọn tháng đó. Đi kèm khoảng: quyết định tháng ghi sổ. |
+| `start_date` | `yyyy-mm-dd` | Không | Chế độ theo khoảng ngày, phải đi kèm `end_date`. |
+| `end_date` | `yyyy-mm-dd` | Không | Phải đi kèm `start_date`. |
+
+* Ba tham số **kết hợp được với nhau**: khoảng quyết định kỳ gồm những ngày nào, `date` quyết định kỳ đó thuộc tháng nào.
+* Không truyền `date` cùng khoảng → kỳ mặc định thuộc **tháng bắt đầu** của khoảng.
+* `get-salaries` yêu cầu ít nhất một trong hai chế độ, nếu không trả về `400`.
+* Các lỗi `400` khác: chỉ truyền một đầu của khoảng, `start_date > end_date`, sai định dạng ngày, hoặc `date` nằm ngoài khoảng.
+
+> `get-payrolls` không có ngữ nghĩa kết hợp này — ở đó khoảng vẫn được **ưu tiên** hơn `date`.
+* `get-payrolls` lọc theo khoảng bằng cách lấy mọi bản ghi thuộc các tháng mà khoảng chạm tới (bảng `payrolls` khóa theo `year`/`month`).
+
+Chi tiết đầy đủ: xem `docs/salary_export_date_range.md` (repo frontend).
 
 ### 2.2. Logic Nghiệp Vụ & Công thức Tính toán
 
@@ -66,6 +84,37 @@ $$
 & + \text{Thưởng} - \text{BHXH} - \text{Phạt đi trễ}
 \end{aligned}
 $$
+
+#### D2. Tính Lương Theo Khoảng Ngày (`start_date` / `end_date`)
+Một khoảng ngày là **một kỳ lương duy nhất, tương đương một tháng lương** — không phải tổng của các phần tháng. Ví dụ chu kỳ `05/07/2026 → 04/08/2026` chính là **bảng lương tháng 7**.
+
+**Ngày công chuẩn** được đếm **bên trong chính kỳ đó**, không phải theo tháng dương lịch:
+$$S^{kỳ} = \sum_{d \in [\text{start},\ \text{end}]} 1 \quad (\text{nếu ngày } d \text{ là ngày làm việc theo } work\_type)$$
+
+Ví dụ với `work_type = 3` (nghỉ Chủ nhật): kỳ `05/07 → 04/08/2026` có $23$ ngày công còn lại của tháng 7 cộng $3$ ngày đầu tháng 8, tức $S^{kỳ} = 26$ ngày.
+
+Các khoản theo tháng (lương cơ bản, phụ cấp, thưởng, BHXH, phạt đi trễ) được tính **trọn vẹn một lần** cho cả kỳ. Lương tăng ca lấy chính xác từ chấm công nằm trong kỳ. Công thức giữ nguyên như mục D, chỉ thay mẫu số bằng $S^{kỳ}$:
+
+$$
+\text{Lương nhận} = \left( \frac{\text{Lương CB} + \text{Lương tăng ca} + \text{PC ăn trưa} + \text{PC hiệu suất} + \text{PC khác}}{S^{kỳ}} \times \text{Ngày công thực tế trong kỳ} \right) + \text{Thưởng} - \text{BHXH} - \text{Phạt}
+$$
+
+**Kỳ thuộc về tháng nào:** do tham số `date` quyết định. Truyền `date=07/2026` cùng khoảng `05/07 → 04/08` thì kỳ là bảng lương của **tháng 07/2026**. Không truyền `date` thì kỳ quy về **tháng bắt đầu** của khoảng. `date` phải nằm trong khoảng, nếu không trả `400`. Response luôn trả `period_year` / `period_month` để client dùng làm khóa khi ghi `Payroll`.
+
+**Tính chất bảo toàn:** khoảng phủ trọn đúng một tháng dương lịch cho **kết quả giống hệt** chế độ tháng — `start_date=2026-06-01&end_date=2026-06-30` ≡ `date=06/2026`.
+
+**Lưu ý:** vì một khoảng là *một* kỳ lương, chọn khoảng phủ nhiều tháng (ví dụ `01/05 → 30/06`) **không** cho ra tổng lương hai tháng, mà cho ra một tháng lương trải trên số ngày công của cả hai tháng. Chế độ khoảng dành cho **chu kỳ trả lương lệch tháng**, không dùng để cộng dồn nhiều tháng.
+
+**Trạng thái (`status`):** `exported` nếu tháng của kỳ (`period_year`/`period_month`) đã có bản ghi `Payroll`, ngược lại là `draft`.
+
+**Trường bổ sung trong `GetSalaryResponse`:** `start_date`, `end_date` (kỳ đã áp dụng), `period_year`, `period_month` (tháng ghi sổ) và `is_range`.
+
+#### D3. Ghi nhận Kỳ Lương khi Xuất (`add-payrolls`)
+`PayrollCreate` nhận thêm hai trường tùy chọn `start_date` / `end_date` (`yyyy-mm-dd`):
+* Bảng `payrolls` vẫn khóa theo `(employee_id, year, month)` — **không đổi schema DB**. Client ghi vào tháng do `get-salaries` trả về ở `period_year`/`period_month`.
+* Khi có kỳ, `note` được ghi nhãn `"Kỳ lương: dd/mm/yyyy - dd/mm/yyyy"`.
+* Số ngày nghỉ (`leave`) chỉ đếm các bản ghi chấm công **nằm trong kỳ** (đã cắt về đúng tháng của bản ghi), thay vì cả tháng.
+* Nếu không truyền `start_date`/`end_date`, hành vi giữ nguyên như cũ.
 
 #### E. Cơ chế Cập nhật Nợ Lương (total_debt)
 * Khi **khóa bảng lương** (`POST /api/v1/add-payrolls`): Hệ thống lưu bản ghi `Payroll` đồng thời tự động cộng dồn số tiền lương thực nhận vào dư nợ lương của nhân viên:
