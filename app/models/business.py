@@ -126,6 +126,58 @@ class LossControls(Base):
     created_by = Column(String, nullable=True)               # User ID tạo
     processing_type = Column(String, default="dry_production")  # wet_sale (bán mủ nước) / dry_production (sản xuất mủ khô)
 
+class LossChecks(Base):
+    """
+    Bản chốt kết quả kiểm tra hao hụt mủ khô của một kỳ.
+
+    Lưu số đã tính chứ không tính lại lúc xem: lô hàng và giao dịch nhập kho còn
+    thay đổi sau khi chốt, nếu tính lại thì "xác nhận" không còn ý nghĩa.
+    """
+    __tablename__ = "loss_checks"
+
+    # Mỗi kỳ + phạm vi chỉ giữ một bản chốt; chốt lại thì hỏi ghi đè.
+    __table_args__ = (
+        UniqueConstraint("period_type", "start_date", "end_date", "code_prefix",
+                         name="uq_loss_checks_period_scope"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    period_type = Column(String, index=True)                 # day / week / month / custom
+    start_date = Column(Date)                                # Đầu kỳ
+    end_date = Column(Date)                                  # Cuối kỳ
+    code_prefix = Column(String, index=True)                 # TN = tổng hợp, hoặc mã viết tắt xưởng
+    collection_name = Column(String)                         # Tên điểm thu mua lúc chốt
+    lot_count = Column(Integer)                              # Số lô trong kỳ
+    total_dry_rubber = Column(Float)                         # Mủ khô tạm tính (Kg)
+    total_import_qty = Column(Float)                         # Nhập kho thực tế (Kg)
+    total_amount = Column(Float)                             # Tổng thành tiền thu mua (VNĐ)
+    avg_unit_price = Column(Float)                           # Giá mua TB kỳ (VNĐ/Kg)
+    loss_price = Column(Float)                               # Giá TB phần hao hụt (VNĐ/Kg)
+    loss_qty = Column(Float)                                 # Chênh lệch (Kg)
+    loss_percentage = Column(Float)                          # Tỷ lệ hao hụt (%)
+    loss_amount = Column(Float)                              # Tiền hao hụt (VNĐ)
+    missing_est_count = Column(Integer)                      # Số lô chưa đặt ngày dự kiến, bị bỏ qua
+    created_at = Column(DateTime, default=func.now())
+    created_by = Column(String, nullable=True)               # User ID xác nhận
+
+
+class LossCheckItems(Base):
+    """Chi tiết từng lô tại thời điểm chốt của một bản LossChecks."""
+    __tablename__ = "loss_check_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    loss_check_id = Column(UUID(as_uuid=True), index=True)   # -> LossChecks.id
+    product_code = Column(String)                            # Mã hàng (LT20260505)
+    day = Column(Date)                                       # Ngày thu mua
+    estimated_completion = Column(Date)                      # Ngày dự kiến hoàn thành
+    total_dry_rubber = Column(Float)                         # Mủ khô tạm tính của lô (Kg)
+    import_qty = Column(Float)                               # Nhập kho thực tế của lô (Kg)
+    loss_qty = Column(Float)                                 # Chênh lệch (Kg)
+    loss_percentage = Column(Float)                          # Tỷ lệ hao hụt của lô (%)
+    unit_price = Column(Float)                               # Đơn giá riêng của lô (VNĐ/Kg)
+    loss_amount = Column(Float)                              # Tiền hao hụt của lô (VNĐ)
+
+
 class FirewoodPurchases(Base):
     __tablename__ = "firewood_purchases"
 

@@ -16,6 +16,21 @@ Các lệnh dưới đây được áp dụng khi người dùng ở trong nhóm
 
 ### QUẢN LÝ NHÂN SỰ (HR)
 
+> **Cập nhật 08/08/2026 — toàn bộ lệnh HR đã chuyển sang menu nút bấm.**
+> Gõ lệnh **không kèm tham số** để mở menu. Danh sách nhân viên hiển thị 10 người
+> mỗi trang, có `<< Trước` / `Sau >>` / `Hủy`. Lệnh cần thời gian thì có thêm bước
+> chọn **Tháng này / Tháng trước / Chọn tháng**.
+>
+> **Phạm vi dữ liệu:** Ggomoosin chỉ thấy nhân viên của Ggomoosin. Một nhân viên
+> thuộc dự án khi thỏa **cả hai** điều kiện: `telegram_group` khớp một nhóm member
+> của dự án **và** mã NV bắt đầu bằng `G`. Trước đây các lệnh xuất Excel lấy chung
+> dữ liệu với Tiến Nga — nay đã tách hẳn.
+>
+> **Cú pháp gõ tay cũ vẫn dùng được** cho mọi lệnh.
+>
+> Chi tiết từng bước bấm: xem phần HR trong [tien_nga_project_commands.md](tien_nga_project_commands.md)
+> — hai dự án dùng chung một bộ menu, chỉ khác tiền tố tên lệnh.
+
 #### `/ggomoosin_tao_nhan_vien` (hoặc `/ggomoosin_create_employee`)
 *   **Mục đích:** Khởi tạo hồ sơ nhân viên mới trên hệ thống GGoMooSin và liên kết tài khoản Telegram của họ.
 *   **Cú pháp:** `/ggomoosin_tao_nhan_vien`

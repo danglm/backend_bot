@@ -248,10 +248,14 @@ def require_project_name(*project_keywords):
         return wrapper
     return decorator
 
-def require_group_role(*allowed_roles):
+def require_group_role(*allowed_roles, hint: str | None = None):
     """
     Decorator to check if the current chat has a specific role (e.g. 'main', 'member')
     in TelegramProjectMember table. Supports both Message and CallbackQuery.
+
+    hint: dòng chỉ đường thêm vào thông báo từ chối, dùng khi một lệnh vừa được
+    tách đôi main/member và người dùng nhóm sai cần biết tên lệnh thay thế.
+    Bỏ trống thì thông báo giữ nguyên như cũ.
     """
     def decorator(func):
         @wraps(func)
@@ -274,6 +278,8 @@ def require_group_role(*allowed_roles):
                 else:
                     roles_str = ", ".join([f"<b>{r.upper()}</b>" for r in allowed_roles])
                     text = f"⚠️ Lệnh này chỉ được phép sử dụng trong nhóm: {roles_str} của dự án."
+                    if hint:
+                        text += f"\n\n{hint}"
                     if is_callback:
                         await update.answer(text, show_alert=True)
                     else:

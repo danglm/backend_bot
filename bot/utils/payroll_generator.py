@@ -12,9 +12,16 @@ def build_payroll_html(
     month: int,
     year: int,
     data: dict,
+    period_label: str | None = None,
 ) -> str:
-    """Tạo HTML bảng lương (payroll)."""
+    """
+    Tạo HTML bảng lương (payroll).
+
+    period_label: nhãn kỳ lương, vd "Tháng 07/2026" hoặc "05/07/2026 - 04/08/2026".
+    Để None thì giữ nguyên nhãn theo tháng như trước.
+    """
     now_time = datetime.datetime.now().strftime("%H:%M %d/%m/%Y")
+    period_label = period_label or f"Tháng {month:02d}/{year}"
 
     def fmt_money(val):
         if val is None:
@@ -254,7 +261,7 @@ def build_payroll_html(
           <div class="brand-name">Bảng Lương</div>
           <div class="brand-sub">Payroll Statement</div>
         </div>
-        <div class="header-badge">Tháng {month:02d}/{year}</div>
+        <div class="header-badge">{period_label}</div>
       </div>
       <div class="pay-title">
         <h1>Phiếu Lương Nhân Viên</h1>
@@ -342,7 +349,7 @@ def build_payroll_html(
       </div>
     </div>
     <div class="pay-footer">
-      <div class="footer-left">Kỳ lương: Tháng {month:02d}/{year}</div>
+      <div class="footer-left">Kỳ lương: {period_label}</div>
       <div class="footer-right">Tạo lúc: {now_time}</div>
     </div>
   </div>
@@ -396,12 +403,13 @@ async def generate_payroll_image(
     month: int,
     year: int,
     data: dict,
+    period_label: str | None = None,
 ) -> io.BytesIO:
     """
     Tạo ảnh bảng lương từ data.
     Returns io.BytesIO buffer chứa PNG, sẵn sàng gửi qua Telegram.
     """
-    html = build_payroll_html(employee_name, employee_id, month, year, data)
+    html = build_payroll_html(employee_name, employee_id, month, year, data, period_label)
     png_bytes = await render_payroll_to_png(html)
 
     buf = io.BytesIO(png_bytes)

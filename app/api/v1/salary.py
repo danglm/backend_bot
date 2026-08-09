@@ -9,7 +9,7 @@ from app.api import deps
 from app.models.employee import Employee, Credential
 from app.models.finance import Attendance, Payroll
 from app.schemas.salary import GetSalaryResponse
-from bot.utils.scheduler import _is_working_day
+from bot.utils import hr_picker
 from bot.utils.logger import LogInfo
 
 router = APIRouter()
@@ -47,35 +47,10 @@ def _parse_day(date_str: str, field: str) -> datetime.date:
         )
 
 
-def _month_windows(
-    start: datetime.date, end: datetime.date
-) -> Iterator[Tuple[int, int, datetime.date, datetime.date]]:
-    """
-    Split [start, end] into per-calendar-month windows.
-
-    Yields (year, month, window_start, window_end). A window covering a whole
-    month spans the 1st to the last day, which is what keeps the month-mode and
-    range-mode results identical for a full month.
-    """
-    cursor = datetime.date(start.year, start.month, 1)
-    while cursor <= end:
-        last_day = datetime.date(
-            cursor.year, cursor.month, calendar.monthrange(cursor.year, cursor.month)[1]
-        )
-        yield cursor.year, cursor.month, max(cursor, start), min(last_day, end)
-        cursor = last_day + datetime.timedelta(days=1)
-
-
-def _working_days(
-    year: int, month: int, work_type: int, first_day: int = 1, last_day: Optional[int] = None
-) -> int:
-    """Count working days of a month between first_day and last_day (inclusive)."""
-    if last_day is None:
-        last_day = calendar.monthrange(year, month)[1]
-    return sum(
-        1 for d in range(first_day, last_day + 1)
-        if _is_working_day(datetime.date(year, month, d).weekday(), work_type)
-    )
+# Shared with the Telegram bot's payroll export so the two can never disagree on
+# how a pay period is split or how many standard working days it holds.
+_month_windows = hr_picker.month_windows
+_working_days = hr_picker.working_days
 
 
 @router.get("/get-salaries", response_model=List[GetSalaryResponse])

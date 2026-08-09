@@ -50,6 +50,10 @@ class Payroll(Base):
     penalty_rate = Column(Float)
     year = Column(Integer)
     month = Column(Integer)
+    ## Kỳ lương. Dòng cũ để NULL và vẫn tra theo (year, month) như trước.
+    ## Kỳ chéo tháng (vd 05/07 - 04/08) thì year/month lấy theo end_date.
+    start_date = Column(Date)
+    end_date = Column(Date)
     leave = Column(Integer)
     unapproved_leave = Column(Integer)
     base_salary_amount = Column(Float)

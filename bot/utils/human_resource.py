@@ -3724,13 +3724,11 @@ STATUS_LABEL = {
 
 async def handle_check_tasks(client, message: Message, command_name: str) -> None:
     """
-    Addmin see all task of a employee.
-    Syntax: /command [Mã NV] [Số tháng (optional, default=3)]
-    Example:   /tien_nga_check_tasks TN001
+    Admin xem toàn bộ task của một nhân viên — lớp parse tham số.
+    Cú pháp: /command [Mã NV] [Số tháng (tùy chọn, mặc định 3)]
+    Ví dụ:   /tien_nga_check_tasks TN001
              /tien_nga_check_tasks TN001 6
     """
-    from app.models.task import Task
-
     parts = message.text.strip().split()
 
     if len(parts) < 2:
@@ -3753,12 +3751,25 @@ async def handle_check_tasks(client, message: Message, command_name: str) -> Non
         except ValueError:
             months = 3
 
+    await execute_check_tasks(client, message, emp_id, months)
+
+
+async def execute_check_tasks(client, reply_to: Message, emp_id: str, months: int) -> None:
+    """
+    Gửi danh sách công việc của nhân viên.
+
+    Nhận tham số tường minh nên gọi được từ cả lệnh gõ tay lẫn nút bấm.
+    `reply_to` có thể là tin của người dùng hoặc tin của bot (khi đến từ callback).
+    """
+    from app.models.task import Task
+    from bot.utils.hr_picker import employee_in_project
+
     db = SessionLocal()
     try:
-        employee = db.query(Employee).filter(Employee.id == emp_id).first()
+        employee = employee_in_project(db, reply_to.chat.id, emp_id)
         if not employee:
-            await message.reply_text(
-                f"⚠️ Không tìm thấy nhân viên có mã <b>{emp_id}</b>.",
+            await reply_to.reply_text(
+                f"⚠️ Không tìm thấy nhân viên <b>{emp_id}</b> trong dự án này.",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -3778,7 +3789,7 @@ async def handle_check_tasks(client, message: Message, command_name: str) -> Non
         full_name = f"{employee.last_name or ''} {employee.first_name or ''}".strip()
 
         if not tasks:
-            await message.reply_text(
+            await reply_to.reply_text(
                 f"ℹ️ Nhân viên <b>{full_name}</b> ({emp_id}) không có task nào trong <b>{months} tháng</b> gần nhất.",
                 parse_mode=ParseMode.HTML
             )
@@ -3827,15 +3838,15 @@ async def handle_check_tasks(client, message: Message, command_name: str) -> Non
         if len(text) > 4000:
             text = text[:3990] + "\n\n<i>...(còn thêm task, vui lòng lọc theo khoảng thời gian ngắn hơn)</i>"
 
-        await message.reply_text(text, parse_mode=ParseMode.HTML)
+        await reply_to.reply_text(text, parse_mode=ParseMode.HTML)
         LogInfo(
-            f"[CheckTasks] Admin {message.from_user.id} viewed tasks of {emp_id} ({months} months)",
+            f"[CheckTasks] Viewed tasks of {emp_id} ({months} months)",
             LogType.SYSTEM_STATUS
         )
 
     except Exception as e:
-        LogError(f"Error in handle_check_tasks: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Có lỗi xảy ra khi lấy danh sách công việc.", parse_mode=ParseMode.HTML)
+        LogError(f"Error in execute_check_tasks: {e}", LogType.SYSTEM_STATUS)
+        await reply_to.reply_text("❌ Có lỗi xảy ra khi lấy danh sách công việc.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -4102,93 +4113,206 @@ async def handle_cancel_task_reply(client, message: Message) -> None:
 # EXPORT PAYROLL
 # ══════════════════════════════════════════════════════════════
 
+def parse_month_year(text: str):
+    """
+    "MM/YYYY" -> (month, year), hoặc None nếu sai định dạng / ngoài khoảng.
+
+    Trước đây mỗi lệnh tự parse bằng int() trần nên "13/2026" lọt được xuống DB.
+    """
+    try:
+        month_str, year_str = (text or "").strip().split("/")
+        month, year = int(month_str), int(year_str)
+    except (ValueError, AttributeError):
+        return None
+    if not 1 <= month <= 12 or not 1970 <= year <= 9999:
+        return None
+    return month, year
+
+
+def parse_payroll_period(text: str):
+    """
+    Đọc kỳ lương từ phần tham số sau mã nhân viên. Trả (start_date, end_date)
+    hoặc None nếu không hợp lệ.
+
+    Chấp nhận:
+        "07/2026"                        -> trọn tháng 7
+        "05/07/2026 - 04/08/2026"        -> kỳ chéo tháng
+    """
+    import re
+
+    from bot.utils.hr_picker import month_bounds
+
+    text = (text or "").strip()
+
+    match = re.match(
+        r"^(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})$", text
+    )
+    if match:
+        try:
+            start = datetime.datetime.strptime(match.group(1), "%d/%m/%Y").date()
+            end = datetime.datetime.strptime(match.group(2), "%d/%m/%Y").date()
+        except ValueError:
+            return None
+        return (start, end) if start <= end else None
+
+    parsed = parse_month_year(text)
+    return month_bounds(parsed[0], parsed[1]) if parsed else None
+
+
 async def handle_export_payroll(client, message, command_name: str) -> None:
     """
-    Tạo ảnh payroll dựa trên tháng và năm. Lưu vào disk và gửi cho nhóm member.
-    Quyền: Owner / Admin (Đã check ở handler).
+    Lớp parse tham số của lệnh xuất bảng lương.
     Cú pháp: /export_payroll [Mã NV] [MM/YYYY]
+             /export_payroll [Mã NV] [dd/mm/yyyy - dd/mm/yyyy]
     """
-    import os
-    import calendar
-    from app.models.employee import Employee
-    from app.models.finance import Attendance, Payroll
-    from app.models.telegram import TelegramProjectMember
-    from bot.utils.payroll_generator import generate_payroll_image
-
     args = message.text.split()
-    if len(args) != 3:
+    if len(args) < 3:
         await message.reply_text(
             f"⚠️ Lệnh không hợp lệ.\nCú pháp: <code>{command_name} [Mã nhân viên] [MM/YYYY]</code>\n"
-            f"VD: <code>{command_name} TN001 04/2026</code>",
+            f"VD: <code>{command_name} TN001 04/2026</code>\n\n"
+            f"Kỳ chéo tháng:\n"
+            f"<code>{command_name} TN001 05/07/2026 - 04/08/2026</code>",
             parse_mode=ParseMode.HTML
         )
         return
 
     emp_code = args[1]
-    month_year_str = args[2]
-
-    try:
-        month_str, year_str = month_year_str.split("/")
-        month = int(month_str)
-        year = int(year_str)
-    except:
-        await message.reply_text("⚠️ Định dạng tháng/năm phải là MM/YYYY.", parse_mode=ParseMode.HTML)
+    period = parse_payroll_period(" ".join(args[2:]))
+    if not period:
+        await message.reply_text(
+            "⚠️ Kỳ lương không hợp lệ.\n"
+            "Dùng <code>MM/YYYY</code> (tháng 1-12) hoặc "
+            "<code>dd/mm/yyyy - dd/mm/yyyy</code> (ngày đầu không được sau ngày cuối).",
+            parse_mode=ParseMode.HTML
+        )
         return
 
+    await execute_export_payroll(client, message, emp_code, period[0], period[1])
+
+
+def collect_attendance_stats(db, employee, start_date, end_date) -> dict:
+    """
+    Gom công của một nhân viên trong khoảng ngày bất kỳ (kể cả chéo tháng).
+
+    Cách đếm giữ nguyên hệt bản cũ tính theo tháng — kể cả việc gộp nhiều bản ghi
+    Attendance trùng ngày thành một (bảng attendance không có ràng buộc duy nhất
+    trên (employee_id, year, month, day), nên đây là hành vi cần bảo toàn).
+    """
+    from app.models.finance import Attendance
+    from bot.utils.hr_picker import month_windows, working_days
+
+    work_type = employee.work_type if employee.work_type else 3
+    windows = list(month_windows(start_date, end_date))
+
+    standard_days = sum(
+        working_days(win_year, win_month, work_type, win_start.day, win_end.day)
+        for win_year, win_month, win_start, win_end in windows
+    )
+
+    actual_working_days = 0.0
+    total_overtime = 0.0
+    leave_days = 0
+
+    for win_year, win_month, win_start, win_end in windows:
+        records = db.query(Attendance).filter(
+            Attendance.employee_id == employee.id,
+            Attendance.year == win_year,
+            Attendance.month == win_month,
+            Attendance.day >= win_start.day,
+            Attendance.day <= win_end.day,
+        ).all()
+
+        # Gộp theo ngày như bản cũ (dict theo att.day) để không đếm trùng
+        for att in {a.day: a for a in records}.values():
+            has_worked = (att.working_time or 0) > 0 or bool(att.check_in_time and att.check_out_time)
+            if has_worked:
+                actual_working_days += 0.5 if att.is_half_day else 1
+
+            if att.overtime:
+                total_overtime += att.overtime
+            elif att.start_overtime and att.end_overtime:
+                total_overtime += (att.end_overtime - att.start_overtime).total_seconds() / 3600
+
+            if att.error and "phép" in att.error.lower() and "không" not in att.error.lower():
+                leave_days += 1
+
+    unpaid_leave = standard_days - actual_working_days - leave_days
+    if unpaid_leave < 0:
+        unpaid_leave = 0
+
+    return {
+        "standard_days": standard_days,
+        "actual_working_days": actual_working_days,
+        "total_overtime": total_overtime,
+        "leave_days": leave_days,
+        "unpaid_leave": unpaid_leave,
+    }
+
+
+def find_payroll_row(db, emp_code: str, start_date, end_date):
+    """
+    Dòng Payroll của kỳ này, None nếu chưa có.
+
+    BẤT BIẾN: mỗi nhân viên chỉ có ĐÚNG MỘT dòng payrolls cho mỗi (tháng, năm).
+    start_date/end_date chỉ MÔ TẢ kỳ mà dòng đó đang phản ánh, không phải khóa.
+    Xuất một kỳ khác rơi vào cùng tháng sẽ CẬP NHẬT dòng cũ, không tạo dòng mới.
+
+    Vì sao bắt buộc giữ bất biến này: execute_list_payroll_excel và
+    app/api/v1/salary.py đều đọc payroll theo (employee_id, month, year). Hai
+    dòng cùng tháng khiến nhân viên bị đếm hai lần trong bảng lương tổng, tổng
+    quỹ lương sai, và total_debt bị cộng dồn thêm một lần nữa.
+
+    Cách này đồng thời xử lý luôn dòng cũ có start_date/end_date = NULL (các
+    tháng đã chốt trước khi có cột kỳ) — không cần nhánh tương thích riêng.
+    """
+    from app.models.finance import Payroll
+
+    return db.query(Payroll).filter(
+        Payroll.employee_id == emp_code,
+        Payroll.month == start_date.month,
+        Payroll.year == start_date.year,
+    ).first()
+
+
+async def execute_export_payroll(client, reply_to, emp_code: str, start_date, end_date) -> None:
+    """
+    Tính lương cho một kỳ, lưu Payroll, tạo ảnh bảng lương và gửi xuống nhóm member.
+
+    Kỳ có thể là trọn tháng hoặc chéo tháng (vd 05/07 - 04/08). Kỳ được ghi sổ
+    vào THÁNG BẮT ĐẦU — giữ đúng quy ước của API app/api/v1/salary.py, nếu không
+    API sẽ báo "draft" cho kỳ mà bot đã xuất.
+
+    `reply_to` có thể là tin của người dùng hoặc tin của bot (khi đến từ callback).
+    """
+    import os
+    from app.models.finance import Payroll
+    from app.models.telegram import TelegramProjectMember
+    from bot.utils.payroll_generator import generate_payroll_image
+    from bot.utils.hr_picker import employee_in_project, format_period, resolve_project
+
+    month, year = start_date.month, start_date.year
+    period_label = format_period(start_date, end_date)
+
+    processing_msg = None
     db = SessionLocal()
     try:
-        # Tìm Employee
-        employee = db.query(Employee).filter(Employee.id == emp_code).first()
+        # Chỉ cho phép thao tác trên nhân viên thuộc dự án của nhóm chat này
+        employee = employee_in_project(db, reply_to.chat.id, emp_code)
         if not employee:
-            await message.reply_text(f"⚠️ Không tìm thấy nhân viên mã <code>{emp_code}</code>.", parse_mode=ParseMode.HTML)
+            await reply_to.reply_text(
+                f"⚠️ Không tìm thấy nhân viên <code>{emp_code}</code> trong dự án này.",
+                parse_mode=ParseMode.HTML
+            )
             return
 
         full_name = f"{employee.last_name or ''} {employee.first_name or ''}".strip()
 
-        # Query attendance
-        attendances = db.query(Attendance).filter(
-            Attendance.employee_id == emp_code,
-            Attendance.month == month,
-            Attendance.year == year
-        ).all()
-
-        # Calculate standard days based on employee's work_type
-        from bot.utils.scheduler import _is_working_day
-        emp_work_type = employee.work_type if employee.work_type else 3
-        num_days_in_month = calendar.monthrange(year, month)[1]
-        standard_days = sum(1 for d in range(1, num_days_in_month + 1) if _is_working_day(datetime.date(year, month, d).weekday(), emp_work_type))
-
-        actual_working_days = 0.0
-        total_overtime = 0.0
-        leave_days = 0
-
-        attended_days = {a.day: a for a in attendances}
-        for d in range(1, num_days_in_month + 1):
-            att = attended_days.get(d)
-            if att:
-                # Actual working hours or if both checkin/out exist
-                has_worked = False
-                if (att.working_time or 0) > 0:
-                    has_worked = True
-                elif att.check_in_time and att.check_out_time:
-                    has_worked = True
-                    
-                if has_worked:
-                    actual_working_days += 0.5 if att.is_half_day else 1
-                
-                # Overtime
-                if att.overtime:
-                    total_overtime += att.overtime
-                elif att.start_overtime and att.end_overtime:
-                    diff = (att.end_overtime - att.start_overtime).total_seconds() / 3600
-                    total_overtime += diff
-                
-                if att.error and "phép" in att.error.lower() and "không" not in att.error.lower():
-                    leave_days += 1
-
-        unpaid_leave = standard_days - actual_working_days - leave_days
-        if unpaid_leave < 0:
-            unpaid_leave = 0
+        stats = collect_attendance_stats(db, employee, start_date, end_date)
+        standard_days = stats["standard_days"]
+        actual_working_days = stats["actual_working_days"]
+        total_overtime = stats["total_overtime"]
+        leave_days = stats["leave_days"]
+        unpaid_leave = stats["unpaid_leave"]
 
         # Calculations
         monthly_salary = employee.monthly_salary or employee.base_salary or 0.0
@@ -4212,19 +4336,22 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
         
         total_net_salary = round(salary_earned + overtime_salary_earned + bonus + lunch + productivity + other - bhxh - penalty, 2)
         
-        payroll_record = db.query(Payroll).filter(
-            Payroll.employee_id == emp_code,
-            Payroll.month == month,
-            Payroll.year == year
-        ).first()
-        
+        payroll_record = find_payroll_row(db, emp_code, start_date, end_date)
+
         if not payroll_record:
-            payroll_record = Payroll(employee_id=emp_code, month=month, year=year)
+            payroll_record = Payroll(
+                employee_id=emp_code, month=month, year=year,
+                start_date=start_date, end_date=end_date,
+            )
             db.add(payroll_record)
             old_salary = 0.0
         else:
             old_salary = payroll_record.total_salary or 0.0
-            
+            # Dòng của tháng này đã tồn tại -> cập nhật tại chỗ và ghi lại kỳ mới.
+            # total_debt chỉ cộng phần chênh lệch nên xuất lại không bị cộng đôi.
+            payroll_record.start_date = start_date
+            payroll_record.end_date = end_date
+
         payroll_record.leave = leave_days
         payroll_record.unapproved_leave = unpaid_leave
         payroll_record.base_salary_amount = salary_earned
@@ -4265,92 +4392,133 @@ async def handle_export_payroll(client, message, command_name: str) -> None:
         }
 
         # Validate generating image
-        processing_msg = await message.reply_text("⏳ Đang tính toán và xuất bảng lương...")
+        processing_msg = await reply_to.reply_text("⏳ Đang tính toán và xuất bảng lương...")
         
         img_buf = await generate_payroll_image(
             employee_name=full_name,
             employee_id=emp_code,
             month=month,
             year=year,
-            data=data
+            data=data,
+            period_label=period_label,
         )
-        
+
         folder = os.path.join("images", str(year), f"{month:02d}")
         os.makedirs(folder, exist_ok=True)
-        filename = f"{emp_code}_{month:02d}_{year}_bang_luong.png"
+        if start_date == end_date or period_label.startswith("Tháng"):
+            filename = f"{emp_code}_{month:02d}_{year}_bang_luong.png"
+        else:
+            # Kỳ chéo tháng: tên file mang cả khoảng ngày để không đè lên kỳ khác
+            filename = (
+                f"{emp_code}_{start_date.strftime('%d%m%Y')}-"
+                f"{end_date.strftime('%d%m%Y')}_bang_luong.png"
+            )
         filepath = os.path.join(folder, filename)
 
         with open(filepath, "wb") as f:
             f.write(img_buf.getvalue())
         
-        # Tìm nhóm member của nhân viên qua Employee.telegram_group
+        # Tìm nhóm member của nhân viên qua Employee.telegram_group.
+        # Lọc theo đúng dự án của nhóm chat hiện tại: group_name không có ràng
+        # buộc duy nhất nên tra toàn cục có thể vớ phải nhóm của dự án khác.
         target_chat_id = None
         if employee.telegram_group:
             tg_group = employee.telegram_group.strip()
-            # Try as numeric chat_id first
             try:
                 target_chat_id = str(int(tg_group))
             except ValueError:
-                # It's a group name, resolve from telegram_project_members
-                tpm = db.query(TelegramProjectMember).filter(
+                project_id, _ = resolve_project(db, reply_to.chat.id)
+                query = db.query(TelegramProjectMember).filter(
                     TelegramProjectMember.group_name == tg_group
-                ).first()
+                )
+                if project_id:
+                    query = query.filter(TelegramProjectMember.project_id == project_id)
+                tpm = query.first()
                 if tpm:
                     target_chat_id = tpm.chat_id
 
         img_buf.seek(0)
-        
-        caption=(
-            f"<b>BẢNG LƯONG THÁNG {month:02d}/{year}</b>\n"
-            f"Nhân viên: <a href='tg://user?id={employee.username}'>Thuộc {full_name}</a>\n"
+
+        caption = (
+            f"<b>BẢNG LƯƠNG — {period_label.upper()}</b>\n"
+            f"Nhân viên: <b>{full_name}</b>\n"
             f"Mã NV: <code>{emp_code}</code>\n\n"
             f"<i>Lưu ý: Nếu có thắc mắc vui lòng liên hệ admin.</i>"
         )
-        
+
+        # ── Gửi xuống nhóm nhân viên ──
+        # Lương ĐÃ commit ở trên. Lỗi gửi tin không được phép làm cả thao tác bị
+        # báo là thất bại: admin sẽ tưởng chưa chốt lương trong khi công nợ đã
+        # được ghi. Vì vậy bước gửi được cô lập trong try riêng.
+        deliver_error = None
         if target_chat_id:
-            await client.send_photo(
-                chat_id=int(target_chat_id),
-                photo=img_buf,
-                caption=caption,
-                parse_mode=ParseMode.HTML
-            )
-            # Re-upload for the admin/requesting group to confirm it's sent
-            img_buf.seek(0)
-            await processing_msg.delete()
-            await message.reply_photo(
-                photo=img_buf,
-                caption=f"✅ Đã gửi bảng lương cho nhân viên <b>{full_name}</b> xuống nhóm Member.",
-                parse_mode=ParseMode.HTML
+            try:
+                # Nạp peer vào session trước: bot chưa từng nhận tin nào từ nhóm
+                # đó thì Pyrogram không có access_hash và sẽ báo "Peer id invalid".
+                try:
+                    await client.get_chat(int(target_chat_id))
+                except Exception:
+                    pass
+
+                await client.send_photo(
+                    chat_id=int(target_chat_id),
+                    photo=img_buf,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as send_err:
+                deliver_error = send_err
+                LogError(
+                    f"[Payroll] Không gửi được bảng lương {emp_code} xuống nhóm "
+                    f"{employee.telegram_group} ({target_chat_id}): {send_err}",
+                    LogType.SYSTEM_STATUS,
+                )
+
+        img_buf.seek(0)
+        await processing_msg.delete()
+        processing_msg = None
+
+        if target_chat_id and not deliver_error:
+            admin_caption = f"✅ Đã gửi bảng lương cho nhân viên <b>{full_name}</b> xuống nhóm Member."
+        elif target_chat_id:
+            admin_caption = (
+                f"✅ <b>Đã chốt và LƯU bảng lương</b> cho <b>{full_name}</b> ({period_label}).\n\n"
+                f"⚠️ Nhưng chưa gửi được xuống nhóm <code>{employee.telegram_group}</code>:\n"
+                f"<code>{str(deliver_error)[:200]}</code>\n\n"
+                f"<i>Thường là do bot chưa từng nhận tin nào từ nhóm đó. Gửi một tin "
+                f"bất kỳ trong nhóm rồi xuất lại — lương sẽ không bị cộng đôi.</i>"
             )
         else:
-            await processing_msg.delete()
-            await message.reply_photo(
-                photo=img_buf,
-                caption=f"✅ Đã tạo bảng lương cho nhân viên <b>{full_name}</b>.\n⚠️ Tuy nhiên, không tìm thấy nhóm Member_ns có chứa nhân viên này để gửi.",
-                parse_mode=ParseMode.HTML
+            admin_caption = (
+                f"✅ <b>Đã chốt và LƯU bảng lương</b> cho <b>{full_name}</b> ({period_label}).\n"
+                f"⚠️ Không tìm thấy nhóm Member của nhân viên này để gửi."
             )
-            
-        LogInfo(f"[Payroll] Exported payroll for {emp_code} - {month}/{year}", LogType.SYSTEM_STATUS)
+
+        await reply_to.reply_photo(photo=img_buf, caption=admin_caption, parse_mode=ParseMode.HTML)
+
+        LogInfo(
+            f"[Payroll] Exported payroll for {emp_code} - {period_label}"
+            f"{' (chưa gửi được cho nhân viên)' if deliver_error else ''}",
+            LogType.SYSTEM_STATUS,
+        )
 
     except Exception as e:
-        LogError(f"Error in handle_export_payroll: {e}", LogType.SYSTEM_STATUS)
-        try:
-             await processing_msg.delete()
-        except:
-             pass
-        await message.reply_text("❌ Có lỗi xảy ra trong quá trình xuất bảng lương.", parse_mode=ParseMode.HTML)
+        LogError(f"Error in execute_export_payroll: {e}", LogType.SYSTEM_STATUS)
+        if processing_msg:
+            try:
+                await processing_msg.delete()
+            except Exception:
+                pass
+        await reply_to.reply_text("❌ Có lỗi xảy ra trong quá trình xuất bảng lương.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
 
 async def handle_list_payroll_excel(client, message, command_name: str) -> None:
-    from app.models.employee import Employee
-    from app.models.finance import Payroll
-    import openpyxl
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-    import os
-    import tempfile
-
+    """
+    Lớp parse tham số của lệnh xuất danh sách lương ra Excel.
+    Cú pháp: /command [MM/YYYY]
+    """
     args = message.text.split()
     if len(args) != 2:
         clean_cmd = command_name.split('@')[0]
@@ -4361,27 +4529,49 @@ async def handle_list_payroll_excel(client, message, command_name: str) -> None:
         )
         return
 
-    month_year_str = args[1]
-    try:
-        month_str, year_str = month_year_str.split("/")
-        month = int(month_str)
-        year = int(year_str)
-    except:
-        await message.reply_text("⚠️ Định dạng tháng/năm phải là MM/YYYY.", parse_mode=ParseMode.HTML)
+    parsed = parse_month_year(args[1])
+    if not parsed:
+        await message.reply_text(
+            "⚠️ Tháng/năm không hợp lệ. Định dạng đúng: <code>MM/YYYY</code> (tháng 1-12).",
+            parse_mode=ParseMode.HTML
+        )
         return
 
+    month, year = parsed
+    await execute_list_payroll_excel(client, message, month, year)
+
+
+async def execute_list_payroll_excel(client, reply_to, month: int, year: int) -> None:
+    """
+    Xuất Excel bảng lương cả dự án cho một tháng.
+
+    Chỉ lấy nhân viên thuộc dự án của nhóm chat này — trước đây hàm này query
+    toàn bộ Payroll nên file của Tiến Nga và Ggomoosin ra giống hệt nhau.
+    """
+    from app.models.employee import Employee
+    from app.models.finance import Payroll
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    import os
+    import tempfile
+    from bot.utils.hr_picker import project_employees
+
+    processing_msg = None
     db = SessionLocal()
     try:
-        processing_msg = await message.reply_text("⏳ Đang truy xuất thông tin DB và tạo file Excel...")
-        
-        # We fetch all payrolls for this month/year, joining with Employee to get names and department
-        # Here we only get employees belonging to the project "Tiến Nga". 
-        # For simplicity since this endpoint relies on project decorators, we trust the DB structure or check for non-None.
+        processing_msg = await reply_to.reply_text("⏳ Đang truy xuất thông tin DB và tạo file Excel...")
+
+        project_emp_ids = [e.id for e in project_employees(db, reply_to.chat.id, only_active=False)]
+        if not project_emp_ids:
+            await processing_msg.edit_text("⚠️ Không có nhân viên nào thuộc dự án này.")
+            return
+
         results = db.query(Payroll, Employee).join(
             Employee, Payroll.employee_id == Employee.id
         ).filter(
             Payroll.month == month,
-            Payroll.year == year
+            Payroll.year == year,
+            Payroll.employee_id.in_(project_emp_ids),
         ).all()
 
         if not results:
@@ -4491,23 +4681,23 @@ async def handle_list_payroll_excel(client, message, command_name: str) -> None:
         wb.save(temp_path)
 
         await client.send_document(
-            chat_id=message.chat.id,
+            chat_id=reply_to.chat.id,
             document=temp_path,
             file_name=f"Danh_sach_luong_{month:02d}_{year}.xlsx",
             caption=f"✅ <b>Báo cáo Danh Sách Bảng Lương tháng {month:02d}/{year}</b>\n\nTổng cộng: <b>{len(results)}</b> nhân viên\nTổng chi: <b>{total_salary_all:,.0f} đ</b>".replace(",", "."),
             parse_mode=ParseMode.HTML,
-            reply_to_message_id=message.id
+            reply_to_message_id=reply_to.id
         )
-        
+
         await processing_msg.delete()
         os.remove(temp_path)
-            
+
     except Exception as e:
-        LogError(f"Error in handle_list_payroll_excel: {e}", LogType.SYSTEM_STATUS)
+        LogError(f"Error in execute_list_payroll_excel: {e}", LogType.SYSTEM_STATUS)
         try:
-             await processing_msg.edit_text("❌ Có lỗi xảy ra trong quá trình xuất bảng lương Excel.")
-        except:
-             await message.reply_text("❌ Có lỗi xảy ra trong quá trình xuất bảng lương Excel.")
+            await processing_msg.edit_text("❌ Có lỗi xảy ra trong quá trình xuất bảng lương Excel.")
+        except Exception:
+            await reply_to.reply_text("❌ Có lỗi xảy ra trong quá trình xuất bảng lương Excel.")
     finally:
         db.close()
 
@@ -4518,48 +4708,27 @@ async def handle_list_payroll_excel(client, message, command_name: str) -> None:
 
 async def handle_public_holiday(client, message: Message, command_name: str) -> None:
     """
-    Chấm công nghỉ ngày lễ cho tất cả nhân viên trong dự án.
+    Lớp parse tham số của lệnh chấm công nghỉ ngày lễ.
     Cú pháp: /tien_nga_nghi_ngay_le dd/mm/yyyy [Ghi chú]
 
-    Flow:
-    1. Parse ngày từ tham số (dd/mm/yyyy)
-    2. Tìm project_id từ chat_id hiện tại (qua TelegramProjectMember)
-    3. Tìm tất cả nhóm member thuộc project → lấy chat_id / group_name
-    4. Tìm tất cả Employee active có telegram_group trùng với nhóm member
-    5. Với mỗi nhân viên:
-       - Nếu đã có Attendance record ngày đó → skip
-       - Nếu chưa có → tạo record với working_time = giờ chuẩn, error = ghi chú
-    6. Trả kết quả chi tiết
+    Gõ lệnh không tham số sẽ mở menu chọn ngày (bot/handlers/hr_menu.py).
     """
-    from app.models.finance import Attendance
-    from app.models.telegram import TelegramProjectMember
-
     # Parse arguments — xử lý cả 2 dạng: "/cmd args" và "@bot /cmd args"
-    text = message.text or ""
-    raw_parts = text.strip().split()
-    # Bỏ @mention nếu có
+    raw_parts = (message.text or "").strip().split()
     if raw_parts and raw_parts[0].startswith("@"):
         raw_parts = raw_parts[1:]
-    # Bỏ tên lệnh (/tien_nga_nghi_ngay_le)
     if raw_parts and raw_parts[0].startswith("/"):
         raw_parts = raw_parts[1:]
     # raw_parts giờ chỉ còn: ["dd/mm/yyyy", "Ghi", "chú", ...]
 
     if not raw_parts:
-        await message.reply_text(
-            f"⚠️ <b>Cú pháp:</b> <code>{command_name} dd/mm/yyyy [Ghi chú]</code>\n\n"
-            f"<b>Ví dụ:</b>\n"
-            f"<code>{command_name} 01/05/2026</code>\n"
-            f"<code>{command_name} 01/05/2026 Quốc tế Lao động</code>",
-            parse_mode=ParseMode.HTML,
-        )
+        from bot.handlers.hr_menu import open_holiday_menu
+        await open_holiday_menu(message)
         return
 
     date_str = raw_parts[0].strip()
     custom_note = " ".join(raw_parts[1:]).strip() if len(raw_parts) > 1 else ""
 
-
-    # Parse date
     try:
         target_date = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
     except ValueError:
@@ -4569,6 +4738,20 @@ async def handle_public_holiday(client, message: Message, command_name: str) -> 
         )
         return
 
+    await execute_public_holiday(client, message, target_date, custom_note)
+
+
+async def execute_public_holiday(client, reply_to, target_date, custom_note: str = "") -> None:
+    """
+    Chấm công nghỉ ngày lễ cho toàn bộ nhân viên của dự án.
+
+    Với mỗi nhân viên: đã có Attendance ngày đó thì bỏ qua, chưa có thì tạo
+    record với working_time = giờ chuẩn và error = ghi chú.
+    """
+    from app.models.finance import Attendance
+    from app.models.telegram import TelegramProjectMember
+
+    message = reply_to  # phần thân bên dưới vẫn dùng tên `message`
     holiday_note = f"Nghỉ ngày lễ - {custom_note}" if custom_note else "Nghỉ ngày lễ"
 
     # Tìm project_id từ chat hiện tại
@@ -4585,45 +4768,10 @@ async def handle_public_holiday(client, message: Message, command_name: str) -> 
             )
             return
 
-        project_id = current_member.project_id
+        # Dùng chung một định nghĩa "nhân viên của dự án này" với mọi lệnh HR khác
+        from bot.utils.hr_picker import project_employees as _project_employees
 
-        # Tìm tất cả nhóm member thuộc project
-        member_groups = db.query(TelegramProjectMember).filter(
-            TelegramProjectMember.project_id == project_id,
-            TelegramProjectMember.role == "member",
-            TelegramProjectMember.is_bot == False,
-        ).all()
-
-        # Tập hợp chat_id và group_name của nhóm member
-        member_chat_ids = set()
-        member_group_names = set()
-        for mg in member_groups:
-            if mg.chat_id:
-                member_chat_ids.add(mg.chat_id.strip())
-            if mg.group_name:
-                member_group_names.add(mg.group_name.strip())
-
-        if not member_chat_ids and not member_group_names:
-            await message.reply_text(
-                "⚠️ Không tìm thấy nhóm member nào thuộc dự án này.",
-                parse_mode=ParseMode.HTML,
-            )
-            return
-
-        # Tìm tất cả Employee active có telegram_group trùng với nhóm member
-        employees = db.query(Employee).filter(
-            Employee.status != "inactive",
-            Employee.telegram_group != None,
-            Employee.telegram_group != "",
-        ).all()
-
-        # Lọc nhân viên thuộc project
-        project_employees = []
-        for emp in employees:
-            tg = (emp.telegram_group or "").strip()
-            if tg in member_chat_ids or tg in member_group_names:
-                project_employees.append(emp)
-
+        project_employees = _project_employees(db, message.chat.id)
         if not project_employees:
             await message.reply_text(
                 "⚠️ Không tìm thấy nhân viên nào thuộc dự án này.",
@@ -4743,15 +4891,9 @@ async def handle_public_holiday(client, message: Message, command_name: str) -> 
 
 async def handle_recreate_attendance_report(client, message, command_name: str) -> None:
     """
-    Tạo lại ảnh Bảng chấm công cho một nhân viên cụ thể theo tháng và gửi về nhóm yêu cầu (main).
-    Quyền: Owner / Admin (Đã check ở handler).
+    Lớp parse tham số của lệnh tạo lại bảng chấm công.
     Cú pháp: /recreate_attendance_report [Mã NV] [MM/YYYY]
     """
-    from app.models.employee import Employee
-    from app.models.finance import Attendance
-    from bot.utils.attendance_generator import generate_attendance_image
-    import os
-
     args = message.text.split()
     if len(args) != 3:
         clean_cmd = command_name.split('@')[0]
@@ -4763,21 +4905,38 @@ async def handle_recreate_attendance_report(client, message, command_name: str) 
         return
 
     emp_code = args[1]
-    month_year_str = args[2]
-
-    try:
-        month_str, year_str = month_year_str.split("/")
-        month = int(month_str)
-        year = int(year_str)
-    except:
-        await message.reply_text("⚠️ Định dạng tháng/năm phải là MM/YYYY.", parse_mode=ParseMode.HTML)
+    parsed = parse_month_year(args[2])
+    if not parsed:
+        await message.reply_text(
+            "⚠️ Tháng/năm không hợp lệ. Định dạng đúng: <code>MM/YYYY</code> (tháng 1-12).",
+            parse_mode=ParseMode.HTML
+        )
         return
 
+    month, year = parsed
+    await execute_recreate_attendance(client, message, emp_code, month, year)
+
+
+async def execute_recreate_attendance(client, reply_to, emp_code: str, month: int, year: int) -> None:
+    """
+    Tạo lại ảnh bảng chấm công của một nhân viên theo tháng và gửi về nhóm yêu cầu.
+
+    Nhận tham số tường minh nên gọi được từ cả lệnh gõ tay lẫn nút bấm.
+    """
+    from app.models.finance import Attendance
+    from bot.utils.attendance_generator import generate_attendance_image
+    from bot.utils.hr_picker import employee_in_project
+    import os
+
+    processing_msg = None
     db = SessionLocal()
     try:
-        employee = db.query(Employee).filter(Employee.id == emp_code).first()
+        employee = employee_in_project(db, reply_to.chat.id, emp_code)
         if not employee:
-            await message.reply_text(f"⚠️ Không tìm thấy nhân viên mã <code>{emp_code}</code>.", parse_mode=ParseMode.HTML)
+            await reply_to.reply_text(
+                f"⚠️ Không tìm thấy nhân viên <code>{emp_code}</code> trong dự án này.",
+                parse_mode=ParseMode.HTML
+            )
             return
 
         full_name = f"{employee.last_name or ''} {employee.first_name or ''}".strip()
@@ -4789,10 +4948,10 @@ async def handle_recreate_attendance_report(client, message, command_name: str) 
         ).order_by(Attendance.day).all()
 
         if not records:
-            await message.reply_text(f"ℹ️ Không có dữ liệu chấm công cho nhân viên {full_name} trong tháng {month:02d}/{year}.", parse_mode=ParseMode.HTML)
+            await reply_to.reply_text(f"ℹ️ Không có dữ liệu chấm công cho nhân viên {full_name} trong tháng {month:02d}/{year}.", parse_mode=ParseMode.HTML)
             return
 
-        processing_msg = await message.reply_text("⏳ Đang tạo lại ảnh bảng chấm công...")
+        processing_msg = await reply_to.reply_text("⏳ Đang tạo lại ảnh bảng chấm công...")
 
         data_rows = []
         for att in records:
@@ -4823,35 +4982,33 @@ async def handle_recreate_attendance_report(client, message, command_name: str) 
         with open(filepath, "wb") as f:
             f.write(img_buf.getvalue())
 
-        admin_username = message.from_user.username or "Admin"
-        
         caption = (
             f"<b>BẢNG CHẤM CÔNG CẬP NHẬT/TẠO LẠI</b>\n"
-            f"Nhân viên: <a href='tg://user?id={employee.username}'>Thuộc {full_name}</a>\n"
+            f"Nhân viên: <b>{full_name}</b>\n"
             f"Mã NV: <code>{emp_code}</code>\n"
-            f"Tháng: <b>{month:02d}/{year}</b>\n"
-            f"Yêu cầu bởi: @{admin_username}\n\n"
-            f"<i>Reply /tien_nga_export_payroll {emp_code} {month:02d}/{year} để xuất bảng lương.</i>"
+            f"Tháng: <b>{month:02d}/{year}</b>\n\n"
+            f"<i>Dùng /tien_nga_xuat_luong để xuất bảng lương cho nhân viên này.</i>"
         )
 
         img_buf.seek(0)
-        
+
         await processing_msg.delete()
-        await message.reply_photo(
+        await reply_to.reply_photo(
             photo=img_buf,
             caption=caption,
             parse_mode=ParseMode.HTML
         )
-        
-        LogInfo(f"[RecreateAttendanceImage] @{admin_username} recreated image for {emp_code} - {month}/{year}", LogType.SYSTEM_STATUS)
+
+        LogInfo(f"[RecreateAttendanceImage] Recreated image for {emp_code} - {month}/{year}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
-        LogError(f"Error in handle_recreate_attendance_report: {e}", LogType.SYSTEM_STATUS)
-        try:
-             await processing_msg.delete()
-        except:
-             pass
-        await message.reply_text("❌ Có lỗi xảy ra trong quá trình tạo lại ảnh bảng chấm công.", parse_mode=ParseMode.HTML)
+        LogError(f"Error in execute_recreate_attendance: {e}", LogType.SYSTEM_STATUS)
+        if processing_msg:
+            try:
+                await processing_msg.delete()
+            except Exception:
+                pass
+        await reply_to.reply_text("❌ Có lỗi xảy ra trong quá trình tạo lại ảnh bảng chấm công.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -4860,14 +5017,10 @@ async def handle_recreate_attendance_report(client, message, command_name: str) 
 # ══════════════════════════════════════════════════════════════
 
 async def handle_list_attendance_excel(client, message, command_name: str) -> None:
-    from app.models.employee import Employee
-    from app.models.finance import Attendance
-    import openpyxl
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-    import os
-    import tempfile
-    from pyrogram.enums import ParseMode
-
+    """
+    Lớp parse tham số của lệnh xuất Excel chấm công.
+    Cú pháp: /command [Mã NV] [MM/YYYY]
+    """
     args = message.text.split()
     if len(args) != 3:
         clean_cmd = command_name.split('@')[0]
@@ -4879,22 +5032,43 @@ async def handle_list_attendance_excel(client, message, command_name: str) -> No
         return
 
     emp_code = args[1]
-    month_year_str = args[2]
-    try:
-        month_str, year_str = month_year_str.split("/")
-        month = int(month_str)
-        year = int(year_str)
-    except:
-        await message.reply_text("⚠️ Định dạng tháng/năm phải là MM/YYYY.", parse_mode=ParseMode.HTML)
+    parsed = parse_month_year(args[2])
+    if not parsed:
+        await message.reply_text(
+            "⚠️ Tháng/năm không hợp lệ. Định dạng đúng: <code>MM/YYYY</code> (tháng 1-12).",
+            parse_mode=ParseMode.HTML
+        )
         return
 
+    month, year = parsed
+    await execute_list_attendance_excel(client, message, emp_code, month, year)
+
+
+async def execute_list_attendance_excel(client, reply_to, emp_code: str, month: int, year: int) -> None:
+    """
+    Xuất Excel chấm công của một nhân viên theo tháng.
+
+    Nhận tham số tường minh nên gọi được từ cả lệnh gõ tay lẫn nút bấm.
+    """
+    from app.models.finance import Attendance
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    import os
+    import tempfile
+    from pyrogram.enums import ParseMode
+    from bot.utils.hr_picker import employee_in_project
+
+    processing_msg = None
     db = SessionLocal()
     try:
-        processing_msg = await message.reply_text("⏳ Đang truy xuất thông tin DB và tạo file Excel chấm công...")
-        
-        employee = db.query(Employee).filter(Employee.id == emp_code).first()
+        processing_msg = await reply_to.reply_text("⏳ Đang truy xuất thông tin DB và tạo file Excel chấm công...")
+
+        employee = employee_in_project(db, reply_to.chat.id, emp_code)
         if not employee:
-            await processing_msg.edit_text(f"⚠️ Không tìm thấy nhân viên mã <code>{emp_code}</code>.", parse_mode=ParseMode.HTML)
+            await processing_msg.edit_text(
+                f"⚠️ Không tìm thấy nhân viên <code>{emp_code}</code> trong dự án này.",
+                parse_mode=ParseMode.HTML
+            )
             return
 
         full_name = f"{employee.last_name or ''} {employee.first_name or ''}".strip()
@@ -4964,22 +5138,23 @@ async def handle_list_attendance_excel(client, message, command_name: str) -> No
         wb.save(temp_path)
 
         await client.send_document(
-            chat_id=message.chat.id,
+            chat_id=reply_to.chat.id,
             document=temp_path,
             file_name=file_name,
             caption=f"✅ <b>Bảng Chấm Công tháng {month:02d}/{year}</b>\nNhân viên: <b>{full_name}</b> ({emp_code})",
             parse_mode=ParseMode.HTML,
-            reply_to_message_id=message.id
+            reply_to_message_id=reply_to.id
         )
-        
+
         await processing_msg.delete()
         os.remove(temp_path)
-            
+
     except Exception as e:
-        LogError(f"Error in handle_list_attendance_excel: {e}", LogType.SYSTEM_STATUS)
-        try:
-             await processing_msg.edit_text("❌ Có lỗi xảy ra trong quá trình xuất bảng chấm công.")
-        except:
-             pass
+        LogError(f"Error in execute_list_attendance_excel: {e}", LogType.SYSTEM_STATUS)
+        if processing_msg:
+            try:
+                await processing_msg.edit_text("❌ Có lỗi xảy ra trong quá trình xuất bảng chấm công.")
+            except Exception:
+                pass
     finally:
         db.close()

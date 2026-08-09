@@ -87,11 +87,16 @@ async def tien_nga_create_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_create_employee", "tien_nga_tao_nhan_vien"])
     if args is None: return
 
-    from bot.utils.human_resource import handle_create_employee
-    await handle_create_employee(client, message, "/tien_nga_create_employee")
+    # Có form kèm theo -> giữ nguyên đường gõ tay cũ. Tuyệt đối không đụng vào
+    # message.text ở nhánh này: form là nhiều dòng, ghép lại sẽ mất xuống dòng.
+    if len(args) > 1 or len((message.text or "").splitlines()) > 1:
+        from bot.utils.human_resource import handle_create_employee
+        await handle_create_employee(client, message, args[0].split("@")[0])
+        return
 
+    from bot.handlers.hr_menu import open_flow
+    await open_flow(message, "hrn")
 
-# --- Cập nhật nhân viên ---
 @bot.on_message(filters.command(["tien_nga_update_employee", "tien_nga_cap_nhat_nhan_vien"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_employee|tien_nga_cap_nhat_nhan_vien)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -102,11 +107,16 @@ async def tien_nga_update_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_update_employee", "tien_nga_cap_nhat_nhan_vien"])
     if args is None: return
 
-    from bot.utils.human_resource import handle_update_employee
-    await handle_update_employee(client, message, "/tien_nga_update_employee")
+    # Có form kèm theo -> giữ nguyên đường gõ tay cũ. Tuyệt đối không đụng vào
+    # message.text ở nhánh này: form là nhiều dòng, ghép lại sẽ mất xuống dòng.
+    if len(args) > 1 or len((message.text or "").splitlines()) > 1:
+        from bot.utils.human_resource import handle_update_employee
+        await handle_update_employee(client, message, args[0].split("@")[0])
+        return
 
+    from bot.handlers.hr_menu import open_flow
+    await open_flow(message, "hru")
 
-# --- Xóa nhân viên (soft delete) ---
 @bot.on_message(filters.command(["tien_nga_delete_employee", "tien_nga_xoa_nhan_vien"]) | filters.regex(r"^@\w+\s+/(tien_nga_delete_employee|tien_nga_xoa_nhan_vien)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -117,9 +127,16 @@ async def tien_nga_delete_employee_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_delete_employee", "tien_nga_xoa_nhan_vien"])
     if args is None: return
 
-    from bot.utils.human_resource import handle_delete_employee
-    await handle_delete_employee(client, message, "/tien_nga_delete_employee")
+    # Còn tham số -> giữ nguyên đường gõ tay cũ (lối thoát khi menu không đủ dùng)
+    if len(args) > 1:
+        from bot.utils.human_resource import handle_delete_employee
+        cmd = args[0].split("@")[0]
+        message.text = cmd + " " + " ".join(args[1:])
+        await handle_delete_employee(client, message, cmd)
+        return
 
+    from bot.handlers.hr_menu import open_flow
+    await open_flow(message, "hrd")
 
 @bot.on_callback_query(filters.regex(r"^del_emp_(confirm|cancel)\|(.+)$"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -227,8 +244,15 @@ async def tien_nga_create_task_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_create_task", "tien_nga_giao_viec"])
     if args is None: return
 
-    from bot.utils.human_resource import handle_create_task
-    await handle_create_task(client, message, "/tien_nga_create_task")
+    # Có form kèm theo -> giữ nguyên đường gõ tay cũ. Tuyệt đối không đụng vào
+    # message.text ở nhánh này: form là nhiều dòng, ghép lại sẽ mất xuống dòng.
+    if len(args) > 1 or len((message.text or "").splitlines()) > 1:
+        from bot.utils.human_resource import handle_create_task
+        await handle_create_task(client, message, args[0].split("@")[0])
+        return
+
+    from bot.handlers.hr_menu import open_flow
+    await open_flow(message, "hrt")
 
 @bot.on_message(filters.command(["tien_nga_list_tasks", "tien_nga_danh_sach_cong_viec"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_tasks|tien_nga_danh_sach_cong_viec)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -240,13 +264,17 @@ async def tien_nga_list_tasks_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_tasks", "tien_nga_danh_sach_cong_viec"])
     if args is None: return
 
-    from bot.utils.human_resource import handle_check_tasks
-    cmd = args[0] if args else "tien_nga_danh_sach_cong_viec"
-    clean_cmd = cmd.split('@')[0]
-    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
-    await handle_check_tasks(client, message, clean_cmd)
+    # Còn tham số -> giữ nguyên đường gõ tay cũ (lối thoát khi menu không đủ dùng)
+    if len(args) > 1:
+        from bot.utils.human_resource import handle_check_tasks
+        cmd = args[0].split("@")[0]
+        message.text = cmd + " " + " ".join(args[1:])
+        await handle_check_tasks(client, message, cmd)
+        return
 
-# --- Nhân viên xem công việc của mình ---
+    from bot.handlers.hr_menu import open_flow
+    await open_flow(message, "hrk")
+
 @bot.on_message(filters.command(["tien_nga_xem_cong_viec"]) | filters.regex(r"^@\w+\s+/tien_nga_xem_cong_viec\b"))
 @require_project_name("Tiến Nga")
 @require_group_role("member")
@@ -429,11 +457,16 @@ async def tien_nga_list_payroll_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_payroll", "tien_nga_xuat_danh_sach_luong"])
     if args is None: return
 
-    from bot.utils.human_resource import handle_list_payroll_excel
-    import re
-    cmd = args[0] if args else "tien_nga_list_payroll"
-    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
-    await handle_list_payroll_excel(client, message, cmd)
+    # Còn tham số -> giữ nguyên đường gõ tay cũ (lối thoát khi menu không đủ dùng)
+    if len(args) > 1:
+        from bot.utils.human_resource import handle_list_payroll_excel
+        cmd = args[0].split("@")[0]
+        message.text = cmd + " " + " ".join(args[1:])
+        await handle_list_payroll_excel(client, message, cmd)
+        return
+
+    from bot.handlers.hr_menu import open_flow
+    await open_flow(message, "hrl")
 
 @bot.on_message(filters.command(["export_payroll", "tien_nga_xuat_luong", "tien_nga_export_payroll"]) | filters.regex(r"^@\w+\s+/(export_payroll|tien_nga_xuat_luong|tien_nga_export_payroll)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -445,12 +478,16 @@ async def tien_nga_export_payroll_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["export_payroll", "tien_nga_xuat_luong", "tien_nga_export_payroll"])
     if args is None: return
 
-    from bot.utils.human_resource import handle_export_payroll
-    # Re-construct message.text for the actual handler to parse args
-    import re
-    cmd = args[0] if args else "export_payroll"
-    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
-    await handle_export_payroll(client, message, cmd)
+    # Còn tham số -> giữ nguyên đường gõ tay cũ (lối thoát khi menu không đủ dùng)
+    if len(args) > 1:
+        from bot.utils.human_resource import handle_export_payroll
+        cmd = args[0].split("@")[0]
+        message.text = cmd + " " + " ".join(args[1:])
+        await handle_export_payroll(client, message, cmd)
+        return
+
+    from bot.handlers.hr_menu import open_flow
+    await open_flow(message, "hrp")
 
 @bot.on_message(filters.command(["tien_nga_recreate_attendance_report", "tien_nga_tao_lai_bang_cham_cong"]) | filters.regex(r"^@\w+\s+/(tien_nga_recreate_attendance_report|tien_nga_tao_lai_bang_cham_cong)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -462,11 +499,16 @@ async def tien_nga_recreate_attendance_report_handler(client, message: Message) 
     args = await check_command_target(client, message.text, ["tien_nga_recreate_attendance_report", "tien_nga_tao_lai_bang_cham_cong"])
     if args is None: return
 
-    from bot.utils.human_resource import handle_recreate_attendance_report
-    import re
-    cmd = args[0] if args else "tien_nga_recreate_attendance_report"
-    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
-    await handle_recreate_attendance_report(client, message, cmd)
+    # Còn tham số -> giữ nguyên đường gõ tay cũ (lối thoát khi menu không đủ dùng)
+    if len(args) > 1:
+        from bot.utils.human_resource import handle_recreate_attendance_report
+        cmd = args[0].split("@")[0]
+        message.text = cmd + " " + " ".join(args[1:])
+        await handle_recreate_attendance_report(client, message, cmd)
+        return
+
+    from bot.handlers.hr_menu import open_flow
+    await open_flow(message, "hrr")
 
 @bot.on_message(filters.command(["tien_nga_list_attendance", "tien_nga_danh_sach_cham_cong"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_attendance|tien_nga_danh_sach_cham_cong)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -478,14 +520,17 @@ async def tien_nga_list_attendance_handler(client, message: Message) -> None:
     args = await check_command_target(client, message.text, ["tien_nga_list_attendance", "tien_nga_danh_sach_cham_cong"])
     if args is None: return
 
-    from bot.utils.human_resource import handle_list_attendance_excel
-    import re
-    cmd = args[0] if args else "tien_nga_list_attendance"
-    message.text = cmd + " " + " ".join(args[1:]) if len(args) > 1 else cmd
-    await handle_list_attendance_excel(client, message, cmd)
+    # Còn tham số -> giữ nguyên đường gõ tay cũ (lối thoát khi menu không đủ dùng)
+    if len(args) > 1:
+        from bot.utils.human_resource import handle_list_attendance_excel
+        cmd = args[0].split("@")[0]
+        message.text = cmd + " " + " ".join(args[1:])
+        await handle_list_attendance_excel(client, message, cmd)
+        return
 
+    from bot.handlers.hr_menu import open_flow
+    await open_flow(message, "hra")
 
-# --- Nghỉ ngày lễ ---
 @bot.on_message(filters.command(["tien_nga_nghi_ngay_le"]) | filters.regex(r"^@\w+\s+/tien_nga_nghi_ngay_le\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -2571,132 +2616,8 @@ async def tien_nga_delete_customer_handler(client, message: Message) -> None:
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_employee_handler(client, message: Message) -> None:
-    db = SessionLocal()
-    try:
-        from app.models.employee import Employee
-        import tempfile
-        import os
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
-        employees = db.query(Employee).order_by(Employee.last_name, Employee.first_name).all()
-
-        if not employees:
-            await message.reply_text("⚠️ Không có nhân viên nào trong hệ thống.", parse_mode=ParseMode.HTML)
-            return
-
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "DanhSachNhanVien"
-
-        header_font = Font(bold=True, color="FFFFFF", size=11)
-        header_fill = PatternFill("solid", fgColor="2F5496")
-        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
-        money_align = Alignment(horizontal="right", vertical="center")
-        thin_border = Border(
-            left=Side(style="thin"), right=Side(style="thin"),
-            top=Side(style="thin"), bottom=Side(style="thin"),
-        )
-        alt_fill = PatternFill("solid", fgColor="D9E2F3")
-
-        headers = [
-            "Mã nhân viên", "Họ và tên", "Giới tính", "Số điện thoại", 
-            "Username Telegram", "Nhóm nhân viên Telegram", "Địa chỉ", 
-            "CCCD", "Mức lương tháng", "Mức lương tuần", "Mức lương ngày", 
-            "Mức lương giờ", "Thời gian vào ca", "Thời gian kết thúc ca", "Công nợ"
-        ]
-
-        # Write headers
-        for col_idx, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col_idx, value=header)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = center_align
-            cell.border = thin_border
-
-        def fmt_money(val):
-            if val is None or val == 0:
-                return "0"
-            return f"{int(val):,}".replace(",", ".")
-
-        for idx, emp in enumerate(employees, 1):
-            row = idx + 1
-            row_fill = alt_fill if idx % 2 == 0 else None
-            
-            full_name = f"{emp.last_name or ''} {emp.first_name or ''}".strip()
-            
-            # Format times gracefully
-            start_date_str = emp.start_time.strftime('%H:%M %d/%m/%Y') if emp.start_time else '—'
-            end_date_str = emp.end_time.strftime('%H:%M %d/%m/%Y') if emp.end_time else '—'
-
-            values = [
-                emp.id,
-                full_name,
-                emp.gender or "—",
-                emp.number_phone or "—",
-                emp.username or "—",
-                emp.telegram_group or "—",
-                emp.address or "—",
-                emp.identity_card or "—",
-                fmt_money(emp.monthly_salary),
-                fmt_money(emp.weekly_salary),
-                fmt_money(emp.daily_salary),
-                fmt_money(emp.hourly_salary),
-                start_date_str,
-                end_date_str,
-                fmt_money(emp.total_debt)
-            ]
-
-            for col_idx, val in enumerate(values, 1):
-                cell = ws.cell(row=row, column=col_idx, value=val)
-                cell.border = thin_border
-                
-                # Alignments
-                if col_idx in [1, 3, 4, 8, 13, 14]:
-                    cell.alignment = center_align
-                elif col_idx in [9, 10, 11, 12, 15]:
-                    cell.alignment = money_align
-                else:
-                    cell.alignment = left_align
-                    
-                if row_fill:
-                    cell.fill = row_fill
-
-        col_widths = [15, 25, 12, 15, 20, 20, 30, 20, 18, 18, 18, 18, 20, 20, 18]
-        for col_idx, width in enumerate(col_widths, 1):
-            col_letter = openpyxl.utils.get_column_letter(col_idx)
-            ws.column_dimensions[col_letter].width = width
-
-        ws.freeze_panes = "A2"
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            tmp_path = tmp.name
-        wb.save(tmp_path)
-
-        # File đã nằm hoàn toàn trong bộ nhớ/đĩa: trả connection về pool trước khi upload.
-        db.close()
-
-        now_str = datetime.now().strftime("%Y%m%d_%H%M")
-        await message.reply_document(
-            document=tmp_path,
-            file_name=f"danh_sach_nhan_vien_{now_str}.xlsx",
-            caption=(
-                f"<b>DANH SÁCH NHÂN VIÊN</b>\n\n"
-                f"Tổng cộng: <b>{len(employees)}</b> nhân viên\n"
-                f"<i>Xuất lúc: {datetime.now().strftime('%H:%M %d/%m/%Y')}</i>"
-            ),
-            parse_mode=ParseMode.HTML,
-        )
-
-        os.remove(tmp_path)
-        LogInfo(f"[TienNga] Exported {len(employees)} employees by @{message.from_user.username}", LogType.SYSTEM_STATUS)
-
-    except Exception as e:
-        LogError(f"Error in tien_nga_list_employee_handler: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text(f"❌ Có lỗi xảy ra khi xuất danh sách: {e}", parse_mode=ParseMode.HTML)
-    finally:
-        db.close()
+    from bot.handlers.hr_menu import export_employee_excel
+    await export_employee_excel(client, message)
 
 @bot.on_message(filters.command(["tien_nga_list_customers", "tien_nga_ds_khach_hang"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_customers|tien_nga_ds_khach_hang)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -3258,7 +3179,428 @@ async def tien_nga_daily_purchase_handler(client, message: Message) -> None:
     finally:
         db.close()
 
+# ══════════════════════════════════════════════════════════════
+# KIỂM TRA HAO HỤT MỦ KHÔ — luồng nút bấm
+# Chọn chu kỳ → Chọn Điểm Thu Mua (hoặc Tất cả) → Tổng hợp → Chi tiết từng lô
+#
+# Lô lấy từ loss_controls theo `estimated_completion` nằm trong chu kỳ; với mỗi lô
+# đối chiếu lượng nhập kho thực tế (product_transactions) trong cửa sổ
+# [day, estimated_completion] với khối lượng mủ khô ước lượng.
+# ══════════════════════════════════════════════════════════════
+
+CKL_CMD_NAME = "/tien_nga_kiem_tra_hao_hut"
+CKL_PAGE_SIZE = 8
+CKL_TN_PREFIX = "TN"
+# transaction_type ghi qua bot là chữ thường, nhập từ nguồn khác có thể hoa/có dấu
+CKL_IMPORT_TYPES = ("nhập", "nhap", "import")
+
+# Loại kỳ đi kèm mọi callback (1 ký tự cho gọn callback_data) và lưu vào loss_checks.
+# CKL_PERIOD_CODE nhận tên nút chọn kỳ ("today"), CKL_TYPE_CODE nhận giá trị đã lưu
+# trong DB ("day") — hai bộ khác nhau, tra nhầm là lạc màn hình.
+CKL_PERIOD_CODE = {"today": "d", "week": "w", "month": "m", "custom": "c"}
+CKL_PERIOD_TYPE = {"d": "day", "w": "week", "m": "month", "c": "custom"}
+CKL_TYPE_CODE = {v: k for k, v in CKL_PERIOD_TYPE.items()}
+CKL_PERIOD_LABEL = {"d": "Theo ngày", "w": "Theo tuần", "m": "Theo tháng", "c": "Theo giai đoạn"}
+
+
+def _ckl_code_prefix(product_code: str) -> str:
+    """LT20260505 → LT. Rỗng nếu mã không có phần chữ đứng đầu."""
+    m = re.match(r"^([A-Za-z]+)", product_code or "")
+    return m.group(1).upper() if m else ""
+
+
+def _ckl_query_lots(db, start_date, end_date, prefix: str = ""):
+    """
+    Các lô mủ khô có ngày dự kiến hoàn thành nằm trong chu kỳ.
+    `prefix` rỗng = mọi điểm; "TN" = chỉ các lô tổng.
+    """
+    from app.models.business import LossControls
+    from sqlalchemy import or_
+
+    lots = db.query(LossControls).filter(
+        LossControls.estimated_completion.isnot(None),
+        LossControls.estimated_completion >= start_date,
+        LossControls.estimated_completion <= end_date,
+        # processing_type có thể NULL ở dữ liệu cũ -> vẫn là mủ khô
+        or_(LossControls.processing_type.is_(None),
+            LossControls.processing_type != "wet_sale"),
+    ).order_by(LossControls.estimated_completion, LossControls.product_code).all()
+
+    if prefix:
+        lots = [lc for lc in lots if _ckl_code_prefix(lc.product_code) == prefix]
+    return lots
+
+
+def _ckl_day_suffix(product_code: str) -> str:
+    """LT20260505 → 20260505. Phần ngày thu mua nằm trong mã hàng."""
+    m = re.search(r"(\d{8})$", product_code or "")
+    return m.group(1) if m else ""
+
+
+def _ckl_import_by_lot(db, lots, prefix: str):
+    """
+    Lượng nhập kho thực tế của từng lô: {lot.id: quantity}.
+
+    Lô của một xưởng nhận giao dịch nhập cùng mã hàng, ngày giao dịch nằm trong
+    [lot.day, lot.estimated_completion].
+
+    Lô TN là TỔNG của các xưởng nên khối lượng ước lượng của nó gộp mọi xưởng —
+    lượng nhập cũng phải gộp tương ứng. Vì vậy lô TN nhận mọi giao dịch nhập cùng
+    ngày thu mua (mã bất kỳ xưởng nào, VD LT20260505 / BS20260505 với TN20260505),
+    cộng thêm giao dịch KHÔNG có mã hàng — loại này coi như mã TN, gán cho lô TN có
+    `day` gần nhất về trước. Mỗi giao dịch chỉ được tính vào đúng một lô.
+    """
+    from app.models.inventory import ProductTransaction
+    from sqlalchemy import func, or_
+
+    totals = {lc.id: 0.0 for lc in lots}
+    usable = [lc for lc in lots if lc.day and lc.estimated_completion]
+    if not usable:
+        return totals
+
+    is_tn = prefix == CKL_TN_PREFIX
+    conds = []
+    if not is_tn:
+        codes = sorted({lc.product_code for lc in usable if lc.product_code})
+        if not codes:
+            return totals
+        conds.append(ProductTransaction.product_code.in_(codes))
+
+    filters = [
+        func.lower(ProductTransaction.transaction_type).in_(CKL_IMPORT_TYPES),
+        ProductTransaction.transaction_date >= min(lc.day for lc in usable),
+        ProductTransaction.transaction_date <= max(lc.estimated_completion for lc in usable),
+    ]
+    if conds:
+        filters.append(or_(*conds))
+
+    txns = db.query(ProductTransaction).filter(*filters).all()
+
+    lots_by_code = {}
+    lots_by_suffix = {}
+    for lc in usable:
+        lots_by_code.setdefault(lc.product_code, []).append(lc)
+        lots_by_suffix.setdefault(_ckl_day_suffix(lc.product_code), []).append(lc)
+    tn_lots = [lc for lc in usable if _ckl_code_prefix(lc.product_code) == CKL_TN_PREFIX]
+
+    for txn in txns:
+        day = txn.transaction_date
+        if not day:
+            continue
+        code = (txn.product_code or "").strip()
+
+        if code:
+            # Lô TN gộp theo ngày thu mua, lô xưởng khớp đúng mã hàng
+            bucket = lots_by_suffix.get(_ckl_day_suffix(code), []) if is_tn else lots_by_code.get(code, [])
+            for lc in bucket:
+                if lc.day <= day <= lc.estimated_completion:
+                    totals[lc.id] += txn.quantity or 0
+                    break
+            continue
+
+        # Giao dịch trống mã hàng -> lô TN có ngày thu mua gần nhất về trước
+        candidates = [lc for lc in tn_lots if lc.day <= day <= lc.estimated_completion]
+        if candidates:
+            totals[max(candidates, key=lambda lc: lc.day).id] += txn.quantity or 0
+
+    return totals
+
+
+def _ckl_rows(db, start_date, end_date, prefix: str):
+    """
+    Số liệu hao hụt của từng lô trong chu kỳ, đã sắp theo % hao hụt giảm dần.
+
+    Tiền hao hụt của mỗi lô quy theo ĐƠN GIÁ RIÊNG của lô đó (thành tiền / mủ khô
+    tạm tính) — đúng bằng số tiền đã bỏ ra mua phần mủ không về kho. Tổng tiền hao
+    hụt của kỳ là tổng các lô, nên chi tiết cộng lại luôn khớp màn tổng hợp.
+
+    Không dùng giá TB kỳ nhân tổng chênh lệch: cách đó lệch đúng bằng hiệp phương
+    sai có trọng số giữa đơn giá và tỷ lệ hao hụt của các lô, lệch có hệ thống chứ
+    không tự triệt tiêu.
+    """
+    lots = _ckl_query_lots(db, start_date, end_date, prefix)
+    totals = _ckl_import_by_lot(db, lots, prefix)
+
+    rows = []
+    for lc in lots:
+        est_qty = lc.total_dry_rubber or 0
+        act_qty = totals.get(lc.id, 0.0)
+        amount = lc.total_amount or 0
+        diff = est_qty - act_qty
+        # Tính lại từ amount/est_qty để luôn khớp với "Tổng thành tiền" hiển thị
+        price = (amount / est_qty) if est_qty > 0 else (lc.avg_unit_price or 0)
+        rows.append({
+            "code": lc.product_code or "—",
+            "day": lc.day,
+            "est_date": lc.estimated_completion,
+            "est_qty": est_qty,
+            "act_qty": act_qty,
+            "amount": amount,
+            "diff": diff,
+            "pct": (diff / est_qty * 100) if est_qty > 0 else 0,
+            "price": price,
+            "money": price * diff,
+        })
+
+    rows.sort(key=lambda r: r["pct"], reverse=True)
+    return rows
+
+
+def _ckl_avg_price(rows) -> float:
+    """Giá mua TB kỳ = Tổng thành tiền / Tổng mủ khô tạm tính (bình quân theo mủ khô)."""
+    est_qty = sum(r["est_qty"] for r in rows)
+    return (sum(r["amount"] for r in rows) / est_qty) if est_qty > 0 else 0
+
+
+def _ckl_loss_price(rows) -> float:
+    """
+    Giá TB của PHẦN HAO HỤT = bình quân đơn giá các lô, trọng số là khối lượng hao
+    hụt của từng lô (thay vì mủ khô tạm tính):
+
+        p* = Σ(pᵢ × Lᵢ) / ΣLᵢ
+
+    Chọn trọng số này để đẳng thức `p* × Tổng chênh lệch = Tiền hao hụt` đúng tuyệt
+    đối. Nếu bình quân theo mủ khô (ΣA/ΣD) thì tích đó chỉ là xấp xỉ, lệch đúng bằng
+    hiệp phương sai có trọng số giữa đơn giá và tỷ lệ hao hụt của các lô.
+
+    Kỳ không có hao hụt (ΣL = 0) thì không có phần nào để quy giá -> lấy giá mua TB.
+    """
+    total_loss = sum(r["diff"] for r in rows)
+    if abs(total_loss) < 1e-9:
+        return _ckl_avg_price(rows)
+    return sum(r["money"] for r in rows) / total_loss
+
+
+def _ckl_summary(rows):
+    est_qty = sum(r["est_qty"] for r in rows)
+    act_qty = sum(r["act_qty"] for r in rows)
+    diff = est_qty - act_qty
+    return {
+        "count": len(rows),
+        "est_qty": est_qty,
+        "act_qty": act_qty,
+        "amount": sum(r["amount"] for r in rows),
+        "diff": diff,
+        # % hao hụt = 100 − (Tổng nhập kho / Tổng mủ khô tạm tính) × 100
+        "pct": (diff / est_qty * 100) if est_qty > 0 else 0,
+        "price": _ckl_avg_price(rows),
+        "loss_price": _ckl_loss_price(rows),
+        # Σ (đơn giá lô × hao hụt lô) — số tiền thực đã bỏ ra mua phần mủ mất.
+        # Luôn bằng loss_price × diff, nên màn hình "suy ra" được từ giá TB.
+        "money": sum(r["money"] for r in rows),
+    }
+
+
+def _ckl_count_missing_est(db, start_date, end_date, prefix: str) -> int:
+    """Số lô mủ khô thu mua trong chu kỳ nhưng chưa đặt ngày dự kiến hoàn thành."""
+    from app.models.business import LossControls
+    from sqlalchemy import or_
+
+    lots = db.query(LossControls).filter(
+        LossControls.estimated_completion.is_(None),
+        LossControls.day >= start_date,
+        LossControls.day <= end_date,
+        or_(LossControls.processing_type.is_(None),
+            LossControls.processing_type != "wet_sale"),
+    ).all()
+    if prefix:
+        lots = [lc for lc in lots if _ckl_code_prefix(lc.product_code) == prefix]
+    return len(lots)
+
+
+def _ckl_build_period_view():
+    """Màn 1: chọn chu kỳ kiểm tra."""
+    buttons = [
+        [InlineKeyboardButton("Theo ngày (Hôm nay)", callback_data="ckl:p:today")],
+        [InlineKeyboardButton("Theo tuần (Tuần này)", callback_data="ckl:p:week")],
+        [InlineKeyboardButton("Theo tháng (Tháng này)", callback_data="ckl:p:month")],
+        [InlineKeyboardButton("Theo giai đoạn", callback_data="ckl:p:custom")],
+        [InlineKeyboardButton("Hủy", callback_data="ckl:x")],
+    ]
+    text = (
+        f"<b>KIỂM TRA HAO HỤT</b>\n\n"
+        f"Đối chiếu khối lượng mủ khô ước lượng với lượng nhập kho thực tế.\n\n"
+        f"Vui lòng chọn loại kiểm tra:"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _ckl_date_args(start_date, end_date, period_code: str) -> str:
+    """Phần chung của mọi callback_data trong luồng: ngày đầu, ngày cuối, loại kỳ."""
+    return f"{start_date.strftime('%d%m%Y')}:{end_date.strftime('%d%m%Y')}:{period_code}"
+
+
+def _ckl_build_cp_view(db, start_date, end_date, period_code: str):
+    """
+    Màn 2: các điểm thu mua có lô đến hạn trong chu kỳ, kèm nút Tất cả (TN).
+    Trả về (None, None) nếu chu kỳ không có lô nào.
+    """
+    from app.models.business import CollectionPoint
+
+    lots = _ckl_query_lots(db, start_date, end_date)
+    if not lots:
+        return None, None
+
+    groups = {}
+    for lc in lots:
+        groups.setdefault(_ckl_code_prefix(lc.product_code), []).append(lc)
+
+    name_by_prefix = {
+        cp.code_prefix.upper(): cp.collection_name
+        for cp in db.query(CollectionPoint).all() if cp.code_prefix
+    }
+
+    date_args = _ckl_date_args(start_date, end_date, period_code)
+    tn_count = len(groups.get(CKL_TN_PREFIX, []))
+    buttons = [[InlineKeyboardButton(
+        f"Tất cả (TN…) — {tn_count} lô",
+        callback_data=f"ckl:cp:{date_args}:{CKL_TN_PREFIX}"
+    )]]
+
+    for prefix in sorted(p for p in groups if p and p != CKL_TN_PREFIX):
+        name = name_by_prefix.get(prefix, f"Xưởng {prefix}")
+        buttons.append([InlineKeyboardButton(
+            f"{name} ({prefix}) — {len(groups[prefix])} lô",
+            callback_data=f"ckl:cp:{date_args}:{prefix}"
+        )])
+
+    buttons.append([
+        InlineKeyboardButton("Quay lại", callback_data="ckl:pv"),
+        InlineKeyboardButton("Hủy", callback_data="ckl:x"),
+    ])
+
+    text = (
+        f"<b>KIỂM TRA HAO HỤT</b>\n\n"
+        f"Loại kỳ: <b>{CKL_PERIOD_LABEL.get(period_code, '—')}</b>\n"
+        f"Chu kỳ: <b>{_ckl_timeframe(start_date, end_date)}</b>\n"
+        f"Tổng số lô đến hạn: <b>{len(lots)}</b>\n\n"
+        f"Vui lòng chọn điểm thu mua cần kiểm tra:"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _ckl_timeframe(start_date, end_date) -> str:
+    if start_date == end_date:
+        return start_date.strftime('%d/%m/%Y')
+    return f"{start_date.strftime('%d/%m/%Y')} — {end_date.strftime('%d/%m/%Y')}"
+
+
+def _ckl_scope_name(db, prefix: str) -> str:
+    """Tên phạm vi đúng như đã đặt, dùng để lưu vào loss_checks.collection_name."""
+    from app.models.business import CollectionPoint
+
+    if prefix == CKL_TN_PREFIX:
+        return "Tất cả (Tổng hợp)"
+    cp = db.query(CollectionPoint).filter(CollectionPoint.code_prefix == prefix).first()
+    return cp.collection_name if cp else f"Xưởng {prefix}"
+
+
+def _ckl_scope_label(db, prefix: str) -> str:
+    """Tên phạm vi viết hoa, dùng cho tiêu đề màn hình."""
+    return _ckl_scope_name(db, prefix).upper()
+
+
+def _ckl_build_summary_view(db, start_date, end_date, prefix: str, period_code: str):
+    """Màn 3: tổng hợp hao hụt của cả chu kỳ. Trả (None, thông_báo) nếu không có lô."""
+    rows = _ckl_rows(db, start_date, end_date, prefix)
+    date_args = _ckl_date_args(start_date, end_date, period_code)
+
+    if not rows:
+        if prefix == CKL_TN_PREFIX:
+            return None, ("⚠️ Chu kỳ này chưa chốt lô tổng (TN). "
+                          "Vui lòng chọn từng điểm thu mua.")
+        return None, "⚠️ Chu kỳ này không có lô nào của điểm thu mua đã chọn."
+
+    s = _ckl_summary(rows)
+    missing_est = _ckl_count_missing_est(db, start_date, end_date, prefix)
+    warn = (
+        f"\n⚠️ <i>{missing_est} lô thu mua trong chu kỳ chưa đặt ngày dự kiến hoàn thành "
+        f"nên chưa được tính.</i>\n"
+    ) if missing_est else ""
+
+    buttons = [
+        [InlineKeyboardButton("Chi tiết từng lô", callback_data=f"ckl:dtl:{date_args}:{prefix}:0")],
+        [InlineKeyboardButton("✅ Xác nhận hao hụt", callback_data=f"ckl:ok:{date_args}:{prefix}")],
+        [InlineKeyboardButton("Quay lại", callback_data=f"ckl:cps:{date_args}")],
+        [InlineKeyboardButton("Hủy", callback_data="ckl:x")],
+    ]
+
+    text = (
+        f"<b>KIỂM TRA HAO HỤT — {_ckl_scope_label(db, prefix)}</b>\n\n"
+        f"Loại kỳ: <b>{CKL_PERIOD_LABEL.get(period_code, '—')}</b>\n"
+        f"Chu kỳ: <b>{_ckl_timeframe(start_date, end_date)}</b>\n"
+        f"Số lô: <b>{s['count']}</b>\n"
+        f"{'━' * 15}\n"
+        f"🔸 <b>Mủ khô tạm tính:</b> {fmt_num(s['est_qty'])} Kg\n"
+        f"🔸 <b>Nhập kho thực tế:</b> {fmt_num(s['act_qty'])} Kg\n"
+        f"🔸 <b>Tổng thành tiền:</b> <code>{fmt_money(s['amount'])}</code>\n"
+        f"🔸 <b>Giá mua TB kỳ:</b> <code>{fmt_money(s['price'])}</code>/Kg\n"
+        f"{'━' * 15}\n"
+        f"🔻 <b>Chênh lệch:</b> {fmt_num(s['diff'])} Kg\n"
+        f"🔻 <b>Tỷ lệ hao hụt:</b> {fmt_num(s['pct'])}%\n"
+        f"🔻 <b>Giá TB phần hao hụt:</b> <code>{fmt_money(s['loss_price'])}</code>/Kg\n"
+        f"🔻 <b>Tiền hao hụt:</b> <code>{fmt_money(s['money'])}</code>\n"
+        f"{'━' * 15}\n"
+        f"{warn}"
+        f"<i>Lô tính theo ngày dự kiến hoàn thành; nhập kho lấy trong khoảng "
+        f"từ ngày thu mua đến ngày dự kiến hoàn thành.</i>\n"
+        f"<i>Tỷ lệ hao hụt = 100 − (Tổng nhập kho / Tổng mủ khô tạm tính) × 100</i>\n"
+        f"<i>Giá mua TB kỳ = Tổng thành tiền / Tổng mủ khô tạm tính</i>\n"
+        f"<i>Giá TB phần hao hụt = bình quân đơn giá các lô, trọng số là khối lượng "
+        f"hao hụt của từng lô</i>\n"
+        f"<b><i>Tiền hao hụt = Giá TB phần hao hụt × Chênh lệch</i></b>\n\n"
+        f"<i>Bấm “Xác nhận hao hụt” để chốt số liệu này lại — về sau xem qua "
+        f"{TKH_CMD_NAME}.</i>"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _ckl_build_detail_view(db, start_date, end_date, prefix: str, period_code: str, page: int):
+    """Màn 4: chi tiết từng lô, phân trang CKL_PAGE_SIZE lô mỗi trang."""
+    rows = _ckl_rows(db, start_date, end_date, prefix)
+    if not rows:
+        return None, "⚠️ Không còn dữ liệu cho chu kỳ này."
+
+    total_pages = max(1, (len(rows) + CKL_PAGE_SIZE - 1) // CKL_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = rows[page * CKL_PAGE_SIZE:(page + 1) * CKL_PAGE_SIZE]
+    date_args = _ckl_date_args(start_date, end_date, period_code)
+
+    lines = []
+    for idx, r in enumerate(chunk, start=page * CKL_PAGE_SIZE + 1):
+        est_label = r["est_date"].strftime('%d/%m') if r["est_date"] else "—"
+        flag = "🔴" if r["pct"] >= 10 else ("🟡" if r["pct"] > 0 else "🟢")
+        lines.append(
+            f"{idx}. <code>{r['code']}</code> — dự kiến {est_label}\n"
+            f"    Ước: {fmt_num(r['est_qty'])} Kg · Nhập: {fmt_num(r['act_qty'])} Kg "
+            f"· Giá: {fmt_num(r['price'])}\n"
+            f"    {flag} Hao hụt: {fmt_num(r['pct'])}% · <code>{fmt_money(r['money'])}</code>"
+        )
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀ Trước", callback_data=f"ckl:dtl:{date_args}:{prefix}:{page - 1}"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("Sau ▶", callback_data=f"ckl:dtl:{date_args}:{prefix}:{page + 1}"))
+
+    buttons = ([nav] if nav else []) + [
+        [InlineKeyboardButton("Tổng hợp", callback_data=f"ckl:sum:{date_args}:{prefix}")],
+        [InlineKeyboardButton("Hủy", callback_data="ckl:x")],
+    ]
+
+    text = (
+        f"<b>CHI TIẾT HAO HỤT — {_ckl_scope_label(db, prefix)}</b>\n\n"
+        f"Chu kỳ: <b>{_ckl_timeframe(start_date, end_date)}</b>\n"
+        f"Giá TB phần hao hụt: <code>{fmt_money(_ckl_loss_price(rows))}</code>/Kg\n"
+        f"Trang <b>{page + 1}/{total_pages}</b> — sắp theo % hao hụt giảm dần\n"
+        f"{'━' * 15}\n" + "\n".join(lines)
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
 # --- Kiểm Tra Hao Hụt ---
+# Có mã hàng  -> kiểm tra hao hụt BÁN MỦ NƯỚC của đúng lô đó (đối chiếu PartnerBusinesses).
+# Không mã hàng -> luồng nút bấm kiểm tra hao hụt MỦ KHÔ theo chu kỳ (xem section ckl: bên dưới).
 @bot.on_message(filters.command(["tien_nga_check_losses", "tien_nga_kiem_tra_hao_hut"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_losses|tien_nga_kiem_tra_hao_hut)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -3267,16 +3609,53 @@ async def tien_nga_daily_purchase_handler(client, message: Message) -> None:
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_losses_handler(client, message: Message) -> None:
     from app.models.business import LossControls, PartnerBusinesses
-    from app.models.inventory import ProductTransaction
 
     args = message.text.strip().split()
-    if len(args) < 2:
-        await message.reply_text(
-            "⚠️ <b>Cú pháp:</b>\n"
-            "<code>/tien_nga_kiem_tra_hao_hut [Mã hàng]</code>\n\n"
-            "<i>Ví dụ: <code>/tien_nga_kiem_tra_hao_hut LT20260505</code></i>",
-            parse_mode=ParseMode.HTML
-        )
+    # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+    if args and args[0].startswith("@"):
+        args = args[1:]
+
+    arg_text = " ".join(args[1:]).strip()
+
+    # Không tham số -> mở luồng kiểm tra hao hụt mủ khô theo chu kỳ
+    if not arg_text:
+        text, markup = _ckl_build_period_view()
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        return
+
+    # "dd/mm/yyyy - dd/mm/yyyy" -> vào thẳng màn chọn điểm thu mua của chu kỳ đó
+    range_match = re.match(r"^(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})$", arg_text)
+    if range_match:
+        try:
+            start_date = datetime.strptime(range_match.group(1), "%d/%m/%Y").date()
+            end_date = datetime.strptime(range_match.group(2), "%d/%m/%Y").date()
+        except ValueError:
+            await message.reply_text(
+                "⚠️ Định dạng ngày không hợp lệ. Vui lòng nhập <b>dd/mm/yyyy - dd/mm/yyyy</b>.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        if start_date > end_date:
+            await message.reply_text("⚠️ Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.", parse_mode=ParseMode.HTML)
+            return
+
+        db = SessionLocal()
+        try:
+            text, markup = _ckl_build_cp_view(db, start_date, end_date, "c")
+            if not text:
+                await message.reply_text(
+                    f"⚠️ Không có lô mủ khô nào dự kiến hoàn thành trong khoảng "
+                    f"<b>{start_date.strftime('%d/%m/%Y')} — {end_date.strftime('%d/%m/%Y')}</b>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error in check_losses custom range: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
         return
 
     product_code = args[1].upper()
@@ -3284,126 +3663,780 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
     try:
         # Lấy LossControls của mã hàng
         loss_control = db.query(LossControls).filter(LossControls.product_code == product_code).order_by(LossControls.created_at.desc()).first()
-        
+
         if not loss_control:
             await message.reply_text(f"⚠️ Không tìm thấy dữ liệu kiểm soát hao hụt cho mã hàng <b>{product_code}</b>. Vui lòng cập nhật bên thu mua trước.", parse_mode=ParseMode.HTML)
             return
-            
+
         total_wet_rubber = loss_control.total_wet_rubber or 0
-        total_dry_rubber = loss_control.total_dry_rubber or 0
         total_amount = loss_control.total_amount or 0
         avg_unit_price = loss_control.avg_unit_price or 0
         avg_degree = loss_control.avg_degree or 0
         processing_type = loss_control.processing_type or "dry_production"
-        
-        def fmt_money(val):
-            if val is None or val == 0: return "0 VNĐ"
-            return f"{int(val):,} VNĐ".replace(",", ".")
 
-        def fmt_num(val):
-            if val is None: return "0"
-            try:
-                if float(val) == int(val):
-                    return f"{int(val):,}".replace(",", ".")
-                return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            except:
-                return str(val)
-
-        if processing_type == "wet_sale":
-            # --- BÁN MỦ NƯỚC: so sánh thu mua vs xuất bán qua partner_businesses ---
-            sale_records = db.query(PartnerBusinesses).filter(
-                PartnerBusinesses.order_code == product_code
-            ).all()
-
-            sale_wet_rubber = sum(r.actual_weight or 0 for r in sale_records)
-            sale_dry_rubber = sum(r.dry_rubber or 0 for r in sale_records)
-            sale_total_amount = sum(r.total_amount or 0 for r in sale_records)
-            sale_count = len(sale_records)
-            sale_degree = (sale_dry_rubber / sale_wet_rubber * 100) if sale_wet_rubber > 0 else 0
-            sale_unit_price = sale_total_amount / sale_dry_rubber if sale_dry_rubber > 0 else 0
-
-            # Tính chênh lệch
-            diff_wet = total_wet_rubber - sale_wet_rubber
-            diff_amount = total_amount - sale_total_amount
-            # Lợi nhuận / Lỗ = Tiền bán - Tiền mua
-            profit = sale_total_amount - total_amount
-
-            # % Hao hụt mủ nước
-            loss_wet_pct = (diff_wet / total_wet_rubber * 100) if total_wet_rubber > 0 else 0
-
-            # Giá hòa vốn = Tổng tiền thu mua / Mủ khô xuất bán
-            # Đây là mức giá tối thiểu cần bán để hòa vốn thu mua ban đầu
-            breakeven_price = total_amount / sale_dry_rubber if sale_dry_rubber > 0 else 0
-
-            profit_label = "🟢 Lợi nhuận" if profit >= 0 else "🔴 Lỗ"
-            
+        # Mủ khô đã có luồng theo chu kỳ riêng, không kiểm tra lẻ từng mã ở đây nữa
+        if processing_type != "wet_sale":
             await message.reply_text(
-                f"<b>KIỂM TRA HAO HỤT — BÁN MỦ NƯỚC</b>\n\n"
-                f"🔹 <b>Mã hàng:</b> <code>{product_code}</code>\n"
-                f"🔹 <b>Ngày thu mua:</b> {loss_control.day.strftime('%d/%m/%Y')}\n"
-                f"🔹 <b>Dự kiến hoàn thành:</b> {loss_control.estimated_completion.strftime('%d/%m/%Y') if loss_control.estimated_completion else '—'}\n\n"
-                f"━━━ <b>THU MUA</b> ━━━\n"
-                f"🔸 <b>Mủ Nước:</b> {fmt_num(total_wet_rubber)} Kg\n"
-                f"🔸 <b>Số Độ TB:</b> {fmt_num(avg_degree)}%\n"
-                f"🔸 <b>Giá Mua TB:</b> <code>{fmt_money(avg_unit_price)}</code>/Kg\n"
-                f"🔸 <b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n\n"
-                f"━━━ <b>XUẤT BÁN</b> ({sale_count} giao dịch) ━━━\n"
-                f"🔹 <b>Mủ Nước:</b> {fmt_num(sale_wet_rubber)} Kg\n"
-                f"🔹 <b>Số Độ:</b> {fmt_num(sale_degree)}%\n"
-                f"🔹 <b>Đơn Giá:</b> <code>{fmt_money(sale_unit_price)}</code>/Kg\n"
-                f"🔹 <b>Thành Tiền:</b> <code>{fmt_money(sale_total_amount)}</code>\n\n"
-                f"━━━ <b>CHÊNH LỆCH</b> ━━━\n"
-                f"🔻 <b>Mủ Nước:</b> {fmt_num(diff_wet)} Kg\n"
-                f"🔻 <b>% Hao hụt:</b> {fmt_num(loss_wet_pct)}%\n"
-                f"🔻 <b>Tiền:</b> <code>{fmt_money(abs(diff_amount))}</code>\n"
-                f"{profit_label}: <code>{fmt_money(abs(profit))}</code>\n"
-                f"{'━' * 15}\n"
-                f"<b>Giá hòa vốn:</b> <code>{fmt_money(breakeven_price)}</code>/Kg\n"
-                f"{'━' * 15}\n"
-                f"<i>% Hao hụt = (Chênh lệch MN / Tổng MN thu mua) × 100</i>\n"
-                f"<i>Giá hòa vốn = Tổng tiền mua / Mủ khô xuất bán</i>\n"
-                f"<i>Lợi nhuận = Tiền bán - Tiền mua</i>",
+                f"ℹ️ Lô <b>{product_code}</b> là <b>sản xuất mủ khô</b>.\n\n"
+                f"Kiểm tra hao hụt mủ khô nay xem theo chu kỳ — gõ "
+                f"<code>{CKL_CMD_NAME}</code> rồi chọn chu kỳ và điểm thu mua.",
                 parse_mode=ParseMode.HTML
             )
-        else:
-            # --- SẢN XUẤT MỦ KHÔ: so sánh thu mua vs nhập kho (logic cũ) ---
-            import_txns = db.query(ProductTransaction).filter(
-                ProductTransaction.product_code == product_code,
-                ProductTransaction.transaction_type.in_(["Nhập", "Import", "import"])
-            ).all()
-            
-            total_import_qty = sum(txn.quantity or 0 for txn in import_txns)
-            
-            # Tính số mủ hao hụt %
-            if total_dry_rubber > 0:
-                loss_percentage = 100 - (total_import_qty / total_dry_rubber) * 100
-            else:
-                loss_percentage = 0
-                
-            # Tính số tiền hao hụt
-            loss_money = total_amount - (avg_unit_price * total_import_qty)
-            
-            await message.reply_text(
-                f"<b>KIỂM TRA HAO HỤT LÔ HÀNG</b>\n\n"
-                f"🔹 <b>Mã hàng:</b> <code>{product_code}</code>\n"
-                f"🔹 <b>Ngày thu mua:</b> {loss_control.day.strftime('%d/%m/%Y')}\n"
-                f"🔹 <b>Dự kiến hoàn thành:</b> {loss_control.estimated_completion.strftime('%d/%m/%Y') if loss_control.estimated_completion else '—'}\n"
-                f"🔹 <b>Giá thu mua TB:</b> <code>{fmt_money(avg_unit_price)}</code>/Kg\n"
-                f"{'━' * 15}\n"
-                f"🔸 <b>Tổng mủ khô (tạm tính):</b> {fmt_num(total_dry_rubber)} Kg\n"
-                f"🔸 <b>Tổng nhập kho thực tế:</b> {fmt_num(total_import_qty)} Kg\n\n"
-                f"🔻 <b>Tỷ lệ hao hụt:</b> {fmt_num(loss_percentage)}%\n"
-                f"🔻 <b>Số tiền hao hụt:</b> <code>{fmt_money(loss_money)}</code>\n"
-                f"{'━' * 15}\n"
-                f"<i>Ghi chú:</i>\n"
-                f"- <i>Tỷ lệ hao hụt = 100 - (Tổng nhập kho / Tổng mủ khô) * 100</i>\n"
-                f"- <i>Tiền hao hụt = Tổng thành tiền - (Đơn giá TB x Tổng nhập kho)</i>",
-                parse_mode=ParseMode.HTML
-            )
-        
+            return
+
+        # --- BÁN MỦ NƯỚC: so sánh thu mua vs xuất bán qua partner_businesses ---
+        sale_records = db.query(PartnerBusinesses).filter(
+            PartnerBusinesses.order_code == product_code
+        ).all()
+
+        sale_wet_rubber = sum(r.actual_weight or 0 for r in sale_records)
+        sale_dry_rubber = sum(r.dry_rubber or 0 for r in sale_records)
+        sale_total_amount = sum(r.total_amount or 0 for r in sale_records)
+        sale_count = len(sale_records)
+        sale_degree = (sale_dry_rubber / sale_wet_rubber * 100) if sale_wet_rubber > 0 else 0
+        sale_unit_price = sale_total_amount / sale_dry_rubber if sale_dry_rubber > 0 else 0
+
+        # Tính chênh lệch
+        diff_wet = total_wet_rubber - sale_wet_rubber
+        diff_amount = total_amount - sale_total_amount
+        # Lợi nhuận / Lỗ = Tiền bán - Tiền mua
+        profit = sale_total_amount - total_amount
+
+        # % Hao hụt mủ nước
+        loss_wet_pct = (diff_wet / total_wet_rubber * 100) if total_wet_rubber > 0 else 0
+
+        # Giá hòa vốn = Tổng tiền thu mua / Mủ khô xuất bán
+        # Đây là mức giá tối thiểu cần bán để hòa vốn thu mua ban đầu
+        breakeven_price = total_amount / sale_dry_rubber if sale_dry_rubber > 0 else 0
+
+        profit_label = "🟢 Lợi nhuận" if profit >= 0 else "🔴 Lỗ"
+
+        await message.reply_text(
+            f"<b>KIỂM TRA HAO HỤT — BÁN MỦ NƯỚC</b>\n\n"
+            f"🔹 <b>Mã hàng:</b> <code>{product_code}</code>\n"
+            f"🔹 <b>Ngày thu mua:</b> {loss_control.day.strftime('%d/%m/%Y')}\n"
+            f"🔹 <b>Dự kiến hoàn thành:</b> {loss_control.estimated_completion.strftime('%d/%m/%Y') if loss_control.estimated_completion else '—'}\n\n"
+            f"━━━ <b>THU MUA</b> ━━━\n"
+            f"🔸 <b>Mủ Nước:</b> {fmt_num(total_wet_rubber)} Kg\n"
+            f"🔸 <b>Số Độ TB:</b> {fmt_num(avg_degree)}%\n"
+            f"🔸 <b>Giá Mua TB:</b> <code>{fmt_money(avg_unit_price)}</code>/Kg\n"
+            f"🔸 <b>Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n\n"
+            f"━━━ <b>XUẤT BÁN</b> ({sale_count} giao dịch) ━━━\n"
+            f"🔹 <b>Mủ Nước:</b> {fmt_num(sale_wet_rubber)} Kg\n"
+            f"🔹 <b>Số Độ:</b> {fmt_num(sale_degree)}%\n"
+            f"🔹 <b>Đơn Giá:</b> <code>{fmt_money(sale_unit_price)}</code>/Kg\n"
+            f"🔹 <b>Thành Tiền:</b> <code>{fmt_money(sale_total_amount)}</code>\n\n"
+            f"━━━ <b>CHÊNH LỆCH</b> ━━━\n"
+            f"🔻 <b>Mủ Nước:</b> {fmt_num(diff_wet)} Kg\n"
+            f"🔻 <b>% Hao hụt:</b> {fmt_num(loss_wet_pct)}%\n"
+            f"🔻 <b>Tiền:</b> <code>{fmt_money(abs(diff_amount))}</code>\n"
+            f"{profit_label}: <code>{fmt_money(abs(profit))}</code>\n"
+            f"{'━' * 15}\n"
+            f"<b>Giá hòa vốn:</b> <code>{fmt_money(breakeven_price)}</code>/Kg\n"
+            f"{'━' * 15}\n"
+            f"<i>% Hao hụt = (Chênh lệch MN / Tổng MN thu mua) × 100</i>\n"
+            f"<i>Giá hòa vốn = Tổng tiền mua / Mủ khô xuất bán</i>\n"
+            f"<i>Lợi nhuận = Tiền bán - Tiền mua</i>",
+            parse_mode=ParseMode.HTML
+        )
+
     except Exception as e:
         LogError(f"Error in tien_nga_check_losses_handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Lỗi hệ thống khi kiểm tra hao hụt.")
+    finally:
+        db.close()
+
+
+# ── Callback luồng kiểm tra hao hụt mủ khô ────────────────────
+
+def _ckl_cb_args(callback_query):
+    """Đọc (ngày đầu, ngày cuối, mã loại kỳ) từ callback_data."""
+    m = callback_query.matches[0]
+    return _cl_parse_cb_date(m.group(1)), _cl_parse_cb_date(m.group(2)), m.group(3)
+
+
+async def _ckl_show_cp_screen(callback_query, start_date, end_date, period_code: str) -> None:
+    db = SessionLocal()
+    try:
+        text, markup = _ckl_build_cp_view(db, start_date, end_date, period_code)
+        if not text:
+            await callback_query.answer(
+                f"⚠️ Không có lô mủ khô nào dự kiến hoàn thành trong "
+                f"{_ckl_timeframe(start_date, end_date)}.",
+                show_alert=True
+            )
+            return
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in check_losses collection point screen: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^ckl:x$"))
+async def check_losses_cancel_callback(client, callback_query):
+    await callback_query.message.delete()
+
+
+# Callback: Quay lại màn chọn chu kỳ
+@bot.on_callback_query(filters.regex(r"^ckl:pv$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+async def check_losses_period_view_callback(client, callback_query):
+    text, markup = _ckl_build_period_view()
+    await _tn_screen_edit(callback_query, text, markup)
+
+
+# Callback: Chọn chu kỳ
+@bot.on_callback_query(filters.regex(r"^ckl:p:(today|week|month|custom)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+async def check_losses_period_callback(client, callback_query):
+    period = callback_query.matches[0].group(1)
+
+    if period == "custom":
+        buttons = [[InlineKeyboardButton("Quay lại", callback_data="ckl:pv")]]
+        await _tn_screen_edit(
+            callback_query,
+            f"📝 Vui lòng nhập lệnh kèm giai đoạn cần kiểm tra:\n\n"
+            f"<code>{CKL_CMD_NAME} dd/mm/yyyy - dd/mm/yyyy</code>\n\n"
+            f"<i>Ví dụ: <code>{CKL_CMD_NAME} 01/05/2026 - 31/05/2026</code></i>",
+            InlineKeyboardMarkup(buttons)
+        )
+        return
+
+    start_date, end_date, _ = _resolve_report_dates(period)
+    if not start_date:
+        await callback_query.answer("⚠️ Chu kỳ không hợp lệ.", show_alert=True)
+        return
+
+    await _ckl_show_cp_screen(callback_query, start_date, end_date, CKL_PERIOD_CODE[period])
+
+
+# Callback: Quay lại danh sách điểm thu mua
+@bot.on_callback_query(filters.regex(r"^ckl:cps:(\d{8}):(\d{8}):([dwmc])$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+async def check_losses_cps_callback(client, callback_query):
+    start_date, end_date, period_code = _ckl_cb_args(callback_query)
+    if not start_date or not end_date:
+        await callback_query.answer("⚠️ Chu kỳ không hợp lệ.", show_alert=True)
+        return
+
+    await _ckl_show_cp_screen(callback_query, start_date, end_date, period_code)
+
+
+# Callback: Chọn điểm thu mua / Xem lại tổng hợp
+@bot.on_callback_query(filters.regex(r"^ckl:(?:cp|sum):(\d{8}):(\d{8}):([dwmc]):([A-Za-z]+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+async def check_losses_summary_callback(client, callback_query):
+    start_date, end_date, period_code = _ckl_cb_args(callback_query)
+    prefix = callback_query.matches[0].group(4).upper()
+    if not start_date or not end_date:
+        await callback_query.answer("⚠️ Chu kỳ không hợp lệ.", show_alert=True)
+        return
+
+    db = SessionLocal()
+    try:
+        text, markup_or_err = _ckl_build_summary_view(db, start_date, end_date, prefix, period_code)
+        if not text:
+            await callback_query.answer(markup_or_err, show_alert=True)
+            return
+        await _tn_screen_edit(callback_query, text, markup_or_err)
+    except Exception as e:
+        LogError(f"Error in check_losses summary: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# Callback: Chi tiết từng lô (phân trang)
+@bot.on_callback_query(filters.regex(r"^ckl:dtl:(\d{8}):(\d{8}):([dwmc]):([A-Za-z]+):(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+async def check_losses_detail_callback(client, callback_query):
+    start_date, end_date, period_code = _ckl_cb_args(callback_query)
+    prefix = callback_query.matches[0].group(4).upper()
+    page = int(callback_query.matches[0].group(5))
+    if not start_date or not end_date:
+        await callback_query.answer("⚠️ Chu kỳ không hợp lệ.", show_alert=True)
+        return
+
+    db = SessionLocal()
+    try:
+        text, markup_or_err = _ckl_build_detail_view(db, start_date, end_date, prefix, period_code, page)
+        if not text:
+            await callback_query.answer(markup_or_err, show_alert=True)
+            return
+        await _tn_screen_edit(callback_query, text, markup_or_err)
+    except Exception as e:
+        LogError(f"Error in check_losses detail: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# ── Xác nhận & lưu bản chốt hao hụt ───────────────────────────
+
+def _ckl_existing_check(db, start_date, end_date, period_code: str, prefix: str):
+    """Bản chốt đã có của đúng kỳ + phạm vi này, None nếu chưa chốt lần nào."""
+    from app.models.business import LossChecks
+
+    return db.query(LossChecks).filter(
+        LossChecks.period_type == CKL_PERIOD_TYPE.get(period_code, "custom"),
+        LossChecks.start_date == start_date,
+        LossChecks.end_date == end_date,
+        LossChecks.code_prefix == prefix,
+    ).first()
+
+
+def _ckl_save_check(db, start_date, end_date, period_code: str, prefix: str,
+                    user_id: str, overwrite: bool):
+    """
+    Chốt kết quả kiểm tra hao hụt vào loss_checks (+ loss_check_items).
+
+    Trả (loss_check, None) khi lưu xong; (None, "exists") nếu kỳ này đã chốt và
+    chưa cho ghi đè; (None, "conflict") nếu người khác vừa chốt xen vào giữa lúc
+    đọc và ghi; (None, thông_báo) với các lỗi còn lại.
+    """
+    from app.models.business import LossChecks, LossCheckItems
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.sql import func
+
+    rows = _ckl_rows(db, start_date, end_date, prefix)
+    if not rows:
+        return None, "⚠️ Không còn dữ liệu để chốt cho chu kỳ này."
+
+    s = _ckl_summary(rows)
+    period_type = CKL_PERIOD_TYPE.get(period_code, "custom")
+    existing = _ckl_existing_check(db, start_date, end_date, period_code, prefix)
+
+    if existing and not overwrite:
+        return None, "exists"
+
+    values = dict(
+        collection_name=_ckl_scope_name(db, prefix),
+        lot_count=s["count"],
+        total_dry_rubber=s["est_qty"],
+        total_import_qty=s["act_qty"],
+        total_amount=s["amount"],
+        avg_unit_price=s["price"],
+        loss_price=s["loss_price"],
+        loss_qty=s["diff"],
+        loss_percentage=s["pct"],
+        loss_amount=s["money"],
+        missing_est_count=_ckl_count_missing_est(db, start_date, end_date, prefix),
+        created_by=user_id,
+    )
+
+    if existing:
+        for k, v in values.items():
+            setattr(existing, k, v)
+        existing.created_at = func.now()
+        # Chốt lại thì chi tiết cũ không còn đúng nữa
+        db.query(LossCheckItems).filter(
+            LossCheckItems.loss_check_id == existing.id
+        ).delete(synchronize_session=False)
+        check = existing
+    else:
+        check = LossChecks(
+            period_type=period_type,
+            start_date=start_date,
+            end_date=end_date,
+            code_prefix=prefix,
+            **values,
+        )
+        db.add(check)
+        db.flush()  # cần id để gắn các dòng chi tiết
+
+    for r in rows:
+        db.add(LossCheckItems(
+            loss_check_id=check.id,
+            product_code=r["code"],
+            day=r["day"],
+            estimated_completion=r["est_date"],
+            total_dry_rubber=r["est_qty"],
+            import_qty=r["act_qty"],
+            loss_qty=r["diff"],
+            loss_percentage=r["pct"],
+            unit_price=r["price"],
+            loss_amount=r["money"],
+        ))
+
+    try:
+        db.commit()
+    except IntegrityError:
+        # Unique (period_type, start_date, end_date, code_prefix): người khác vừa
+        # chốt xong kỳ này giữa lúc ta đọc và ghi.
+        db.rollback()
+        return None, "conflict"
+
+    return check, None
+
+
+def _ckl_saved_text(db, check, prefix: str) -> str:
+    return (
+        f"✅ <b>ĐÃ CHỐT HAO HỤT</b>\n\n"
+        f"Phạm vi: <b>{_ckl_scope_label(db, prefix)}</b>\n"
+        f"Loại kỳ: <b>{CKL_PERIOD_LABEL.get(CKL_TYPE_CODE.get(check.period_type, ''), check.period_type)}</b>\n"
+        f"Chu kỳ: <b>{_ckl_timeframe(check.start_date, check.end_date)}</b>\n"
+        f"{'━' * 15}\n"
+        f"🔸 <b>Mủ khô tạm tính:</b> {fmt_num(check.total_dry_rubber)} Kg\n"
+        f"🔸 <b>Nhập kho thực tế:</b> {fmt_num(check.total_import_qty)} Kg\n"
+        f"🔻 <b>Tỷ lệ hao hụt:</b> {fmt_num(check.loss_percentage)}%\n"
+        f"🔻 <b>Tiền hao hụt:</b> <code>{fmt_money(check.loss_amount)}</code>\n"
+        f"{'━' * 15}\n"
+        f"Đã lưu <b>{check.lot_count}</b> lô kèm chi tiết.\n\n"
+        f"<i>Xem lại qua {TKH_CMD_NAME}.</i>"
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^ckl:(ok|ovr):(\d{8}):(\d{8}):([dwmc]):([A-Za-z]+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+async def check_losses_confirm_callback(client, callback_query):
+    action = callback_query.matches[0].group(1)
+    start_date = _cl_parse_cb_date(callback_query.matches[0].group(2))
+    end_date = _cl_parse_cb_date(callback_query.matches[0].group(3))
+    period_code = callback_query.matches[0].group(4)
+    prefix = callback_query.matches[0].group(5).upper()
+
+    if not start_date or not end_date:
+        await callback_query.answer("⚠️ Chu kỳ không hợp lệ.", show_alert=True)
+        return
+
+    date_args = _ckl_date_args(start_date, end_date, period_code)
+    db = SessionLocal()
+    claim_tag = None
+    try:
+        # Hỏi ghi đè trước khi giành quyền ghi: nếu giành ngay từ đây thì người dùng
+        # bấm Quay lại rồi bấm Xác nhận lại trên cùng tin nhắn sẽ bị chặn vĩnh viễn.
+        if action == "ok" and _ckl_existing_check(db, start_date, end_date, period_code, prefix):
+            buttons = [
+                [InlineKeyboardButton("Đồng ý ghi đè", callback_data=f"ckl:ovr:{date_args}:{prefix}")],
+                [InlineKeyboardButton("Quay lại", callback_data=f"ckl:sum:{date_args}:{prefix}")],
+                [InlineKeyboardButton("Hủy", callback_data="ckl:x")],
+            ]
+            await _tn_screen_edit(
+                callback_query,
+                f"⚠️ <b>THÔNG BÁO</b>\n\n"
+                f"Kỳ <b>{_ckl_timeframe(start_date, end_date)}</b> của "
+                f"<b>{_ckl_scope_label(db, prefix)}</b> đã được chốt trước đó.\n\n"
+                f"Bạn có muốn ghi đè bằng số liệu hiện tại không?",
+                InlineKeyboardMarkup(buttons)
+            )
+            return
+
+        # Từ đây là thao tác ghi -> chặn bấm trùng
+        claim_tag = f"ckl_{action}_{prefix}"
+        if not _tn_cb_claim(callback_query, claim_tag):
+            await callback_query.answer("⏳ Đang xử lý, vui lòng chờ.", show_alert=True)
+            claim_tag = None
+            return
+
+        check, err = _ckl_save_check(
+            db, start_date, end_date, period_code, prefix,
+            str(callback_query.from_user.id), overwrite=(action == "ovr")
+        )
+
+        if err == "conflict":
+            _tn_cb_release(callback_query, claim_tag)
+            await callback_query.answer(
+                "⚠️ Kỳ này vừa được người khác chốt. Bấm lại để chọn ghi đè.",
+                show_alert=True
+            )
+            return
+
+        if err:
+            _tn_cb_release(callback_query, claim_tag)
+            await callback_query.answer(
+                "⚠️ Kỳ này vừa được người khác chốt. Bấm lại để chọn ghi đè."
+                if err == "exists" else err,
+                show_alert=True
+            )
+            return
+
+        LogInfo(
+            f"[TienNga] User {callback_query.from_user.id} chốt hao hụt {prefix} "
+            f"{start_date}–{end_date} ({check.period_type})", LogType.SYSTEM_STATUS
+        )
+        await callback_query.answer("✅ Đã chốt hao hụt.", show_alert=True)
+        await _tn_screen_edit(
+            callback_query,
+            _ckl_saved_text(db, check, prefix),
+            InlineKeyboardMarkup([[InlineKeyboardButton("Đóng", callback_data="ckl:x")]])
+        )
+    except Exception as e:
+        db.rollback()
+        if claim_tag:
+            _tn_cb_release(callback_query, claim_tag)
+        LogError(f"Error in check_losses confirm: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi khi lưu bản chốt.", show_alert=True)
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
+# KIỂM SOÁT HAO HỤT — luồng nút bấm
+# Chọn ngày (Hôm nay / Hôm qua / Ngày bất kỳ) → Chọn Điểm Thu Mua
+# (hoặc Tất cả) → Form chốt số liệu để lưu vào LossControls
+#
+# Mọi callback mang theo {est_date} = ngày dự kiến hoàn thành lô hàng,
+# "0" nghĩa là chưa xác định.
+# ══════════════════════════════════════════════════════════════
+
+CL_CMD_NAME = "/tien_nga_kiem_soat_hao_hut"
+
+
+def _cl_parse_cb_date(date_str: str):
+    """ddmmyyyy → date, None nếu không hợp lệ (hoặc "0")."""
+    from datetime import datetime
+    if not date_str or date_str == "0":
+        return None
+    try:
+        return datetime.strptime(date_str, "%d%m%Y").date()
+    except ValueError:
+        return None
+
+
+def _cl_est_display(est_date_str: str) -> str:
+    """
+    Dòng 'Dự kiến hoàn thành' hiển thị trên mọi màn hình. Luôn hiện, để "—" khi
+    chưa đặt — người dùng phải thấy trường này còn trống trước khi bấm Lưu.
+    """
+    est_date = _cl_parse_cb_date(est_date_str)
+    value = est_date.strftime('%d/%m/%Y') if est_date else "—"
+    return f"\n⏳ Dự kiến hoàn thành: <b>{value}</b>"
+
+
+def _cl_est_button(target_date, est_date_str: str, ctx: str) -> InlineKeyboardButton:
+    """Nút mở màn đặt ngày dự kiến hoàn thành, `ctx` là màn hình sẽ quay về."""
+    date_str = target_date.strftime('%d%m%Y')
+    est_date = _cl_parse_cb_date(est_date_str)
+    label = (
+        f"⏳ Dự kiến hoàn thành: {est_date.strftime('%d/%m/%Y')}"
+        if est_date else "⏳ Đặt ngày dự kiến hoàn thành"
+    )
+    return InlineKeyboardButton(label, callback_data=f"cl:estm:{date_str}:{est_date_str}:{ctx}")
+
+
+def _cl_build_est_view(target_date, est_date_str: str, ctx: str):
+    """
+    Màn đặt ngày dự kiến hoàn thành lô hàng, tính theo số ngày kể từ ngày thu mua.
+    `ctx` giữ nguyên để quay về đúng màn hình vừa mở nó.
+    """
+    from datetime import timedelta
+
+    date_str = target_date.strftime('%d%m%Y')
+
+    buttons = []
+    row = []
+    for offset in (1, 2, 3, 5, 7, 10):
+        est = target_date + timedelta(days=offset)
+        row.append(InlineKeyboardButton(
+            f"{est.strftime('%d/%m')} (+{offset})",
+            callback_data=f"cl:esta:{date_str}:{est.strftime('%d%m%Y')}:{ctx}"
+        ))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+
+    buttons.append([InlineKeyboardButton(
+        "Ngày khác", callback_data=f"cl:estx:{date_str}:{est_date_str}:{ctx}"
+    )])
+    if _cl_parse_cb_date(est_date_str):
+        buttons.append([InlineKeyboardButton(
+            "Xóa ngày dự kiến", callback_data=f"cl:esta:{date_str}:0:{ctx}"
+        )])
+    buttons.append([InlineKeyboardButton(
+        "Quay lại", callback_data=f"cl:esta:{date_str}:{est_date_str}:{ctx}"
+    )])
+
+    text = (
+        f"<b>KIỂM SOÁT HAO HỤT — DỰ KIẾN HOÀN THÀNH</b>\n\n"
+        f"Ngày thu mua: <b>{target_date.strftime('%d/%m/%Y')}</b>{_cl_est_display(est_date_str)}\n\n"
+        f"Chọn ngày dự kiến chế biến xong lô hàng:\n"
+        f"<i>Ngày này dùng để đối chiếu với lượng nhập kho thực tế khi kiểm tra hao hụt.</i>"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _cl_fmt_money(val) -> str:
+    if val is None or val == 0:
+        return "0 VNĐ"
+    return f"{int(val):,} VNĐ".replace(",", ".")
+
+
+def _cl_fmt_num(val) -> str:
+    if val is None:
+        return "0"
+    try:
+        if float(val) == int(val):
+            return f"{int(val):,}".replace(",", ".")
+        return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except (TypeError, ValueError):
+        return str(val)
+
+
+def _cl_totals(purchases):
+    """Cộng dồn các phiếu cân mủ của một lô hàng."""
+    total_wet_rubber = sum(p.actual_weight or 0 for p in purchases)
+    total_dry_rubber = sum(p.dry_rubber or 0 for p in purchases)
+    total_amount = sum(p.total_amount or 0 for p in purchases)
+    return {
+        "wet": total_wet_rubber,
+        "dry": total_dry_rubber,
+        "amount": total_amount,
+        "count": len(purchases),
+        "degree": (total_dry_rubber / total_wet_rubber * 100) if total_wet_rubber > 0 else 0,
+        "price": (total_amount / total_dry_rubber) if total_dry_rubber > 0 else 0,
+    }
+
+
+def _cl_totals_block(t) -> str:
+    """Khối số liệu dùng chung cho các form kiểm soát hao hụt."""
+    return (
+        f"{'━' * 15}\n"
+        f"🔹 <b>Tổng Mủ Nước:</b> {_cl_fmt_num(t['wet'])} Kg\n"
+        f"🔹 <b>Tổng Mủ Khô:</b> {_cl_fmt_num(t['dry'])} Kg\n"
+        f"🔹 <b>Số Độ TB:</b> {_cl_fmt_num(t['degree'])}%\n"
+        f"{'━' * 15}\n"
+        f"<b>Tổng Thành Tiền:</b> <code>{_cl_fmt_money(t['amount'])}</code>\n"
+        f"<b>Đơn Giá TB:</b> <code>{_cl_fmt_money(t['price'])}</code>\n"
+        f"{'━' * 15}\n\n"
+        f"<i>Đơn giá TB = Tổng thành tiền / Tổng mủ khô</i>\n"
+        f"<i>Chọn loại hình để lưu:</i>"
+    )
+
+
+def _cl_bitmask_product_code(selected_cps, target_date) -> str:
+    """
+    Mã hàng cho một lựa chọn điểm thu mua theo bitmask: gộp nhiều điểm → mã ảo
+    TN{yyyymmdd}; đúng 1 điểm có mã viết tắt → {code_prefix}{yyyymmdd} để trùng
+    với mã hàng thật của điểm đó (API báo cáo lọc LossControls theo code_prefix).
+    """
+    day_part = target_date.strftime('%Y%m%d')
+    if len(selected_cps) == 1 and selected_cps[0].code_prefix:
+        return f"{selected_cps[0].code_prefix}{day_part}"
+    return f"TN{day_part}"
+
+
+def _cl_build_day_view(est_date_str: str):
+    """Màn 1: chọn ngày thu mua cần kiểm soát."""
+    buttons = [
+        [InlineKeyboardButton("Hôm nay", callback_data=f"cl:day:today:{est_date_str}"),
+         InlineKeyboardButton("Hôm qua", callback_data=f"cl:day:yest:{est_date_str}")],
+        [InlineKeyboardButton("Ngày bất kỳ", callback_data=f"cl:day:any:{est_date_str}")],
+        [InlineKeyboardButton("Hủy", callback_data="cl:cancel")],
+    ]
+    text = (
+        f"<b>KIỂM SOÁT HAO HỤT</b>{_cl_est_display(est_date_str)}\n\n"
+        f"Vui lòng chọn ngày thu mua cần kiểm soát:"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _cl_build_cp_view(db, target_date, est_date_str: str):
+    """
+    Màn 2: danh sách Điểm Thu Mua có phát sinh thu mua trong ngày, kèm nút Tất cả.
+    Mỗi điểm mở thẳng form theo mã hàng của điểm đó ({code_prefix}{yyyymmdd}),
+    nút Tất cả gộp mọi điểm lại thành mã hàng ảo TN{yyyymmdd}.
+    Trả về (text, markup), hoặc (None, None) nếu ngày đó không có giao dịch nào.
+    """
+    from app.models.business import DailyPurchases, CollectionPoint
+
+    date_str = target_date.strftime('%d%m%Y')
+
+    purchases = db.query(DailyPurchases).filter(DailyPurchases.day == target_date).all()
+    if not purchases:
+        return None, None
+
+    # Thứ tự cps phải khớp với thứ tự dựng bitmask ở các callback cl:cps_*
+    cp_ids = {p.collection_point_id for p in purchases if p.collection_point_id}
+    cps = (
+        db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
+        if cp_ids else []
+    )
+
+    # Mã hàng của từng điểm thu mua trong ngày
+    codes_by_cp = {}
+    orphan_codes = set()
+    for p in purchases:
+        if not p.product_code:
+            continue
+        if p.collection_point_id:
+            codes_by_cp.setdefault(p.collection_point_id, set()).add(p.product_code)
+        else:
+            orphan_codes.add(p.product_code)
+
+    buttons = []
+
+    if cps:
+        full_bitmask = (1 << len(cps)) - 1
+        buttons.append([InlineKeyboardButton(
+            f"Tất cả (TN{target_date.strftime('%Y%m%d')})",
+            callback_data=f"cl:cps_conf:{date_str}:{est_date_str}:{full_bitmask}"
+        )])
+
+    for i, cp in enumerate(cps):
+        codes = sorted(codes_by_cp.get(cp.id, []))
+        if codes:
+            for code in codes:
+                buttons.append([InlineKeyboardButton(
+                    f"{cp.collection_name} ({code})",
+                    callback_data=f"cl:dtl:{code}:{date_str}:{est_date_str}"
+                )])
+        else:
+            # Điểm chưa có mã hàng -> gộp theo điểm thu mua qua bitmask 1 bit
+            buttons.append([InlineKeyboardButton(
+                f"{cp.collection_name}",
+                callback_data=f"cl:cps_conf:{date_str}:{est_date_str}:{1 << i}"
+            )])
+
+    # Mã hàng không gắn điểm thu mua nào
+    for code in sorted(orphan_codes):
+        buttons.append([InlineKeyboardButton(
+            f"{code}",
+            callback_data=f"cl:dtl:{code}:{date_str}:{est_date_str}"
+        )])
+
+    if not buttons:
+        return None, None
+
+    buttons.append([_cl_est_button(target_date, est_date_str, "cp")])
+    buttons.append([
+        InlineKeyboardButton("Quay lại", callback_data=f"cl:days:{est_date_str}"),
+        InlineKeyboardButton("Hủy", callback_data="cl:cancel"),
+    ])
+
+    text = (
+        f"<b>KIỂM SOÁT HAO HỤT</b>\n\n"
+        f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{_cl_est_display(est_date_str)}\n"
+        f"Số giao dịch trong ngày: <b>{len(purchases)}</b>\n\n"
+        f"Vui lòng chọn điểm thu mua cần kiểm soát:"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _cl_build_detail_view(db, product_code: str, target_date, est_date_str: str):
+    """
+    Form kiểm soát hao hụt của một mã hàng (một điểm thu mua trong ngày).
+    Trả về (text, markup) hoặc (None, None) nếu mã hàng không có giao dịch.
+    """
+    from app.models.business import DailyPurchases
+
+    date_str = target_date.strftime('%d%m%Y')
+
+    purchases = db.query(DailyPurchases).filter(
+        DailyPurchases.day == target_date,
+        DailyPurchases.product_code == product_code
+    ).all()
+    if not purchases:
+        return None, None
+
+    t = _cl_totals(purchases)
+
+    buttons = [
+        [_cl_est_button(target_date, est_date_str, f"d|{product_code}")],
+        [InlineKeyboardButton("Lưu — Sản Xuất Mủ Khô", callback_data=f"cl:save:{product_code}:{date_str}:{est_date_str}:dry")],
+        [InlineKeyboardButton("Lưu — Bán Mủ Nước", callback_data=f"cl:save:{product_code}:{date_str}:{est_date_str}:wet")],
+        [InlineKeyboardButton("Quay lại", callback_data=f"cl:back:{date_str}:{est_date_str}")],
+        [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
+    ]
+
+    text = (
+        f"<b>KIỂM SOÁT HAO HỤT</b>\n\n"
+        f"Mã Hàng: <code>{product_code}</code>\n"
+        f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{_cl_est_display(est_date_str)}\n"
+        f"Số giao dịch: <b>{t['count']}</b>\n\n"
+        f"{_cl_totals_block(t)}"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _cl_build_cps_conf_view(db, target_date, est_date_str: str, bitmask: int):
+    """
+    Form kiểm soát hao hụt gộp nhiều điểm thu mua (nút "Tất cả" / chọn nhiều điểm).
+    Trả về (text, markup), hoặc (None, thông_báo_lỗi) nếu lựa chọn không hợp lệ.
+    """
+    from app.models.business import DailyPurchases, CollectionPoint
+
+    date_str = target_date.strftime('%d%m%Y')
+
+    # Thứ tự cps phải khớp với lúc dựng bitmask ở màn danh sách điểm thu mua
+    cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
+        DailyPurchases.day == target_date,
+        DailyPurchases.collection_point_id.isnot(None)
+    ).distinct().all()
+    cp_ids = [r[0] for r in cp_ids_with_purchases]
+    cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
+
+    selected_cps = [cp for i, cp in enumerate(cps) if bitmask & (1 << i)]
+    if not selected_cps:
+        return None, "⚠️ Vui lòng chọn ít nhất một điểm thu mua."
+
+    purchases = db.query(DailyPurchases).filter(
+        DailyPurchases.day == target_date,
+        DailyPurchases.collection_point_id.in_([cp.id for cp in selected_cps])
+    ).all()
+    if not purchases:
+        return None, "⚠️ Không tìm thấy dữ liệu thu mua cho các điểm đã chọn."
+
+    t = _cl_totals(purchases)
+    tn_product_code = _cl_bitmask_product_code(selected_cps, target_date)
+
+    buttons = [
+        [_cl_est_button(target_date, est_date_str, f"c|{bitmask}")],
+        [InlineKeyboardButton("Lưu — Sản Xuất Mủ Khô", callback_data=f"cl:save:{tn_product_code}:{date_str}:{est_date_str}:dry:{bitmask}")],
+        [InlineKeyboardButton("Lưu — Bán Mủ Nước", callback_data=f"cl:save:{tn_product_code}:{date_str}:{est_date_str}:wet:{bitmask}")],
+        [InlineKeyboardButton("Quay lại", callback_data=f"cl:cps_sel:{date_str}:{est_date_str}:{bitmask}")],
+        [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
+    ]
+
+    cp_list_display = "\n".join([f"- {cp.collection_name}" for cp in selected_cps])
+
+    text = (
+        f"<b>KIỂM SOÁT HAO HỤT — TIẾN NGA</b>\n\n"
+        f"Mã Hàng: <code>{tn_product_code}</code>\n"
+        f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{_cl_est_display(est_date_str)}\n"
+        f"Điểm thu mua đã chọn:\n{cp_list_display}\n"
+        f"Số giao dịch: <b>{t['count']}</b>\n\n"
+        f"{_cl_totals_block(t)}"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+async def _cl_show_cp_screen(callback_query, target_date, est_date_str: str) -> None:
+    """Vẽ màn danh sách Điểm Thu Mua của một ngày."""
+    db = SessionLocal()
+    try:
+        text, markup = _cl_build_cp_view(db, target_date, est_date_str)
+        if not text:
+            await callback_query.answer(
+                f"⚠️ Không có dữ liệu thu mua nào trong ngày {target_date.strftime('%d/%m/%Y')}.",
+                show_alert=True
+            )
+            return
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in control_losses collection point screen: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
     finally:
         db.close()
 
@@ -3416,101 +4449,91 @@ async def tien_nga_check_losses_handler(client, message: Message) -> None:
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_control_losses_handler(client, message: Message) -> None:
-    from datetime import datetime, date
-    from app.models.business import DailyPurchases
-    from sqlalchemy import func
+    from datetime import datetime
 
     args = message.text.strip().split()
+    # Dạng "@bot /lệnh ..." thì bỏ token @bot ở đầu
+    if args and args[0].startswith("@"):
+        args = args[1:]
 
-    # [dd/mm/yyyy] = thời gian dự kiến hoàn thành lô hàng (BẮT BUỘC)
-    if len(args) < 2:
-        await message.reply_text(
-            "⚠️ <b>Cú pháp:</b>\n"
-            "<code>/tien_nga_kiem_soat_hao_hut [dd/mm/yyyy]</code>\n\n"
-            "<i>Ngày dự kiến hoàn thành lô hàng cao su.</i>\n"
-            "<i>Ví dụ: <code>/tien_nga_kiem_soat_hao_hut 10/05/2026</code></i>",
-            parse_mode=ParseMode.HTML
-        )
+    # /lệnh [ngày thu mua] [ngày dự kiến hoàn thành] — cả hai đều tùy chọn
+    dates = []
+    for raw in args[1:3]:
+        try:
+            dates.append(datetime.strptime(raw, "%d/%m/%Y").date())
+        except ValueError:
+            await message.reply_text(
+                "⚠️ Định dạng ngày không hợp lệ. Vui lòng nhập <b>dd/mm/yyyy</b>.\n\n"
+                f"<i>Ví dụ: <code>{CL_CMD_NAME} 10/05/2026</code></i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+    est_date_str = dates[1].strftime('%d%m%Y') if len(dates) > 1 else "0"
+
+    # Không truyền ngày -> mở màn chọn ngày bằng nút bấm
+    if not dates:
+        text, markup = _cl_build_day_view("0")
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
         return
 
-    target_date = date.today()
-    try:
-        est_date = datetime.strptime(args[-1], "%d/%m/%Y").date()
-        est_date_str = est_date.strftime('%d%m%Y')
-    except ValueError:
-        await message.reply_text(
-            "⚠️ Định dạng ngày không hợp lệ. Vui lòng nhập <b>dd/mm/yyyy</b>.\n\n"
-            "<i>Ví dụ: <code>/tien_nga_kiem_soat_hao_hut 10/05/2026</code></i>",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
+    target_date = dates[0]
     db = SessionLocal()
     try:
-        # Lấy danh sách mã hàng duy nhất trong ngày hôm nay
-        product_codes = db.query(DailyPurchases.product_code).filter(
-            DailyPurchases.day == target_date,
-            DailyPurchases.product_code.isnot(None),
-            DailyPurchases.product_code != ""
-        ).distinct().all()
-
-        product_codes = [pc[0] for pc in product_codes if pc[0]]
-
-        if not product_codes:
+        text, markup = _cl_build_cp_view(db, target_date, est_date_str)
+        if not text:
             await message.reply_text(
                 f"⚠️ Không có dữ liệu thu mua nào trong ngày <b>{target_date.strftime('%d/%m/%Y')}</b>.",
                 parse_mode=ParseMode.HTML
             )
             return
-
-        from app.models.business import CollectionPoint
-
-        # Lấy danh sách ID các điểm thu mua có giao dịch trong ngày target_date để dựng bitmask
-        cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
-            DailyPurchases.day == target_date,
-            DailyPurchases.collection_point_id.isnot(None)
-        ).distinct().all()
-        cp_ids = [r[0] for r in cp_ids_with_purchases]
-        cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
-
-        # callback: cl:dtl:{product_code}:{purchase_date}:{est_date}
-        date_str = target_date.strftime('%d%m%Y')
-        buttons = []
-
-        # Thêm nút Tiến Nga ảo lên đầu nếu có điểm thu mua
-        if cps:
-            default_bitmask = (1 << len(cps)) - 1
-            tn_product_code = f"TN{target_date.strftime('%Y%m%d')}"
-            buttons.append([InlineKeyboardButton(
-                f"{tn_product_code} (Tiến Nga)",
-                callback_data=f"cl:cps_sel:{date_str}:{est_date_str}:{default_bitmask}"
-            )])
-
-        for pc in sorted(product_codes):
-            buttons.append([InlineKeyboardButton(
-                f"{pc}",
-                callback_data=f"cl:dtl:{pc}:{date_str}:{est_date_str}"
-            )])
-        buttons.append([InlineKeyboardButton("Hủy", callback_data="cl:cancel")])
-
-        est_display = ""
-        if est_date_str != "0":
-            est_display = f"\nDự kiến hoàn thành: <b>{datetime.strptime(est_date_str, '%d%m%Y').strftime('%d/%m/%Y')}</b>"
-
-        keyboard = InlineKeyboardMarkup(buttons)
-        await message.reply_text(
-            f"<b>KIỂM SOÁT HAO HỤT</b>\n\n"
-            f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{est_display}\n"
-            f"Tìm thấy <b>{len(product_codes)}</b> mã hàng.\n\n"
-            f"Vui lòng chọn mã hàng để xem chi tiết:",
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
     except Exception as e:
         LogError(f"Error in control_losses_handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
+
+
+# Callback: Quay lại màn chọn ngày
+@bot.on_callback_query(filters.regex(r"^cl:days:(\d{8}|0)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def control_losses_days_callback(client, callback_query):
+    est_date_str = callback_query.matches[0].group(1)
+    text, markup = _cl_build_day_view(est_date_str)
+    await _tn_screen_edit(callback_query, text, markup)
+
+
+# Callback: Chọn ngày (Hôm nay / Hôm qua / Ngày bất kỳ)
+@bot.on_callback_query(filters.regex(r"^cl:day:(today|yest|any):(\d{8}|0)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def control_losses_day_callback(client, callback_query):
+    from datetime import date, timedelta
+
+    choice = callback_query.matches[0].group(1)
+    est_date_str = callback_query.matches[0].group(2)
+
+    if choice == "any":
+        buttons = [[InlineKeyboardButton("Quay lại", callback_data=f"cl:days:{est_date_str}")]]
+        await _tn_screen_edit(
+            callback_query,
+            f"📝 Vui lòng nhập lệnh kèm ngày thu mua cần kiểm soát:\n\n"
+            f"<code>{CL_CMD_NAME} dd/mm/yyyy</code>\n\n"
+            f"<i>Ví dụ: <code>{CL_CMD_NAME} 05/05/2026</code></i>\n"
+            f"<i>Thêm ngày thứ hai nếu muốn ghi luôn ngày dự kiến hoàn thành:</i>\n"
+            f"<code>{CL_CMD_NAME} 05/05/2026 10/05/2026</code>",
+            InlineKeyboardMarkup(buttons)
+        )
+        return
+
+    target_date = date.today() if choice == "today" else date.today() - timedelta(days=1)
+    await _cl_show_cp_screen(callback_query, target_date, est_date_str)
 
 
 # Callback: Chọn mã hàng → hiển thị thống kê hao hụt
@@ -3521,83 +4544,22 @@ async def tien_nga_control_losses_handler(client, message: Message) -> None:
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_detail_callback(client, callback_query):
-    from datetime import datetime
-    from app.models.business import DailyPurchases
-
     product_code = callback_query.matches[0].group(1)
     date_str = callback_query.matches[0].group(2)
     est_date_str = callback_query.matches[0].group(3)
 
-    try:
-        target_date = datetime.strptime(date_str, "%d%m%Y").date()
-    except ValueError:
+    target_date = _cl_parse_cb_date(date_str)
+    if not target_date:
         await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
         return
 
-    est_display = ""
-    if est_date_str != "0":
-        try:
-            est_display = f"\n⏳ Dự kiến hoàn thành: <b>{datetime.strptime(est_date_str, '%d%m%Y').strftime('%d/%m/%Y')}</b>"
-        except ValueError:
-            pass
-
     db = SessionLocal()
     try:
-        purchases = db.query(DailyPurchases).filter(
-            DailyPurchases.day == target_date,
-            DailyPurchases.product_code == product_code
-        ).all()
-
-        if not purchases:
+        text, markup = _cl_build_detail_view(db, product_code, target_date, est_date_str)
+        if not text:
             await callback_query.answer("⚠️ Không có dữ liệu.", show_alert=True)
             return
-
-        total_wet_rubber = sum(p.actual_weight or 0 for p in purchases)
-        total_dry_rubber = sum(p.dry_rubber or 0 for p in purchases)
-        total_amount = sum(p.total_amount or 0 for p in purchases)
-        total_transactions = len(purchases)
-        avg_degree = (total_dry_rubber / total_wet_rubber * 100) if total_wet_rubber > 0 else 0
-        avg_unit_price = total_amount / total_dry_rubber if total_dry_rubber > 0 else 0
-
-        def fmt_money(val):
-            if val is None or val == 0: return "0 VNĐ"
-            return f"{int(val):,} VNĐ".replace(",", ".")
-
-        def fmt_num(val):
-            if val is None: return "0"
-            try:
-                if float(val) == int(val):
-                    return f"{int(val):,}".replace(",", ".")
-                return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            except:
-                return str(val)
-
-        buttons = [
-            [InlineKeyboardButton("Lưu — Sản Xuất Mủ Khô", callback_data=f"cl:save:{product_code}:{date_str}:{est_date_str}:dry")],
-            [InlineKeyboardButton("Lưu — Bán Mủ Nước", callback_data=f"cl:save:{product_code}:{date_str}:{est_date_str}:wet")],
-            [InlineKeyboardButton("Quay lại", callback_data=f"cl:back:{date_str}:{est_date_str}")],
-            [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
-        ]
-        keyboard = InlineKeyboardMarkup(buttons)
-
-        await callback_query.message.edit_text(
-            f"<b>KIỂM SOÁT HAO HỤT</b>\n\n"
-            f"Mã Hàng: <code>{product_code}</code>\n"
-            f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{est_display}\n"
-            f"Số giao dịch: <b>{total_transactions}</b>\n\n"
-            f"{'━' * 15}\n"
-            f"🔹 <b>Tổng Mủ Nước:</b> {fmt_num(total_wet_rubber)} Kg\n"
-            f"🔹 <b>Tổng Mủ Khô:</b> {fmt_num(total_dry_rubber)} Kg\n"
-            f"🔹 <b>Số Độ TB:</b> {fmt_num(avg_degree)}%\n"
-            f"{'━' * 15}\n"
-            f"<b>Tổng Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
-            f"<b>Đơn Giá TB:</b> <code>{fmt_money(avg_unit_price)}</code>\n"
-            f"{'━' * 15}\n\n"
-            f"<i>Đơn giá TB = Tổng thành tiền / Tổng mủ khô</i>\n"
-            f"<i>Chọn loại hình để lưu:</i>",
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
+        await _tn_screen_edit(callback_query, text, markup)
     except Exception as e:
         LogError(f"Error in control_losses_detail: {e}", LogType.SYSTEM_STATUS)
         await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
@@ -3612,25 +4574,18 @@ async def control_losses_detail_callback(client, callback_query):
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_cps_select_callback(client, callback_query):
-    from datetime import datetime
     from app.models.business import DailyPurchases, CollectionPoint
 
     date_str = callback_query.matches[0].group(1)
     est_date_str = callback_query.matches[0].group(2)
     bitmask = int(callback_query.matches[0].group(3))
 
-    try:
-        target_date = datetime.strptime(date_str, "%d%m%Y").date()
-    except ValueError:
+    target_date = _cl_parse_cb_date(date_str)
+    if not target_date:
         await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
         return
 
-    est_display = ""
-    if est_date_str != "0":
-        try:
-            est_display = f"\nDự kiến hoàn thành: <b>{datetime.strptime(est_date_str, '%d%m%Y').strftime('%d/%m/%Y')}</b>"
-        except ValueError:
-            pass
+    est_display = _cl_est_display(est_date_str)
 
     db = SessionLocal()
     try:
@@ -3683,9 +4638,6 @@ async def control_losses_cps_select_callback(client, callback_query):
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_cps_confirm_callback(client, callback_query):
-    from datetime import datetime
-    from app.models.business import DailyPurchases, CollectionPoint
-
     date_str = callback_query.matches[0].group(1)
     est_date_str = callback_query.matches[0].group(2)
     bitmask = int(callback_query.matches[0].group(3))
@@ -3694,100 +4646,18 @@ async def control_losses_cps_confirm_callback(client, callback_query):
         await callback_query.answer("⚠️ Vui lòng chọn ít nhất một điểm thu mua.", show_alert=True)
         return
 
-    try:
-        target_date = datetime.strptime(date_str, "%d%m%Y").date()
-    except ValueError:
+    target_date = _cl_parse_cb_date(date_str)
+    if not target_date:
         await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
         return
 
-    est_display = ""
-    if est_date_str != "0":
-        try:
-            est_display = f"\n⏳ Dự kiến hoàn thành: <b>{datetime.strptime(est_date_str, '%d%m%Y').strftime('%d/%m/%Y')}</b>"
-        except ValueError:
-            pass
-
     db = SessionLocal()
     try:
-        # Lấy danh sách ID các điểm thu mua có giao dịch trong ngày target_date
-        cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
-            DailyPurchases.day == target_date,
-            DailyPurchases.collection_point_id.isnot(None)
-        ).distinct().all()
-        cp_ids = [r[0] for r in cp_ids_with_purchases]
-        cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
-
-        selected_cp_ids = []
-        selected_names = []
-        for i, cp in enumerate(cps):
-            if bitmask & (1 << i):
-                selected_cp_ids.append(cp.id)
-                selected_names.append(cp.collection_name)
-
-        if not selected_cp_ids:
-            await callback_query.answer("⚠️ Vui lòng chọn ít nhất một điểm thu mua.", show_alert=True)
+        text, markup_or_err = _cl_build_cps_conf_view(db, target_date, est_date_str, bitmask)
+        if not text:
+            await callback_query.answer(markup_or_err, show_alert=True)
             return
-
-        purchases = db.query(DailyPurchases).filter(
-            DailyPurchases.day == target_date,
-            DailyPurchases.collection_point_id.in_(selected_cp_ids)
-        ).all()
-
-        if not purchases:
-            await callback_query.answer("⚠️ Không tìm thấy dữ liệu thu mua cho các điểm đã chọn.", show_alert=True)
-            return
-
-        total_wet_rubber = sum(p.actual_weight or 0 for p in purchases)
-        total_dry_rubber = sum(p.dry_rubber or 0 for p in purchases)
-        total_amount = sum(p.total_amount or 0 for p in purchases)
-        total_transactions = len(purchases)
-        avg_degree = (total_dry_rubber / total_wet_rubber * 100) if total_wet_rubber > 0 else 0
-        avg_unit_price = total_amount / total_dry_rubber if total_dry_rubber > 0 else 0
-
-        def fmt_money(val):
-            if val is None or val == 0: return "0 VNĐ"
-            return f"{int(val):,} VNĐ".replace(",", ".")
-
-        def fmt_num(val):
-            if val is None: return "0"
-            try:
-                if float(val) == int(val):
-                    return f"{int(val):,}".replace(",", ".")
-                return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            except:
-                return str(val)
-
-        tn_product_code = f"TN{target_date.strftime('%Y%m%d')}"
-
-        buttons = [
-            [InlineKeyboardButton("Lưu — Sản Xuất Mủ Khô", callback_data=f"cl:save:{tn_product_code}:{date_str}:{est_date_str}:dry:{bitmask}")],
-            [InlineKeyboardButton("Lưu — Bán Mủ Nước", callback_data=f"cl:save:{tn_product_code}:{date_str}:{est_date_str}:wet:{bitmask}")],
-            [InlineKeyboardButton("Quay lại", callback_data=f"cl:cps_sel:{date_str}:{est_date_str}:{bitmask}")],
-            [InlineKeyboardButton("Đóng", callback_data="cl:cancel")]
-        ]
-        keyboard = InlineKeyboardMarkup(buttons)
-
-        cp_list_display = "\n".join([f"- {name}" for name in selected_names])
-
-        await callback_query.message.edit_text(
-            f"<b>KIỂM SOÁT HAO HỤT — TIẾN NGA</b>\n\n"
-            f"Mã Hàng: <code>{tn_product_code}</code>\n"
-            f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{est_display}\n"
-            f"Điểm thu mua đã chọn:\n{cp_list_display}\n"
-            f"Số giao dịch: <b>{total_transactions}</b>\n\n"
-            f"{'━' * 15}\n"
-            f"🔹 <b>Tổng Mủ Nước:</b> {fmt_num(total_wet_rubber)} Kg\n"
-            f"🔹 <b>Tổng Mủ Khô:</b> {fmt_num(total_dry_rubber)} Kg\n"
-            f"🔹 <b>Số Độ TB:</b> {fmt_num(avg_degree)}%\n"
-            f"{'━' * 15}\n"
-            f"<b>Tổng Thành Tiền:</b> <code>{fmt_money(total_amount)}</code>\n"
-            f"<b>Đơn Giá TB:</b> <code>{fmt_money(avg_unit_price)}</code>\n"
-            f"{'━' * 15}\n\n"
-            f"<i>Đơn giá TB = Tổng thành tiền / Tổng mủ khô</i>\n"
-            f"<i>Chọn loại hình để lưu:</i>",
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
+        await _tn_screen_edit(callback_query, text, markup_or_err)
     except Exception as e:
         LogError(f"Error in control_losses_cps_confirm: {e}", LogType.SYSTEM_STATUS)
         await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
@@ -3795,83 +4665,126 @@ async def control_losses_cps_confirm_callback(client, callback_query):
         db.close()
 
 
-# Callback: Quay lại danh sách mã hàng
+# ── Đặt ngày dự kiến hoàn thành ───────────────────────────────
+# ctx = màn hình gọi tới, để quay về đúng chỗ:
+#   cp            → danh sách điểm thu mua
+#   d|{mã hàng}   → form của một mã hàng
+#   c|{bitmask}   → form gộp nhiều điểm thu mua
+CL_EST_CTX_RE = r"(cp|d\|[^:]+|c\|\d+)"
+
+
+async def _cl_render_ctx(callback_query, target_date, est_date_str: str, ctx: str) -> None:
+    """Vẽ lại màn hình đã mở bộ chọn ngày, với ngày dự kiến vừa cập nhật."""
+    if ctx == "cp":
+        await _cl_show_cp_screen(callback_query, target_date, est_date_str)
+        return
+
+    kind, _, value = ctx.partition("|")
+    db = SessionLocal()
+    try:
+        if kind == "d":
+            text, markup_or_err = _cl_build_detail_view(db, value, target_date, est_date_str)
+            markup_or_err = markup_or_err or "⚠️ Không có dữ liệu."
+        else:
+            text, markup_or_err = _cl_build_cps_conf_view(db, target_date, est_date_str, int(value))
+        if not text:
+            await callback_query.answer(markup_or_err, show_alert=True)
+            return
+        await _tn_screen_edit(callback_query, text, markup_or_err)
+    except Exception as e:
+        LogError(f"Error in control_losses est render: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+# Callback: Mở màn đặt ngày dự kiến hoàn thành
+@bot.on_callback_query(filters.regex(rf"^cl:estm:(\d{{8}}):(\d{{8}}|0):{CL_EST_CTX_RE}$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def control_losses_est_menu_callback(client, callback_query):
+    date_str = callback_query.matches[0].group(1)
+    est_date_str = callback_query.matches[0].group(2)
+    ctx = callback_query.matches[0].group(3)
+
+    target_date = _cl_parse_cb_date(date_str)
+    if not target_date:
+        await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
+        return
+
+    text, markup = _cl_build_est_view(target_date, est_date_str, ctx)
+    await _tn_screen_edit(callback_query, text, markup)
+
+
+# Callback: Chọn xong ngày dự kiến → quay về màn hình trước đó
+@bot.on_callback_query(filters.regex(rf"^cl:esta:(\d{{8}}):(\d{{8}}|0):{CL_EST_CTX_RE}$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def control_losses_est_apply_callback(client, callback_query):
+    date_str = callback_query.matches[0].group(1)
+    est_date_str = callback_query.matches[0].group(2)
+    ctx = callback_query.matches[0].group(3)
+
+    target_date = _cl_parse_cb_date(date_str)
+    if not target_date:
+        await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
+        return
+
+    await _cl_render_ctx(callback_query, target_date, est_date_str, ctx)
+
+
+# Callback: Nhập ngày dự kiến khác (ngoài các mốc gợi ý)
+@bot.on_callback_query(filters.regex(rf"^cl:estx:(\d{{8}}):(\d{{8}}|0):{CL_EST_CTX_RE}$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
+async def control_losses_est_custom_callback(client, callback_query):
+    from datetime import timedelta
+
+    date_str = callback_query.matches[0].group(1)
+    est_date_str = callback_query.matches[0].group(2)
+    ctx = callback_query.matches[0].group(3)
+
+    target_date = _cl_parse_cb_date(date_str)
+    if not target_date:
+        await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
+        return
+
+    day_display = target_date.strftime('%d/%m/%Y')
+    sample_est = (target_date + timedelta(days=4)).strftime('%d/%m/%Y')
+    buttons = [[InlineKeyboardButton(
+        "Quay lại", callback_data=f"cl:estm:{date_str}:{est_date_str}:{ctx}"
+    )]]
+    await _tn_screen_edit(
+        callback_query,
+        f"📝 Nhập lại lệnh kèm <b>ngày thu mua</b> và <b>ngày dự kiến hoàn thành</b>:\n\n"
+        f"<code>{CL_CMD_NAME} {day_display} dd/mm/yyyy</code>\n\n"
+        f"<i>Ví dụ: <code>{CL_CMD_NAME} {day_display} {sample_est}</code></i>",
+        InlineKeyboardMarkup(buttons)
+    )
+
+
+# Callback: Quay lại danh sách Điểm Thu Mua của ngày đang chọn
 @bot.on_callback_query(filters.regex(r"^cl:back:(\d{8}):(\d{8}|0)$"))
 @require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def control_losses_back_callback(client, callback_query):
-    from datetime import datetime
-    from app.models.business import DailyPurchases, CollectionPoint
-
     date_str = callback_query.matches[0].group(1)
     est_date_str = callback_query.matches[0].group(2)
 
-    try:
-        target_date = datetime.strptime(date_str, "%d%m%Y").date()
-    except ValueError:
+    target_date = _cl_parse_cb_date(date_str)
+    if not target_date:
         await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
         return
 
-    est_display = ""
-    if est_date_str != "0":
-        try:
-            est_display = f"\nDự kiến hoàn thành: <b>{datetime.strptime(est_date_str, '%d%m%Y').strftime('%d/%m/%Y')}</b>"
-        except ValueError:
-            pass
-
-    db = SessionLocal()
-    try:
-        product_codes = db.query(DailyPurchases.product_code).filter(
-            DailyPurchases.day == target_date,
-            DailyPurchases.product_code.isnot(None),
-            DailyPurchases.product_code != ""
-        ).distinct().all()
-
-        product_codes = [pc[0] for pc in product_codes if pc[0]]
-
-        if not product_codes:
-            await callback_query.answer("⚠️ Không có dữ liệu.", show_alert=True)
-            return
-
-        cp_ids_with_purchases = db.query(DailyPurchases.collection_point_id).filter(
-            DailyPurchases.day == target_date,
-            DailyPurchases.collection_point_id.isnot(None)
-        ).distinct().all()
-        cp_ids = [r[0] for r in cp_ids_with_purchases]
-        cps = db.query(CollectionPoint).filter(CollectionPoint.id.in_(cp_ids)).order_by(CollectionPoint.id).all()
-
-        buttons = []
-        if cps:
-            default_bitmask = (1 << len(cps)) - 1
-            tn_product_code = f"TN{target_date.strftime('%Y%m%d')}"
-            buttons.append([InlineKeyboardButton(
-                f"{tn_product_code} (Tiến Nga)",
-                callback_data=f"cl:cps_sel:{date_str}:{est_date_str}:{default_bitmask}"
-            )])
-
-        for pc in sorted(product_codes):
-            buttons.append([InlineKeyboardButton(
-                f"{pc}",
-                callback_data=f"cl:dtl:{pc}:{date_str}:{est_date_str}"
-            )])
-        buttons.append([InlineKeyboardButton("Hủy", callback_data="cl:cancel")])
-
-        keyboard = InlineKeyboardMarkup(buttons)
-        await callback_query.message.edit_text(
-            f"<b>KIỂM SOÁT HAO HỤT</b>\n\n"
-            f"Ngày: <b>{target_date.strftime('%d/%m/%Y')}</b>{est_display}\n"
-            f"Tìm thấy <b>{len(product_codes)}</b> mã hàng.\n\n"
-            f"Vui lòng chọn mã hàng để xem chi tiết:",
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        LogError(f"Error in control_losses_back: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
-    finally:
-        db.close()
+    await _cl_show_cp_screen(callback_query, target_date, est_date_str)
 
 # Callback: Lưu kiểm soát hao hụt vào DB
 @bot.on_callback_query(filters.regex(r"^cl:save:([^:]+):(\d{8}):(\d{8}|0):(dry|wet)(?::(\d+))?$"))
@@ -8651,100 +9564,6 @@ async def tien_nga_export_summary_callback(client, callback_query: CallbackQuery
 
 # ===================== ĐỐI TÁC =====================
 
-# Helper functions for Partner Keyboard
-def _build_tn_dt_main_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Xem danh sách đối tác", callback_data="tn_dt_list|0")],
-        [InlineKeyboardButton("Tạo đối tác mới", callback_data="tn_dt_form")],
-        [InlineKeyboardButton("Hủy", callback_data="tn_dt_cancel")]
-    ])
-
-def _build_tn_dt_list_keyboard(total_items: int, page: int):
-    PAGE_SIZE = 10
-    total_pages = max(1, (total_items + PAGE_SIZE - 1) // PAGE_SIZE)
-    page = max(0, min(page, total_pages - 1))
-    
-    buttons = []
-    nav_row = []
-    if page > 0:
-        nav_row.append(InlineKeyboardButton("<< Trước", callback_data=f"tn_dt_list|{page - 1}"))
-    nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="tn_dt_noop"))
-    if page < total_pages - 1:
-        nav_row.append(InlineKeyboardButton("Sau >>", callback_data=f"tn_dt_list|{page + 1}"))
-        
-    buttons.append(nav_row)
-    buttons.append([
-        InlineKeyboardButton("Trở lại", callback_data="tn_dt_menu"),
-        InlineKeyboardButton("Hủy", callback_data="tn_dt_cancel")
-    ])
-    return InlineKeyboardMarkup(buttons)
-
-@bot.on_callback_query(filters.regex(r"^tn_dt_noop$"))
-async def tn_dt_noop_callback(client, callback_query: CallbackQuery):
-    await callback_query.answer()
-
-@bot.on_callback_query(filters.regex(r"^tn_dt_cancel$"))
-async def tn_dt_cancel_callback(client, callback_query: CallbackQuery):
-    await callback_query.message.delete()
-
-@bot.on_callback_query(filters.regex(r"^tn_dt_menu$"))
-async def tn_dt_menu_callback(client, callback_query: CallbackQuery):
-    menu_text = "<b>QUẢN LÝ ĐỐI TÁC TIẾN NGA</b>\n\nVui lòng chọn thao tác:"
-    await callback_query.message.edit_text(menu_text, reply_markup=_build_tn_dt_main_keyboard(), parse_mode=ParseMode.HTML)
-
-@bot.on_callback_query(filters.regex(r"^tn_dt_form$"))
-async def tn_dt_form_callback(client, callback_query: CallbackQuery):
-    form_template = (
-        "<b>FORM TẠO ĐỐI TÁC</b>\n\n"
-        "Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
-        "<pre>/tien_nga_create_partner\n"
-        "Mã Đối Tác: \n"
-        "Tên Đối Tác: \n"
-        "Công Nợ: 0\n"
-        "Username TG: \n"
-        "Nhóm Telegram: \n"
-        "Ngân Hàng: \n"
-        "Số TK: </pre>\n\n"
-        "<i>Ghi chú: Mã đối tác nên viết liền không dấu (VD: DT001).</i>"
-    )
-    cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("Hủy", callback_data="tn_dt_cancel")]])
-    await callback_query.message.edit_text(form_template, parse_mode=ParseMode.HTML, reply_markup=cancel_kb)
-
-@bot.on_callback_query(filters.regex(r"^tn_dt_list\|(\d+)$"))
-async def tn_dt_list_callback(client, callback_query: CallbackQuery):
-    page = int(callback_query.matches[0].group(1))
-    db = SessionLocal()
-    try:
-        from app.models.business import Partners
-        partners = db.query(Partners).filter(Partners.status == "ACTIVE").order_by(Partners.partner_id).all()
-        
-        if not partners:
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Trở lại", callback_data="tn_dt_menu"), InlineKeyboardButton("Hủy", callback_data="tn_dt_cancel")]
-            ])
-            await callback_query.message.edit_text("<b>DANH SÁCH ĐỐI TÁC</b>\n\n<i>ℹ️ Chưa có đối tác nào trong hệ thống.</i>", parse_mode=ParseMode.HTML, reply_markup=kb)
-            return
-
-        total = len(partners)
-        PAGE_SIZE = 10
-        total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
-        page = max(0, min(page, total_pages - 1))
-        
-        start = page * PAGE_SIZE
-        page_partners = partners[start:start + PAGE_SIZE]
-
-        lines = [f"<b>DANH SÁCH ĐỐI TÁC</b> (Tổng: <b>{total}</b> đối tác)\n"]
-        for idx, p in enumerate(page_partners, start=start + 1):
-            lines.append(f"{idx}. <b>{p.partner_id}</b> - {p.partner_name or 'N/A'}")
-
-        text = "\n".join(lines)
-        await callback_query.message.edit_text(text, reply_markup=_build_tn_dt_list_keyboard(total, page), parse_mode=ParseMode.HTML)
-    except Exception as e:
-        LogError(f"Error in tn_dt_list_callback: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra khi lấy danh sách.", show_alert=True)
-    finally:
-        db.close()
-
 
 @bot.on_message(filters.command(["tien_nga_create_partner", "tien_nga_tao_doi_tac"]) | filters.regex(r"^@\w+\s+/tien_nga_create_partner|/tien_nga_tao_doi_tac\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -8756,8 +9575,9 @@ async def tien_nga_create_partner_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
 
     if len(lines) < 2:
-        menu_text = "<b>QUẢN LÝ ĐỐI TÁC TIẾN NGA</b>\n\nVui lòng chọn thao tác:"
-        await message.reply_text(menu_text, reply_markup=_build_tn_dt_main_keyboard(), parse_mode=ParseMode.HTML)
+        from bot.handlers.partner_menu import open_flow
+
+        await open_flow(message, "tnp")
         return
 
     data = {}
@@ -8853,11 +9673,9 @@ async def tien_nga_update_partner_handler(client, message: Message) -> None:
     if len(lines) < 2:
         args = lines[0].split()
         if len(args) < 2:
-            await message.reply_text(
-                "⚠️ Cú pháp: <code>/tien_nga_update_partner [Mã Đối Tác]</code>\n\n"
-                "<i>Ví dụ: <code>/tien_nga_update_partner DT001</code></i>",
-                parse_mode=ParseMode.HTML
-            )
+            from bot.handlers.partner_menu import open_flow
+
+            await open_flow(message, "tnu")
             return
 
         partner_id = args[1].upper()
@@ -8875,25 +9693,11 @@ async def tien_nga_update_partner_handler(client, message: Message) -> None:
                 )
                 return
 
-            def fmt_debt(val):
-                if val is None or val == 0:
-                    return "0"
-                return f"{int(val):,}".replace(",", ".")
+            from bot.utils import partner_picker as pp
 
-            form_template = (
-                f"<b>FORM CẬP NHẬT ĐỐI TÁC</b>\n"
-                f"Vui lòng sao chép form dưới đây, sửa thông tin và gửi lại:\n\n"
-                f"<pre>/tien_nga_update_partner\n"
-                f"Mã Đối Tác: {partner.partner_id}\n"
-                f"Tên Đối Tác: {partner.partner_name or ''}\n"
-                f"Công Nợ: {fmt_debt(partner.total_debt)}\n"
-                f"Username TG: {partner.username or ''}\n"
-                f"Nhóm Telegram: {partner.telegram_group or ''}\n"
-                f"Ngân Hàng: {partner.bank_name or ''}\n"
-                f"Số TK: {partner.bank_account or ''}\n"
-                f"Trạng Thái: {partner.status or 'ACTIVE'}</pre>"
+            form_msg = await message.reply_text(
+                pp.build_partner_update_form(partner), parse_mode=ParseMode.HTML
             )
-            form_msg = await message.reply_text(form_template, parse_mode=ParseMode.HTML)
             form_tracker.track(message.chat.id, "tien_nga_update_partner", partner_id, form_msg.id)
         except Exception as e:
             import traceback as tb
@@ -8993,54 +9797,74 @@ async def tien_nga_update_partner_handler(client, message: Message) -> None:
 async def tien_nga_delete_partner_handler(client, message: Message) -> None:
     args = message.text.split()
     if len(args) < 2:
-        await message.reply_text(
-            "⚠️ Cú pháp: <code>/tien_nga_delete_partner [Mã Đối Tác]</code>\n\n"
-            "<i>Ví dụ: <code>/tien_nga_delete_partner DT001</code></i>",
-            parse_mode=ParseMode.HTML
-        )
+        from bot.handlers.partner_menu import open_flow
+
+        await open_flow(message, "tnd")
         return
 
-    partner_id = args[1].upper()
+    await execute_delete_partner(client, message, args[1].upper(), user_id=message.from_user.id)
 
+
+async def execute_delete_partner(client, reply_to, partner_id: str, user_id=None) -> None:
+    """
+    Xóa mềm một đối tác. Dùng chung cho lệnh gõ tay và nút "Xác nhận xóa".
+
+    reply_to là bất cứ thứ gì có .reply_text — Message của lệnh, hoặc
+    callback_query.message khi đi từ nút bấm.
+    """
     from app.db.session import SessionLocal
     from app.models.business import Partners
 
+    # Chốt kết quả trước, trả connection về pool, RỒI mới gọi Telegram: mỗi lời
+    # gọi API mất cả trăm mili-giây, ôm connection qua đó là cách nhanh nhất làm
+    # cạn pool khi nhiều người bấm cùng lúc.
     db = SessionLocal()
     try:
         partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
         if not partner:
-            await message.reply_text(
-                f"⚠️ Không tìm thấy Đối tác với mã <b>{partner_id}</b>.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        if partner.status in ("DELETED", "INACTIVE"):
-            await message.reply_text(
-                f"ℹ️ Đối tác <b>{partner_id}</b> đã ở trạng thái khóa / xóa từ trước.",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        partner.status = "DELETED"
-        db.commit()
-
-        LogInfo(f"[TienNga] Soft deleted partner '{partner_id}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
-
-        await message.reply_text(
-            f"✅ <b>XÓA ĐỐI TÁC THÀNH CÔNG</b>\n\n"
-            f"<b>Mã Đối Tác:</b> <code>{partner_id}</code>\n"
-            f"<b>Tên Đối Tác:</b> {partner.partner_name}\n"
-            f"<i>Đối tác này đã được ẩn (chuyển sang trạng thái DELETED).</i>",
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
+            outcome, partner_name = "missing", None
+        elif partner.status in ("DELETED", "INACTIVE"):
+            outcome, partner_name = "already", partner.partner_name
+        else:
+            partner_name = partner.partner_name
+            partner.status = "DELETED"
+            db.commit()
+            outcome = "deleted"
+    except Exception:
         import traceback as tb
         LogError(f"Error soft deleting partner: {tb.format_exc()}", LogType.SYSTEM_STATUS)
         db.rollback()
-        await message.reply_text("❌ Có lỗi xảy ra khi xóa đối tác.", parse_mode=ParseMode.HTML)
+        outcome, partner_name = "error", None
     finally:
         db.close()
+
+    if outcome == "missing":
+        await reply_to.reply_text(
+            f"⚠️ Không tìm thấy Đối tác với mã <b>{partner_id}</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    if outcome == "already":
+        await reply_to.reply_text(
+            f"ℹ️ Đối tác <b>{partner_id}</b> đã ở trạng thái khóa / xóa từ trước.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    if outcome == "error":
+        await reply_to.reply_text("❌ Có lỗi xảy ra khi xóa đối tác.", parse_mode=ParseMode.HTML)
+        return
+
+    LogInfo(f"[TienNga] Soft deleted partner '{partner_id}' by user {user_id}", LogType.SYSTEM_STATUS)
+    await reply_to.reply_text(
+        f"✅ <b>XÓA ĐỐI TÁC THÀNH CÔNG</b>\n\n"
+        f"<b>Mã Đối Tác:</b> <code>{partner_id}</code>\n"
+        f"<b>Tên Đối Tác:</b> {partner_name}\n"
+        f"<i>Đối tác này đã được ẩn (chuyển sang trạng thái DELETED).</i>",
+        parse_mode=ParseMode.HTML
+    )
+
 
 @bot.on_message(filters.command(["tien_nga_list_partner", "tien_nga_ds_doi_tac"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_partner|tien_nga_ds_doi_tac)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
@@ -9049,6 +9873,16 @@ async def tien_nga_delete_partner_handler(client, message: Message) -> None:
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_partner_handler(client, message: Message) -> None:
+    from bot.handlers.partner_menu import open_flow
+
+    await open_flow(message, "tnv")
+
+
+async def execute_export_partner_excel(client, reply_to) -> None:
+    """
+    Xuất danh sách đối tác ra Excel. Gọi từ nút "Xuất Excel danh sách" của luồng
+    tnv; trước đây là nhánh ">10 đối tác" nằm trong chính handler lệnh.
+    """
     from app.db.session import SessionLocal
     from app.models.business import Partners
 
@@ -9057,36 +9891,13 @@ async def tien_nga_list_partner_handler(client, message: Message) -> None:
         partners = db.query(Partners).filter(Partners.status == "ACTIVE").order_by(Partners.partner_id).all()
 
         if not partners:
-            await message.reply_text(
+            db.close()
+            await reply_to.reply_text(
                 "⚠️ <b>Không có đối tác nào trong hệ thống.</b>",
                 parse_mode=ParseMode.HTML
             )
             return
 
-        def fmt_money(val):
-            if val is None or val == 0:
-                return "0 VNĐ"
-            return f"{int(val):,} VNĐ".replace(",", ".")
-
-        # ── ≤ 10: hiển thị text ──
-        if len(partners) <= 10:
-            text = f"<b>DANH SÁCH ĐỐI TÁC ({len(partners)})</b>\n\n"
-            for idx, p in enumerate(partners, 1):
-                debt_val = p.total_debt or 0
-                text += (
-                    f"<b>{idx}. {p.partner_name}</b>\n"
-                    f"   Mã ĐT: <code>{p.partner_id}</code>\n"
-                    f"   Công Nợ: <code>{fmt_money(debt_val)}</code>\n"
-                    f"   Username TG: {p.username or '—'}\n"
-                    f"   Nhóm Telegram: {p.telegram_group or '—'}\n"
-                    f"   Ngân Hàng: {p.bank_name or '—'}\n"
-                    f"   Số TK: <code>{p.bank_account or '—'}</code>\n"
-                    f"   Trạng Thái: {p.status}\n\n"
-                )
-            await message.reply_text(text, parse_mode=ParseMode.HTML)
-            return
-
-        # ── > 10: xuất Excel ──
         import openpyxl
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         import tempfile, os
@@ -9159,103 +9970,158 @@ async def tien_nga_list_partner_handler(client, message: Message) -> None:
         db.close()
 
         now_str = datetime.now().strftime("%Y%m%d_%H%M")
-        await message.reply_document(
-            document=tmp_path,
-            file_name=f"danh_sach_doi_tac_{now_str}.xlsx",
-            caption=(
-                f"<b>DANH SÁCH ĐỐI TÁC</b>\n\n"
-                f"Tổng cộng: <b>{len(partners)}</b> đối tác\n"
-                f"<i>Xuất lúc: {datetime.now().strftime('%H:%M %d/%m/%Y')}</i>"
-            ),
-            parse_mode=ParseMode.HTML,
-        )
+        try:
+            await reply_to.reply_document(
+                document=tmp_path,
+                file_name=f"danh_sach_doi_tac_{now_str}.xlsx",
+                caption=(
+                    f"<b>DANH SÁCH ĐỐI TÁC</b>\n\n"
+                    f"Tổng cộng: <b>{len(partners)}</b> đối tác\n"
+                    f"<i>Xuất lúc: {datetime.now().strftime('%H:%M %d/%m/%Y')}</i>"
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+        finally:
+            # Xóa file tạm kể cả khi upload hỏng, đừng để rác lại trong temp.
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
-        os.remove(tmp_path)
-        LogInfo(
-            f"[TienNga] Listed {len(partners)} partners by @{message.from_user.username or message.from_user.id}",
-            LogType.SYSTEM_STATUS
-        )
+        LogInfo(f"[TienNga] Exported {len(partners)} partners to Excel", LogType.SYSTEM_STATUS)
 
     except Exception as e:
         import traceback as tb
         LogError(f"Error listing partners: {tb.format_exc()}", LogType.SYSTEM_STATUS)
-        await message.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
+        await reply_to.reply_text(f"❌ Có lỗi xảy ra: {e}", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
 @bot.on_message(filters.command(["tien_nga_check_transaction", "tien_nga_kiem_tra_giao_dich"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_transaction|tien_nga_kiem_tra_giao_dich)\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
+@require_group_role(
+    "main",
+    hint="Nhóm của bạn vui lòng dùng: <code>/tien_nga_kiem_tra_tt_giao_dich</code>",
+)
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_transaction_handler(client, message: Message) -> None:
+    """
+    Lệnh của quản trị viên: chọn đối tác từ danh sách hoặc gõ thẳng mã.
+    Nhóm member dùng /tien_nga_kiem_tra_tt_giao_dich — nhóm đó chỉ được xem đối
+    tác của chính mình nên không có danh sách để chọn.
+    """
     import re
-    text = message.text
-    dates = re.findall(r'(\d{1,2}/\d{1,2}/\d{4})', text)
-    
-    start_date = "ALL"
-    end_date = "ALL"
+
+    start_date, end_date, dates = parse_txn_date_range(message.text)
+    text_no_dates = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', '', message.text).replace('-', '')
+    args = await check_command_target(
+        client, text_no_dates, ["tien_nga_check_transaction", "tien_nga_kiem_tra_giao_dich"]
+    )
+    if args is None:
+        return
+
+    if len(args) < 2:
+        # Nút bấm không mang được khoảng ngày (danh sách dùng chung với các
+        # luồng khác), nên gõ ngày mà quên mã thì báo rõ thay vì lẳng lặng bỏ
+        # khoảng ngày rồi mở danh sách "tất cả thời gian".
+        if dates:
+            await message.reply_text(
+                "⚠️ Lọc theo ngày cần kèm mã đối tác:\n"
+                "<code>/tien_nga_kiem_tra_giao_dich DT001 01/01/2026 31/01/2026</code>\n\n"
+                "<i>Hoặc gõ lệnh không kèm gì để chọn đối tác bằng nút bấm "
+                "(khi đó tra toàn bộ thời gian).</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        from bot.handlers.partner_menu import open_flow
+
+        await open_flow(message, "tnk")
+        return
+
+    await execute_check_transaction_menu(
+        client, message, args[1].upper(), start_date, end_date, dates
+    )
+
+
+def parse_txn_date_range(text: str):
+    """
+    Rút khoảng ngày dd/mm/yyyy khỏi text lệnh.
+
+    Trả (start, end, dates): start/end ở dạng ddmmyyyy để nhét vào callback_data,
+    "ALL" khi không có ngày nào; dates là danh sách chuỗi gốc để in ra cho người đọc.
+    """
+    import re
+
+    dates = re.findall(r'(\d{1,2}/\d{1,2}/\d{4})', text or "")
     if len(dates) >= 2:
-        start_date = dates[0].replace('/', '')
-        end_date = dates[1].replace('/', '')
-    elif len(dates) == 1:
-        start_date = dates[0].replace('/', '')
-        end_date = dates[0].replace('/', '')
-        
-    text_no_dates = re.sub(r'\d{1,2}/\d{1,2}/\d{4}', '', text).replace('-', '')
-    args = text_no_dates.split()
-    partner_id = None
-    
+        return dates[0].replace('/', ''), dates[1].replace('/', ''), dates
+    if len(dates) == 1:
+        one = dates[0].replace('/', '')
+        return one, one, dates
+    return "ALL", "ALL", dates
+
+
+async def execute_check_transaction_menu(
+    client, reply_to, partner_id: str, start_date="ALL", end_date="ALL", dates=None,
+    hint_command="/tien_nga_kiem_tra_giao_dich",
+) -> None:
+    """
+    Màn chọn loại giao dịch (Nhập / Xuất) của một đối tác — cửa vào của chuỗi
+    callback check_partner_txn:*. Dùng chung cho lệnh main, lệnh member và nút bấm.
+
+    hint_command: tên lệnh in trong dòng gợi ý lọc theo ngày. Nhóm member phải
+    truyền /tien_nga_kiem_tra_tt_giao_dich, vì lệnh main đã bị chặn ở nhóm đó.
+    """
     from app.db.session import SessionLocal
     from app.models.business import Partners
-    from app.models.telegram import TelegramProjectMember
-    
+
+    dates = dates or []
+
     db = SessionLocal()
     try:
-        if len(args) > 1:
-            partner_id = args[1].upper()
-        else:
-            chat_id = str(message.chat.id)
-            group_member = db.query(TelegramProjectMember).filter(
-                TelegramProjectMember.chat_id == chat_id
-            ).first()
-            if group_member and group_member.role == "member" and group_member.group_name:
-                partner = db.query(Partners).filter(Partners.telegram_group == group_member.group_name).first()
-                if partner:
-                    partner_id = partner.partner_id
-        
-        if not partner_id:
-            await message.reply_text("⚠️ Không xác định được mã đối tác. Vui lòng truyền mã: <code>/tien_nga_kiem_tra_giao_dich [Mã đối tác]</code>", parse_mode=ParseMode.HTML)
-            return
-            
         partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
-        if not partner:
-            await message.reply_text(f"⚠️ Không tìm thấy đối tác với mã <b>{partner_id}</b>.", parse_mode=ParseMode.HTML)
-            return
-            
-        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Nhập", callback_data=f"check_partner_txn:import:{partner_id}:{start_date}:{end_date}")],
-            [InlineKeyboardButton("Xuất", callback_data=f"check_partner_txn:export:{partner_id}:{start_date}:{end_date}")],
-            [InlineKeyboardButton("Hủy", callback_data="check_partner_txn:cancel")]
-        ])
-        
-        date_info = f" (Từ {dates[0]} đến {dates[1]})" if len(dates) >= 2 else (f" (Ngày {dates[0]})" if len(dates) == 1 else "")
-        
-        await message.reply_text(
-            f"<b>KIỂM TRA GIAO DỊCH ĐỐI TÁC</b>\n\n"
-            f"Đối tác: <b>{partner.partner_name}</b> (<code>{partner_id}</code>)\n"
-            f"Thời gian: <b>{date_info.strip(' ()') or 'Tất cả'}</b>\n"
-            f"<code>/tien_nga_kiem_tra_giao_dich [dd/mm/yyyy] [dd/mm/yyyy]</code>\n\n"
-            f"Vui lòng chọn loại giao dịch bạn muốn kiểm tra:",
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
+        partner_name = partner.partner_name if partner else None
+        failed = False
+    except Exception:
         import traceback as tb
-        LogError(f"Error in tien_nga_check_transaction_handler: {tb.format_exc()}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        LogError(f"Error in execute_check_transaction_menu: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        partner_name, failed = None, True
     finally:
         db.close()
+
+    if failed:
+        await reply_to.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        return
+    if partner_name is None:
+        await reply_to.reply_text(
+            f"⚠️ Không tìm thấy đối tác với mã <b>{partner_id}</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Nhập", callback_data=f"check_partner_txn:import:{partner_id}:{start_date}:{end_date}")],
+        [InlineKeyboardButton("Xuất", callback_data=f"check_partner_txn:export:{partner_id}:{start_date}:{end_date}")],
+        [InlineKeyboardButton("Hủy", callback_data="check_partner_txn:cancel")]
+    ])
+
+    if len(dates) >= 2:
+        period = f"Từ {dates[0]} đến {dates[1]}"
+    elif len(dates) == 1:
+        period = f"Ngày {dates[0]}"
+    else:
+        period = "Tất cả"
+
+    await reply_to.reply_text(
+        f"<b>KIỂM TRA GIAO DỊCH ĐỐI TÁC</b>\n\n"
+        f"Đối tác: <b>{partner_name}</b> (<code>{partner_id}</code>)\n"
+        f"Thời gian: <b>{period}</b>\n"
+        f"<i>Lọc theo ngày: <code>{hint_command} {partner_id} 01/01/2026 31/01/2026</code></i>\n\n"
+        f"Vui lòng chọn loại giao dịch bạn muốn kiểm tra:",
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML
+    )
 
 @bot.on_callback_query(filters.regex(r"^check_partner_txn:"))
 async def check_partner_txn_callback(client, callback_query) -> None:
@@ -9449,98 +10315,172 @@ async def check_partner_txn_callback(client, callback_query) -> None:
         db.close()
 
 @bot.on_message(filters.command(["tien_nga_check_debt", "tien_nga_kiem_tra_cong_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_debt|tien_nga_kiem_tra_cong_no)\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
+@require_group_role(
+    "main",
+    hint="Nhóm của bạn vui lòng dùng: <code>/tien_nga_kiem_tra_tt_cong_no</code>",
+)
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_PARTNER)
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_debt_handler(client, message: Message) -> None:
-    args = message.text.split()
-    target_id = None
-    
+    """
+    Lệnh của quản trị viên: chọn loại đối tượng rồi chọn từ danh sách, hoặc gõ
+    thẳng mã. Nhóm member dùng /tien_nga_kiem_tra_tt_cong_no.
+    """
+    args = await check_command_target(
+        client, message.text, ["tien_nga_check_debt", "tien_nga_kiem_tra_cong_no"]
+    )
+    if args is None:
+        return
+
+    if len(args) > 1:
+        await execute_show_debt(client, message, args[1].upper(), chat_id=message.chat.id)
+        return
+
+    from bot.handlers.partner_menu import open_debt_menu
+
+    await open_debt_menu(message, "tnc")
+
+
+async def execute_show_debt(client, reply_to, code: str, kind: str | None = None, chat_id=None) -> None:
+    """
+    Hiển thị công nợ của một đối tượng, cho cả 4 loại DT / KH / NV / HD.
+
+    kind=None nghĩa là suy loại từ mã (đường gõ tay); nút bấm luôn truyền kind
+    tường minh. Trước đây hàm này phân loại bằng target_id.startswith("DT"/"KH"
+    /"NV") — khảo sát DB thật cho thấy chỉ "DT" khớp, còn "KH" khớp 0/557 và
+    "NV" khớp 0/7, tức lệnh chỉ tra được đối tác. Nay tra bảng nên đúng cả 4.
+
+    chat_id dùng để chặn nhân sự của dự án khác (bảng Employee dùng chung).
+    """
     from app.db.session import SessionLocal
-    from app.models.telegram import TelegramProjectMember
-    from app.models.business import Partners, Customers
-    from app.models.employee import Employee
-    
+    from bot.utils import partner_picker as pp
+
     db = SessionLocal()
     try:
-        if len(args) > 1:
-            target_id = args[1].upper()
+        if kind:
+            entity = pp.fetch_entity(db, kind, code)
         else:
-            chat_id = str(message.chat.id)
-            group_member = db.query(TelegramProjectMember).filter(
-                TelegramProjectMember.chat_id == chat_id
-            ).first()
-            
-            if group_member and group_member.role == "member" and group_member.group_name:
-                group_name = group_member.group_name
-                # Check Partner
-                partner = db.query(Partners).filter(Partners.telegram_group == group_name).first()
-                if partner:
-                    target_id = partner.partner_id
-                else:
-                    # Check Customer
-                    customer = db.query(Customers).filter(Customers.telegram_group == group_name).first()
-                    if customer:
-                        target_id = customer.hoursehold_id
-                    else:
-                        # Check Employee
-                        employee = db.query(Employee).filter(Employee.telegram_group == group_name).first()
-                        if employee:
-                            target_id = employee.id
-                            
-        if not target_id:
-            await message.reply_text("⚠️ Không xác định được mã đối tượng. Vui lòng truyền tham số: <code>/tien_nga_kiem_tra_cong_no [Mã DT/KH/NV]</code>", parse_mode=ParseMode.HTML)
-            return
-            
-        def fmt_money(val):
-            if val is None or val == 0: return "0 VNĐ"
-            return f"{int(val):,} VNĐ".replace(",", ".")
-            
-        if target_id.startswith("DT"):
-            partner = db.query(Partners).filter(Partners.partner_id == target_id).first()
-            if partner:
-                await message.reply_text(
-                    f"<b>THÔNG TIN CÔNG NỢ ĐỐI TÁC</b>\n\n"
-                    f"<b>Mã ĐT:</b> <code>{partner.partner_id}</code>\n"
-                    f"<b>Tên ĐT:</b> {partner.partner_name}\n"
-                    f"<b>Công Nợ:</b> <code>{fmt_money(partner.total_debt)}</code>\n"
-                    f"<b>Trạng Thái:</b> {partner.status}",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-        elif target_id.startswith("KH"):
-            customer = db.query(Customers).filter(Customers.hoursehold_id == target_id).first()
-            if customer:
-                await message.reply_text(
-                    f"<b>THÔNG TIN CÔNG NỢ KHÁCH HÀNG</b>\n\n"
-                    f"<b>Mã KH:</b> <code>{customer.hoursehold_id}</code>\n"
-                    f"<b>Tên KH:</b> {customer.fullname}\n"
-                    f"<b>Công Nợ:</b> <code>{fmt_money(customer.total_debt)}</code>\n"
-                    f"<b>Trạng Thái:</b> {customer.status}",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-        elif target_id.startswith("NV"):
-            employee = db.query(Employee).filter(Employee.id == target_id).first()
-            if employee:
-                await message.reply_text(
-                    f"<b>THÔNG TIN CÔNG NỢ NHÂN VIÊN</b>\n\n"
-                    f"<b>Mã NV:</b> <code>{employee.id}</code>\n"
-                    f"<b>Tên NV:</b> {employee.last_name} {employee.first_name}\n"
-                    f"<b>Công Nợ:</b> <code>{fmt_money(employee.total_debt)}</code>\n"
-                    f"<b>Trạng Thái:</b> {employee.status}",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-                
-        await message.reply_text(f"⚠️ Không tìm thấy thông tin công nợ cho mã <b>{target_id}</b>.", parse_mode=ParseMode.HTML)
-        
-    except Exception as e:
+            entity = pp.find_entity_any_kind(db, code, chat_id=chat_id)
+        failed = False
+    except Exception:
         import traceback as tb
-        LogError(f"Error in tien_nga_check_debt_handler: {tb.format_exc()}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        LogError(f"Error in execute_show_debt: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        entity, failed = None, True
     finally:
         db.close()
+
+    if failed:
+        await reply_to.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        return
+
+    if not entity:
+        await reply_to.reply_text(
+            f"⚠️ Không tìm thấy thông tin công nợ cho mã <b>{code}</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    await reply_to.reply_text(pp.build_debt_text(entity), parse_mode=ParseMode.HTML)
+
+
+# =========================================================================================
+# LỆNH TRA CỨU CHO NHÓM MEMBER
+#
+# Tách khỏi /tien_nga_kiem_tra_giao_dich và /tien_nga_kiem_tra_cong_no (nay là
+# main-only). Nhóm member chỉ được xem đối tượng gắn với chính nhóm mình, nên ở
+# đây KHÔNG có danh sách để chọn — có danh sách là đối tác A đọc được công nợ
+# của đối tác B.
+# =========================================================================================
+
+@bot.on_message(filters.command(["tien_nga_member_check_transaction", "tien_nga_kiem_tra_tt_giao_dich"]) | filters.regex(r"^@\w+\s+/(tien_nga_member_check_transaction|tien_nga_kiem_tra_tt_giao_dich)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("member")
+@command_timeout(auto_delete_cmd=True)
+async def tien_nga_member_check_transaction_handler(client, message: Message) -> None:
+    """Đối tác tự kiểm tra giao dịch của nhóm mình."""
+    from app.db.session import SessionLocal
+    from app.models.business import Partners
+    from app.models.telegram import TelegramProjectMember
+
+    start_date, end_date, dates = parse_txn_date_range(message.text)
+
+    db = SessionLocal()
+    try:
+        group_member = db.query(TelegramProjectMember).filter(
+            TelegramProjectMember.chat_id == str(message.chat.id)
+        ).first()
+        partner_id = None
+        if group_member and group_member.group_name:
+            partner = db.query(Partners).filter(
+                Partners.telegram_group == group_member.group_name
+            ).first()
+            if partner:
+                partner_id = partner.partner_id
+    finally:
+        db.close()
+
+    if not partner_id:
+        await message.reply_text(
+            "ℹ️ Nhóm này chưa được gắn với đối tác nào.\n"
+            "<i>Vui lòng liên hệ quản trị viên để cập nhật Nhóm Telegram của đối tác.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    await execute_check_transaction_menu(
+        client, message, partner_id, start_date, end_date, dates,
+        hint_command="/tien_nga_kiem_tra_tt_giao_dich",
+    )
+
+
+@bot.on_message(filters.command(["tien_nga_member_check_debt", "tien_nga_kiem_tra_tt_cong_no"]) | filters.regex(r"^@\w+\s+/(tien_nga_member_check_debt|tien_nga_kiem_tra_tt_cong_no)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN, UserType.MEMBER)
+@require_project_name("Tiến Nga")
+@require_group_role("member")
+@command_timeout(auto_delete_cmd=True)
+async def tien_nga_member_check_debt_handler(client, message: Message) -> None:
+    """
+    Nhóm member tự tra công nợ của chính mình — dùng được cho cả nhóm đối tác,
+    khách hàng, nhân viên và hộ dân.
+
+    telegram_group không có ràng buộc unique nên một nhóm vẫn có thể khớp nhiều
+    đối tượng; khi đó hiện bàn phím chọn thay vì lẳng lặng lấy cái đầu tiên như
+    nhánh if-else cũ.
+    """
+    from app.db.session import SessionLocal
+    from bot.utils import partner_picker as pp
+
+    db = SessionLocal()
+    try:
+        owned = pp.resolve_group_entities(db, message.chat.id)
+    finally:
+        db.close()
+
+    if not owned:
+        await message.reply_text(
+            "ℹ️ Nhóm này chưa được gắn với đối tượng công nợ nào.\n"
+            "<i>Vui lòng liên hệ quản trị viên để cập nhật Nhóm Telegram.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    if len(owned) == 1:
+        await execute_show_debt(
+            client, message, owned[0].code, kind=owned[0].kind, chat_id=message.chat.id
+        )
+        return
+
+    from bot.handlers.partner_menu import build_member_pick_keyboard
+
+    await message.reply_text(
+        "<b>KIỂM TRA CÔNG NỢ</b>\n\nNhóm này đang gắn với nhiều đối tượng, vui lòng chọn:",
+        reply_markup=build_member_pick_keyboard(owned),
+        parse_mode=ParseMode.HTML
+    )
+
 
 # =========================================================================================
 # YÊU CẦU THANH TOÁN CÔNG NỢ (MEMBER ĐỐI TÁC)
@@ -9776,6 +10716,59 @@ async def partner_pay_callback(client, callback_query) -> None:
     finally:
         db.close()
 
+async def execute_partner_transaction_menu(client, reply_to, partner_id: str) -> None:
+    """
+    Màn chọn Loại Giao Dịch (Nhập / Xuất) — cửa vào của chuỗi callback tn_ptxn_*.
+    Dùng chung cho lệnh gõ tay và nút "Thực hiện giao dịch".
+    """
+    from app.models.business import Partners
+    from bot.utils import partner_picker as pp
+
+    db = SessionLocal()
+    try:
+        partner = db.query(Partners).filter(
+            Partners.partner_id == partner_id,
+            Partners.status == "ACTIVE"
+        ).first()
+        partner_name = partner.partner_name if partner else None
+        debt_display = pp.fmt_debt(partner.total_debt) if partner else None
+        failed = False
+    except Exception:
+        import traceback as tb
+        LogError(f"Error fetching partner for transaction: {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        partner_name, debt_display, failed = None, None, True
+    finally:
+        db.close()
+
+    if failed:
+        await reply_to.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        return
+    if partner_name is None:
+        await reply_to.reply_text(
+            f"⚠️ Không tìm thấy Đối tác với mã <b>{partner_id}</b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    buttons = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Nhập", callback_data=f"tn_ptxn_{partner_id}_Nhập"),
+            InlineKeyboardButton("Xuất", callback_data=f"tn_ptxn_{partner_id}_Xuất"),
+        ],
+        [InlineKeyboardButton("Hủy", callback_data="tn_ptxn_cancel")]
+    ])
+
+    await reply_to.reply_text(
+        f"<b>GIAO DỊCH ĐỐI TÁC</b>\n\n"
+        f"<b>Mã Đối Tác:</b> <code>{partner_id}</code>\n"
+        f"<b>Tên Đối Tác:</b> {partner_name}\n"
+        f"<b>Công Nợ:</b> {debt_display}\n\n"
+        f"Vui lòng chọn Loại Giao Dịch:",
+        reply_markup=buttons,
+        parse_mode=ParseMode.HTML
+    )
+
+
 @bot.on_message(filters.command(["tien_nga_partner_transaction", "tien_nga_giao_dich_doi_tac"]) | filters.regex(r"^@\w+\s+/tien_nga_partner_transaction|/tien_nga_giao_dich_doi_tac\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -9789,65 +10782,12 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
     if len(lines) < 2:
         args = lines[0].split()
         if len(args) < 2:
-            await message.reply_text(
-                "⚠️ Cú pháp: <code>/tien_nga_partner_transaction [Mã Đối Tác]</code>\n\n"
-                "<i>Ví dụ: <code>/tien_nga_partner_transaction DT001</code></i>",
-                parse_mode=ParseMode.HTML
-            )
+            from bot.handlers.partner_menu import open_flow
+
+            await open_flow(message, "tng")
             return
 
-        partner_id = args[1].upper()
-
-        from app.models.business import Partners
-
-        db = SessionLocal()
-        try:
-            partner = db.query(Partners).filter(
-                Partners.partner_id == partner_id,
-                Partners.status == "ACTIVE"
-            ).first()
-            if not partner:
-                await message.reply_text(
-                    f"⚠️ Không tìm thấy Đối tác với mã <b>{partner_id}</b>.",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-
-            def fmt_money(val):
-                return f"{int(val):,} VNĐ".replace(",", ".")
-
-            debt_val = partner.total_debt or 0
-            debt_str = fmt_money(abs(debt_val))
-            if debt_val > 0:
-                debt_display = f"{debt_str} (nợ)"
-            elif debt_val < 0:
-                debt_display = f"{debt_str} (dư)"
-            else:
-                debt_display = "0 đ"
-
-            buttons = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("Nhập", callback_data=f"tn_ptxn_{partner_id}_Nhập"),
-                    InlineKeyboardButton("Xuất", callback_data=f"tn_ptxn_{partner_id}_Xuất"),
-                ],
-                [InlineKeyboardButton("Hủy", callback_data="tn_ptxn_cancel")]
-            ])
-
-            await message.reply_text(
-                f"<b>GIAO DỊCH ĐỐI TÁC</b>\n\n"
-                f"<b>Mã Đối Tác:</b> <code>{partner_id}</code>\n"
-                f"<b>Tên Đối Tác:</b> {partner.partner_name}\n"
-                f"<b>Công Nợ:</b> {debt_display}\n\n"
-                f"Vui lòng chọn Loại Giao Dịch:",
-                reply_markup=buttons,
-                parse_mode=ParseMode.HTML
-            )
-        except Exception as e:
-            import traceback as tb
-            LogError(f"Error fetching partner for transaction: {tb.format_exc()}", LogType.SYSTEM_STATUS)
-            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
-        finally:
-            db.close()
+        await execute_partner_transaction_menu(client, message, args[1].upper())
         return
 
     # ── Step 3: Parse form data (nhiều dòng) → lưu giao dịch ──
@@ -11312,12 +12252,24 @@ async def tien_nga_chart_custom_callback(client, callback_query: CallbackQuery):
 @require_group_role("main")
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
-    args = message.text.split()
+    args = await check_command_target(
+        client, message.text, ["tien_nga_payment_of_debt", "tien_nga_thanh_toan_cong_no"]
+    )
+    if args is None:
+        return
+
+    # Chưa có mã: mở luồng nút bấm để chọn loại rồi chọn đối tượng.
+    if len(args) < 2:
+        from bot.handlers.partner_menu import open_debt_menu
+
+        await open_debt_menu(message, "tnt")
+        return
+
     if len(args) < 3:
         await message.reply_text(
             "⚠️ Cú pháp: <code>/tien_nga_thanh_toan_cong_no [Mã] [Số Tiền]</code>\n\n"
             "<i>(Ví dụ: <code>/tien_nga_thanh_toan_cong_no DT001 500000</code>)</i>\n"
-            "<i>Hỗ trợ: Đối tác (DT), Khách hàng (KH), Nhân sự (NV), Hộ Dân (HD).</i>",
+            "<i>Hoặc gõ lệnh không kèm tham số để chọn bằng nút bấm.</i>",
             parse_mode=ParseMode.HTML
         )
         return
@@ -11335,42 +12287,20 @@ async def tien_nga_payment_of_debt_handler(client, message: Message) -> None:
         await message.reply_text("⚠️ <b>Số Tiền</b> phải lớn hơn 0.", parse_mode=ParseMode.HTML)
         return
 
-    from app.models.business import Customers, Partners, Households
-    from app.models.employee import Employee
+    from bot.utils import partner_picker as pp
+
+    # Tra bảng thay vì suy loại từ tiền tố mã. Nhánh cũ dùng startswith("HD")
+    # nên bỏ sót 12/13 hộ dân (mã thật là HCM_*), và startswith("DT") là tiền tố
+    # duy nhất còn khớp dữ liệu thật.
+    _KIND_TO_TARGET_TYPE = {"dt": "partner", "kh": "customer", "nv": "employee", "hd": "household"}
 
     db = SessionLocal()
     try:
-        target_type = None
-        name = ""
-        old_debt = 0
+        entity = pp.find_entity_any_kind(db, target_id, chat_id=message.chat.id)
 
-        if target_id.startswith("DT"):
-            partner = db.query(Partners).filter(Partners.partner_id == target_id).first()
-            if partner:
-                target_type = "partner"
-                old_debt = partner.total_debt or 0
-                name = partner.partner_name or partner.partner_id
-
-        if not target_type and target_id.startswith("HD"):
-            household = db.query(Households).filter(Households.household_code == target_id, Households.status == "ACTIVE").first()
-            if household:
-                target_type = "household"
-                old_debt = household.total_debt or 0
-                name = household.fullname or household.household_code
-
-        if not target_type:
-            customer = db.query(Customers).filter(Customers.hoursehold_id == target_id).first()
-            if customer:
-                target_type = "customer"
-                old_debt = customer.total_debt or 0
-                name = customer.fullname or customer.hoursehold_id
-
-        if not target_type:
-            employee = db.query(Employee).filter(Employee.id == target_id).first()
-            if employee:
-                target_type = "employee"
-                old_debt = employee.total_debt or 0
-                name = f"{employee.last_name or ''} {employee.first_name or ''}".strip() or employee.id
+        target_type = _KIND_TO_TARGET_TYPE.get(entity.kind) if entity else None
+        name = entity.name if entity else ""
+        old_debt = entity.debt if entity else 0
 
         if not target_type:
             await message.reply_text(
@@ -24268,14 +25198,259 @@ async def tien_nga_thong_ke_cong_no_handler(client, message: Message) -> None:
         db.close()
 
 
-# --- Thống Kê Hao Hụt ---
+# ══════════════════════════════════════════════════════════════
+# THỐNG KÊ HAO HỤT — xem các bản chốt đã xác nhận (loss_checks)
+# Chọn loại kỳ (Ngày/Tuần/Tháng/Giai đoạn) → danh sách bản chốt → chi tiết
+# ══════════════════════════════════════════════════════════════
+
+TKH_CMD_NAME = "/tien_nga_thong_ke_hao_hut"
+TKH_PAGE_SIZE = 8
+
+
+def _tkh_build_type_view():
+    """Màn 1: chọn loại kỳ muốn xem."""
+    buttons = [
+        [InlineKeyboardButton("Ngày", callback_data="tkh:t:d"),
+         InlineKeyboardButton("Tuần", callback_data="tkh:t:w")],
+        [InlineKeyboardButton("Tháng", callback_data="tkh:t:m"),
+         InlineKeyboardButton("Giai đoạn", callback_data="tkh:t:c")],
+        [InlineKeyboardButton("Hủy", callback_data="tkh:x")],
+    ]
+    text = (
+        f"<b>THỐNG KÊ HAO HỤT</b>\n\n"
+        f"Xem lại các kỳ đã xác nhận hao hụt qua {CKL_CMD_NAME}.\n\n"
+        f"Vui lòng chọn loại kỳ:"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _tkh_build_list_view(db, period_code: str, page: int):
+    """Màn 2: danh sách bản chốt của một loại kỳ, mới nhất trước."""
+    from app.models.business import LossChecks
+
+    period_type = CKL_PERIOD_TYPE.get(period_code, "custom")
+    checks = db.query(LossChecks).filter(
+        LossChecks.period_type == period_type
+    ).order_by(LossChecks.start_date.desc(), LossChecks.code_prefix).all()
+
+    if not checks:
+        return None, (f"⚠️ Chưa có bản chốt nào loại "
+                      f"“{CKL_PERIOD_LABEL.get(period_code, period_type)}”.")
+
+    total_pages = max(1, (len(checks) + TKH_PAGE_SIZE - 1) // TKH_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = checks[page * TKH_PAGE_SIZE:(page + 1) * TKH_PAGE_SIZE]
+
+    buttons = []
+    for c in chunk:
+        flag = "🔴" if (c.loss_percentage or 0) >= 10 else ("🟡" if (c.loss_percentage or 0) > 0 else "🟢")
+        buttons.append([InlineKeyboardButton(
+            f"{flag} {_ckl_timeframe(c.start_date, c.end_date)} · "
+            f"{c.code_prefix} · {fmt_num(c.loss_percentage)}%",
+            callback_data=f"tkh:v:{c.id}"
+        )])
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀ Trước", callback_data=f"tkh:l:{period_code}:{page - 1}"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("Sau ▶", callback_data=f"tkh:l:{period_code}:{page + 1}"))
+    if nav:
+        buttons.append(nav)
+
+    buttons.append([
+        InlineKeyboardButton("Quay lại", callback_data="tkh:tv"),
+        InlineKeyboardButton("Hủy", callback_data="tkh:x"),
+    ])
+
+    text = (
+        f"<b>THỐNG KÊ HAO HỤT — {CKL_PERIOD_LABEL.get(period_code, '').upper()}</b>\n\n"
+        f"Tìm thấy <b>{len(checks)}</b> bản chốt — trang <b>{page + 1}/{total_pages}</b>\n\n"
+        f"Chọn một kỳ để xem chi tiết:"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _tkh_build_check_view(db, check_id: str):
+    """Màn 3: số liệu của một bản chốt, đúng như lúc xác nhận."""
+    from app.models.business import LossChecks
+
+    check = db.query(LossChecks).filter(LossChecks.id == check_id).first()
+    if not check:
+        return None, "⚠️ Không tìm thấy bản chốt (có thể đã bị xóa)."
+
+    period_code = CKL_TYPE_CODE.get(check.period_type, "c")
+    warn = (
+        f"\n⚠️ <i>{check.missing_est_count} lô chưa đặt ngày dự kiến hoàn thành "
+        f"nên không nằm trong số liệu này.</i>\n"
+    ) if check.missing_est_count else ""
+
+    buttons = [
+        [InlineKeyboardButton("Chi tiết từng lô", callback_data=f"tkh:i:{check.id}:0")],
+        [InlineKeyboardButton("Quay lại", callback_data=f"tkh:l:{period_code}:0")],
+        [InlineKeyboardButton("Hủy", callback_data="tkh:x")],
+    ]
+
+    text = (
+        f"<b>BẢN CHỐT HAO HỤT — {(check.collection_name or check.code_prefix or '').upper()}</b>\n\n"
+        f"Loại kỳ: <b>{CKL_PERIOD_LABEL.get(period_code, check.period_type)}</b>\n"
+        f"Chu kỳ: <b>{_ckl_timeframe(check.start_date, check.end_date)}</b>\n"
+        f"Số lô: <b>{check.lot_count}</b>\n"
+        f"{'━' * 15}\n"
+        f"🔸 <b>Mủ khô tạm tính:</b> {fmt_num(check.total_dry_rubber)} Kg\n"
+        f"🔸 <b>Nhập kho thực tế:</b> {fmt_num(check.total_import_qty)} Kg\n"
+        f"🔸 <b>Tổng thành tiền:</b> <code>{fmt_money(check.total_amount)}</code>\n"
+        f"🔸 <b>Giá mua TB kỳ:</b> <code>{fmt_money(check.avg_unit_price)}</code>/Kg\n"
+        f"{'━' * 15}\n"
+        f"🔻 <b>Chênh lệch:</b> {fmt_num(check.loss_qty)} Kg\n"
+        f"🔻 <b>Tỷ lệ hao hụt:</b> {fmt_num(check.loss_percentage)}%\n"
+        f"🔻 <b>Giá TB phần hao hụt:</b> <code>{fmt_money(check.loss_price)}</code>/Kg\n"
+        f"🔻 <b>Tiền hao hụt:</b> <code>{fmt_money(check.loss_amount)}</code>\n"
+        f"{'━' * 15}\n"
+        f"{warn}"
+        f"<i>Chốt lúc {check.created_at.strftime('%d/%m/%Y %H:%M') if check.created_at else '—'}"
+        f"{f' bởi {check.created_by}' if check.created_by else ''}.</i>\n"
+        f"<i>Số liệu giữ nguyên tại thời điểm chốt, không đổi theo dữ liệu sau này.</i>"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def _tkh_build_items_view(db, check_id: str, page: int):
+    """Màn 4: chi tiết từng lô đã lưu kèm bản chốt."""
+    from app.models.business import LossChecks, LossCheckItems
+
+    check = db.query(LossChecks).filter(LossChecks.id == check_id).first()
+    if not check:
+        return None, "⚠️ Không tìm thấy bản chốt (có thể đã bị xóa)."
+
+    items = db.query(LossCheckItems).filter(
+        LossCheckItems.loss_check_id == check.id
+    ).order_by(LossCheckItems.loss_percentage.desc()).all()
+
+    if not items:
+        return None, "⚠️ Bản chốt này không có chi tiết lô."
+
+    total_pages = max(1, (len(items) + TKH_PAGE_SIZE - 1) // TKH_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = items[page * TKH_PAGE_SIZE:(page + 1) * TKH_PAGE_SIZE]
+
+    lines = []
+    for idx, it in enumerate(chunk, start=page * TKH_PAGE_SIZE + 1):
+        est_label = it.estimated_completion.strftime('%d/%m') if it.estimated_completion else "—"
+        pct = it.loss_percentage or 0
+        flag = "🔴" if pct >= 10 else ("🟡" if pct > 0 else "🟢")
+        lines.append(
+            f"{idx}. <code>{it.product_code}</code> — dự kiến {est_label}\n"
+            f"    Ước: {fmt_num(it.total_dry_rubber)} Kg · Nhập: {fmt_num(it.import_qty)} Kg "
+            f"· Giá: {fmt_num(it.unit_price)}\n"
+            f"    {flag} Hao hụt: {fmt_num(pct)}% · <code>{fmt_money(it.loss_amount)}</code>"
+        )
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀ Trước", callback_data=f"tkh:i:{check.id}:{page - 1}"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("Sau ▶", callback_data=f"tkh:i:{check.id}:{page + 1}"))
+
+    buttons = ([nav] if nav else []) + [
+        [InlineKeyboardButton("Tổng hợp", callback_data=f"tkh:v:{check.id}")],
+        [InlineKeyboardButton("Hủy", callback_data="tkh:x")],
+    ]
+
+    text = (
+        f"<b>CHI TIẾT BẢN CHỐT — {(check.collection_name or check.code_prefix or '').upper()}</b>\n\n"
+        f"Chu kỳ: <b>{_ckl_timeframe(check.start_date, check.end_date)}</b>\n"
+        f"Trang <b>{page + 1}/{total_pages}</b> — sắp theo % hao hụt giảm dần\n"
+        f"{'━' * 15}\n" + "\n".join(lines)
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+async def _tkh_screen(callback_query, builder, *args) -> None:
+    """Vẽ một màn của luồng thống kê; builder trả (None, thông_báo) khi không có dữ liệu."""
+    db = SessionLocal()
+    try:
+        text, markup_or_err = builder(db, *args)
+        if not text:
+            await callback_query.answer(markup_or_err, show_alert=True)
+            return
+        await _tn_screen_edit(callback_query, text, markup_or_err)
+    except Exception as e:
+        LogError(f"Error in loss statistics screen: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
 @bot.on_message(filters.command(["tien_nga_loss_statistics", "tien_nga_thong_ke_hao_hut"]) | filters.regex(r"^@\w+\s+/(tien_nga_loss_statistics|tien_nga_thong_ke_hao_hut)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
 @require_group_role("main")
 @command_timeout(auto_delete_cmd=True)
+async def tien_nga_loss_checks_handler(client, message: Message) -> None:
+    """Xem các bản chốt hao hụt đã xác nhận, phân theo loại kỳ."""
+    text, markup = _tkh_build_type_view()
+    await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+
+
+@bot.on_callback_query(filters.regex(r"^tkh:x$"))
+async def tkh_cancel_callback(client, callback_query):
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tkh:tv$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tkh_type_view_callback(client, callback_query):
+    text, markup = _tkh_build_type_view()
+    await _tn_screen_edit(callback_query, text, markup)
+
+
+@bot.on_callback_query(filters.regex(r"^tkh:t:([dwmc])$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tkh_type_callback(client, callback_query):
+    await _tkh_screen(callback_query, _tkh_build_list_view, callback_query.matches[0].group(1), 0)
+
+
+@bot.on_callback_query(filters.regex(r"^tkh:l:([dwmc]):(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tkh_list_callback(client, callback_query):
+    await _tkh_screen(callback_query, _tkh_build_list_view,
+                      callback_query.matches[0].group(1), int(callback_query.matches[0].group(2)))
+
+
+@bot.on_callback_query(filters.regex(r"^tkh:v:([0-9a-fA-F-]{36})$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tkh_check_callback(client, callback_query):
+    await _tkh_screen(callback_query, _tkh_build_check_view, callback_query.matches[0].group(1))
+
+
+@bot.on_callback_query(filters.regex(r"^tkh:i:([0-9a-fA-F-]{36}):(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+async def tkh_items_callback(client, callback_query):
+    await _tkh_screen(callback_query, _tkh_build_items_view,
+                      callback_query.matches[0].group(1), int(callback_query.matches[0].group(2)))
+
+
+# --- Xuất Excel Hao Hụt ---
+# Trước đây là /tien_nga_thong_ke_hao_hut; tên đó nay dành cho việc xem các bản chốt
+# hao hụt (loss_checks), còn phần xuất file Excel 4 tab tách sang lệnh riêng này.
+@bot.on_message(filters.command(["tien_nga_export_loss_excel", "tien_nga_xuat_excel_hao_hut"]) | filters.regex(r"^@\w+\s+/(tien_nga_export_loss_excel|tien_nga_xuat_excel_hao_hut)\b"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga", "Thu Hoạch")
+@require_group_role("main")
+@command_timeout(auto_delete_cmd=True)
 async def tien_nga_loss_statistics_handler(client, message: Message) -> None:
-    """Thống kê hao hụt: hiển thị button chọn khoảng thời gian hoặc nhập ngày trực tiếp."""
+    """Xuất Excel hao hụt: hiển thị button chọn khoảng thời gian hoặc nhập ngày trực tiếp."""
     args = message.text.strip().split(None, 1)
 
     # Kiểm tra nếu có tham số ngày
@@ -24298,7 +25473,7 @@ async def tien_nga_loss_statistics_handler(client, message: Message) -> None:
             except ValueError:
                 await message.reply_text(
                     "⚠️ Định dạng ngày không hợp lệ.\n\n"
-                    "<i>Ví dụ: <code>/tien_nga_thong_ke_hao_hut 01/05/2026 - 31/05/2026</code></i>",
+                    "<i>Ví dụ: <code>/tien_nga_xuat_excel_hao_hut 01/05/2026 - 31/05/2026</code></i>",
                     parse_mode=ParseMode.HTML
                 )
                 return
@@ -24313,7 +25488,7 @@ async def tien_nga_loss_statistics_handler(client, message: Message) -> None:
             except ValueError:
                 await message.reply_text(
                     "⚠️ Định dạng ngày không hợp lệ.\n\n"
-                    "<i>Ví dụ: <code>/tien_nga_thong_ke_hao_hut 27/05/2026</code></i>",
+                    "<i>Ví dụ: <code>/tien_nga_xuat_excel_hao_hut 27/05/2026</code></i>",
                     parse_mode=ParseMode.HTML
                 )
                 return
@@ -24330,11 +25505,11 @@ async def tien_nga_loss_statistics_handler(client, message: Message) -> None:
         [InlineKeyboardButton("Hủy", callback_data="tn_lss_cancel")]
     ])
     await message.reply_text(
-        "<b>THỐNG KÊ HAO HỤT</b>\n\n"
+        "<b>XUẤT EXCEL HAO HỤT</b>\n\n"
         "Vui lòng chọn khoảng thời gian:\n\n"
         "<i>Hoặc nhập trực tiếp:</i>\n"
-        "<code>/tien_nga_thong_ke_hao_hut 27/05/2026</code>\n"
-        "<code>/tien_nga_thong_ke_hao_hut 01/05/2026 - 31/05/2026</code>",
+        "<code>/tien_nga_xuat_excel_hao_hut 27/05/2026</code>\n"
+        "<code>/tien_nga_xuat_excel_hao_hut 01/05/2026 - 31/05/2026</code>",
         reply_markup=keyboard,
         parse_mode=ParseMode.HTML
     )

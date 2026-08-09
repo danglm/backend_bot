@@ -6,5 +6,7 @@ from . import rental
 from . import other
 from . import tien_nga
 from . import ggomoosin
+from . import hr_menu
+from . import partner_menu
 from . import rosca
 from . import chat_logger

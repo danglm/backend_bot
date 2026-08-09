@@ -886,7 +886,8 @@ async def register_bot_command_handler(client, message: Message) -> None:
                     BotCommand("tien_nga_thu_mua_hang_ngay", "Nhập mua mủ hàng ngày"),
                     BotCommand("tien_nga_kiem_soat_hao_hut", "Kiểm soát hao hụt"),
                     BotCommand("tien_nga_kiem_tra_hao_hut", "Kiểm tra hao hụt"),
-                    BotCommand("tien_nga_thong_ke_hao_hut", "Thống kê hao hụt Excel"),
+                    BotCommand("tien_nga_thong_ke_hao_hut", "Xem bản chốt hao hụt"),
+                    BotCommand("tien_nga_xuat_excel_hao_hut", "Xuất Excel hao hụt"),
                     BotCommand("tien_nga_xuat_bao_cao_thu_mua", "Xuất báo cáo mua mủ KH"),
                     BotCommand("tien_nga_xuat_hoa_don_luu_so", "Xuất hóa đơn lưu sổ KH"),
                     BotCommand("tien_nga_xuat_hoa_don_da_tt", "Xuất hóa đơn đã thanh toán KH"),
@@ -1010,8 +1011,8 @@ async def register_bot_command_handler(client, message: Message) -> None:
             if custom_title == "member_partner":
                 label = "Tiến Nga (Đối Tác)"
                 commands_to_set.extend([
-                    BotCommand("tien_nga_kiem_tra_giao_dich", "Kiểm tra giao dịch"),
-                    BotCommand("tien_nga_kiem_tra_cong_no", "Kiểm tra công nợ"),
+                    BotCommand("tien_nga_kiem_tra_tt_giao_dich", "Kiểm tra giao dịch"),
+                    BotCommand("tien_nga_kiem_tra_tt_cong_no", "Kiểm tra công nợ"),
                     BotCommand("tien_nga_doi_tac_thanh_toan", "Yêu cầu thanh toán"),
                 ])
 
