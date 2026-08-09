@@ -14966,99 +14966,359 @@ async def chk_inv_back_cb(client, callback_query: CallbackQuery):
 
 # ==============================================================================
 # HỆ THỐNG QUẢN LÝ KHO (INVENTORY MANAGEMENT)
+#
+# Cả 4 lệnh dùng chung một ngôn ngữ UI: danh sách (phân trang) → chọn 1 kho →
+# thao tác. Bám khuôn luồng Điểm Thu Mua (tn_lcp_*, xem khối ở đầu file).
+#
+# Prefix callback — mỗi lệnh một prefix riêng, phân cách bằng dấu "|":
+#   tn_ckho = tạo kho, tn_lkho = danh sách/quản lý kho,
+#   tn_ukho = cập nhật tồn kho, tn_kkho = kiểm tra kho.
+# Tránh đặt prefix dạng tn_inv_/chk_inv_ vì chk_inv_* là Quỹ Đầu Tư, không phải kho.
+#
+# Lưu ý về mô hình dữ liệu: mỗi bản ghi Inventory là một cặp (nguyên liệu × tên kho),
+# không có bảng kho riêng — "kho" chỉ là cột chữ storage_name lặp lại.
 # ==============================================================================
 
-# --- TẠO KHO MỚI ---
-# Helper functions for Inventory Keyboard
-def _build_tn_kho_main_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Xem danh sách kho", callback_data="tn_kho_list|0")],
-        [InlineKeyboardButton("Tạo kho mới", callback_data="tn_kho_form")],
-        [InlineKeyboardButton("Hủy", callback_data="tn_kho_cancel")]
-    ])
+def _tn_inv_label(inv) -> str:
+    """Nhãn nút cho 1 dòng kho."""
+    material = inv.material_name or "—"
+    return f"{material} ({inv.storage_name})" if inv.storage_name else material
 
-def _build_tn_kho_list_keyboard(total_items: int, page: int):
-    PAGE_SIZE = 10
-    total_pages = max(1, (total_items + PAGE_SIZE - 1) // PAGE_SIZE)
+
+def _tn_inventory_view(
+    db, prefix: str, title: str, subtitle: str,
+    item_cb_template: str = "{prefix}_s|{inv_id}",
+    page: int = 0,
+    back_cb: str | None = None,
+    extra_rows=None,
+):
+    """
+    Màn hình chọn Kho, dùng chung cho cả 4 luồng nút bấm.
+    `prefix` quyết định callback_data (tn_ckho / tn_lkho / tn_ukho / tn_kkho).
+    `extra_rows` là các hàng nút phụ chèn ngay trên hàng cuối — dùng cho nút
+    "Tạo kho hoàn toàn mới" của luồng tạo kho.
+    `back_cb` khác None thì thêm nút Quay lại vào hàng cuối.
+    Trả về (text, markup).
+    """
+    from app.models.inventory import Inventory
+
+    def tail_row():
+        row = []
+        if back_cb:
+            row.append(InlineKeyboardButton("Quay lại", callback_data=back_cb))
+        row.append(InlineKeyboardButton("Hủy", callback_data=f"{prefix}_x"))
+        return row
+
+    invs = db.query(Inventory).order_by(Inventory.material_name, Inventory.storage_name).all()
+    if not invs:
+        # Vẫn trả markup để người dùng không kẹt ở màn hình rỗng không có đường lùi.
+        rows = [list(r) for r in (extra_rows or [])]
+        rows.append(tail_row())
+        return (
+            "⚠️ Chưa có Kho nào trong hệ thống.\n"
+            "Vui lòng tạo trước bằng lệnh /tien_nga_tao_kho.",
+            InlineKeyboardMarkup(rows),
+        )
+
+    total = len(invs)
+    total_pages = max(1, (total + TN_PAGE_SIZE - 1) // TN_PAGE_SIZE)
     page = max(0, min(page, total_pages - 1))
-    
-    buttons = []
+    start = page * TN_PAGE_SIZE
+
+    buttons = [
+        [InlineKeyboardButton(
+            _tn_inv_label(inv),
+            callback_data=item_cb_template.format(prefix=prefix, inv_id=inv.id),
+        )]
+        for inv in invs[start:start + TN_PAGE_SIZE]
+    ]
+
     nav_row = []
     if page > 0:
-        nav_row.append(InlineKeyboardButton("<< Trước", callback_data=f"tn_kho_list|{page - 1}"))
-    nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="tn_kho_noop"))
+        nav_row.append(InlineKeyboardButton("<< Trước", callback_data=f"{prefix}_p|{page - 1}"))
+    # Nút số trang chỉ để hiển thị: bấm vào là vẽ lại đúng trang đang xem
+    nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data=f"{prefix}_p|{page}"))
     if page < total_pages - 1:
-        nav_row.append(InlineKeyboardButton("Sau >>", callback_data=f"tn_kho_list|{page + 1}"))
-        
+        nav_row.append(InlineKeyboardButton("Sau >>", callback_data=f"{prefix}_p|{page + 1}"))
     buttons.append(nav_row)
-    buttons.append([
-        InlineKeyboardButton("Trở lại", callback_data="tn_kho_menu"),
-        InlineKeyboardButton("Hủy", callback_data="tn_kho_cancel")
-    ])
-    return InlineKeyboardMarkup(buttons)
 
-@bot.on_callback_query(filters.regex(r"^tn_kho_noop$"))
-async def tn_kho_noop_callback(client, callback_query: CallbackQuery):
-    await callback_query.answer()
+    buttons.extend([list(r) for r in (extra_rows or [])])
+    buttons.append(tail_row())
 
-@bot.on_callback_query(filters.regex(r"^tn_kho_cancel$"))
-async def tn_kho_cancel_callback(client, callback_query: CallbackQuery):
+    text = (
+        f"<b>{title}</b>\n\n{subtitle}\n"
+        f"Trang <b>{page + 1}/{total_pages}</b> ({total} kho)"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+async def _tn_load_inventory(callback_query, db, inv_id: str):
+    """Lấy Kho theo mã, báo alert nếu mã hỏng hoặc kho không còn tồn tại."""
+    import uuid as _uuid
+
+    from app.models.inventory import Inventory
+
+    try:
+        key = _uuid.UUID(str(inv_id))
+    except (ValueError, AttributeError, TypeError):
+        await callback_query.answer("⚠️ Mã kho không hợp lệ.", show_alert=True)
+        return None
+
+    inv = db.query(Inventory).filter(Inventory.id == key).first()
+    if not inv:
+        await callback_query.answer("⚠️ Không tìm thấy kho này.", show_alert=True)
+        return None
+    return inv
+
+
+def _tn_inventory_usage_counts(db, inv):
+    """
+    Số phiếu đang gắn với TÊN KHO này: (thu mua, xuất kho, giao dịch thành phẩm).
+
+    Các bảng phiếu tham chiếu kho bằng storage_name dạng chữ chứ không phải khóa
+    ngoại, mà một tên kho chứa nhiều dòng nguyên liệu — nên đây là số phiếu của
+    cả kho, không riêng dòng nguyên liệu đang xem.
+    """
+    from sqlalchemy import or_
+
+    from app.models.inventory import InventoryExport, MaterialPurchase, ProductTransaction
+
+    name = inv.storage_name
+    purchases = exports = 0
+    if name:
+        purchases = db.query(MaterialPurchase).filter(MaterialPurchase.storage_name == name).count()
+        exports = db.query(InventoryExport).filter(InventoryExport.storage_name == name).count()
+
+    conds = [ProductTransaction.storage_id == inv.id]
+    if name:
+        conds.append(ProductTransaction.storage_name == name)
+    products = db.query(ProductTransaction).filter(or_(*conds)).count()
+
+    return purchases, exports, products
+
+
+def _build_inventory_info_text(db, inv) -> str:
+    """Nội dung thông tin 1 kho, dùng chung cho nút Thông tin và lệnh Kiểm tra kho."""
+    quantity = inv.quantity or 0
+    capacity = inv.capacity or 0
+    usage_pct = (quantity / capacity * 100) if capacity > 0 else 0
+    purchases, exports, products = _tn_inventory_usage_counts(db, inv)
+
+    return (
+        f"<b>THÔNG TIN KHO</b>\n\n"
+        f"<b>Mã Kho:</b> <code>{inv.id}</code>\n"
+        f"<b>Tên Kho:</b> {inv.storage_name or '—'}\n"
+        f"<b>Nguyên Liệu:</b> {inv.material_name or '—'}\n"
+        f"<b>Địa Chỉ:</b> {inv.storage_location or '—'}\n\n"
+        f"<b>Tồn Kho:</b> <code>{fmt_num(quantity)}</code> kg\n"
+        f"<b>Sức Chứa:</b> <code>{fmt_num(capacity)}</code> kg\n"
+        f"<b>Sử Dụng:</b> <code>{usage_pct:.1f}%</code>\n\n"
+        f"<i>Phiếu đang gắn với tên kho này:</i>\n"
+        f"• Thu mua nguyên liệu: <b>{purchases}</b>\n"
+        f"• Xuất kho: <b>{exports}</b>\n"
+        f"• Giao dịch thành phẩm: <b>{products}</b>"
+    )
+
+
+def _build_inventory_create_form(inv=None) -> str:
+    """
+    Form tạo kho. Có `inv` thì điền sẵn thông tin kho (tên kho / địa chỉ / sức chứa)
+    để thêm một nguyên liệu mới vào kho đã có; không có thì trả form trống.
+    """
+    if inv is None:
+        header = "<b>FORM TẠO KHO MỚI</b>\n"
+        storage_name = storage_location = ""
+        capacity = "0"
+    else:
+        header = f"<b>FORM TẠO KHO</b> — thêm nguyên liệu vào kho <b>{inv.storage_name or '—'}</b>\n"
+        storage_name = inv.storage_name or ""
+        storage_location = inv.storage_location or ""
+        capacity = fmt_num(inv.capacity or 0)
+
+    return (
+        f"{header}"
+        "Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
+        "<pre>/tien_nga_tao_kho\n"
+        "Tên Nguyên Liệu: \n"
+        f"Tên Kho: {storage_name}\n"
+        "Số Lượng Ban Đầu: 0\n"
+        f"Địa Chỉ Lưu Trữ: {storage_location}\n"
+        f"Sức Chứa: {capacity}</pre>"
+    )
+
+
+def _build_inventory_update_form(inv) -> str:
+    """Form cập nhật kho đã điền sẵn dữ liệu hiện tại, khóa tìm là Mã Kho."""
+    return (
+        "<b>FORM CẬP NHẬT KHO</b>\n"
+        "Vui lòng sao chép form dưới đây, sửa thông tin và gửi lại:\n\n"
+        "<pre>/tien_nga_cap_nhat_ton_kho\n"
+        f"Mã Kho: {inv.id}\n"
+        f"Tên Nguyên Liệu: {inv.material_name or ''}\n"
+        f"Tên Kho: {inv.storage_name or ''}\n"
+        f"Số Lượng: {fmt_num(inv.quantity or 0)}\n"
+        f"Địa Chỉ Lưu Trữ: {inv.storage_location or ''}\n"
+        f"Sức Chứa: {fmt_num(inv.capacity or 0)}</pre>\n\n"
+        "<i>Mã Kho là khóa tìm bản ghi, vui lòng không sửa.\n"
+        "Dòng nào xóa khỏi form thì giữ nguyên giá trị cũ.</i>"
+    )
+
+
+def _tn_parse_number(val_str):
+    """
+    Đọc số kiểu Việt Nam: '12.500' → 12500.0, '12,5' → 12.5.
+    Trả None nếu chuỗi rỗng hoặc không đọc được — người gọi tự quyết định
+    coi đó là lỗi hay là "không đổi".
+    """
+    if val_str is None:
+        return None
+    s = str(val_str).strip().lower().replace("kg", "").strip()
+    s = s.replace(".", "").replace(",", ".").replace(" ", "")
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _parse_inventory_form(text: str) -> dict:
+    """Đọc form 'Nhãn: Giá trị' thành dict, bỏ dòng đầu (dòng lệnh)."""
+    data = {}
+    for line in text.strip().split("\n")[1:]:
+        if ":" in line:
+            key, val = line.split(":", 1)
+            data[key.strip()] = val.strip()
+    return data
+
+
+def _tn_inventory_update_fields(data: dict):
+    """
+    Từ dict form ra (fields, errors) cho lệnh cập nhật kho.
+
+    Chỉ trường thực sự có mặt VÀ có giá trị mới vào `fields`; xóa dòng khỏi form
+    hoặc để trống = giữ nguyên giá trị cũ. Nhờ vậy 'Số Lượng: 0' (đặt tồn kho về 0)
+    phân biệt được với 'không nhắc tới Số Lượng'.
+    """
+    fields, errors = {}, []
+
+    for label, attr in (
+        ("Tên Nguyên Liệu", "material_name"),
+        ("Tên Kho", "storage_name"),
+        ("Địa Chỉ Lưu Trữ", "storage_location"),
+    ):
+        if data.get(label):
+            fields[attr] = data[label]
+
+    for label, attr in (("Số Lượng", "quantity"), ("Sức Chứa", "capacity")):
+        if not data.get(label):
+            continue
+        value = _tn_parse_number(data[label])
+        if value is None:
+            errors.append(f"<b>{label}</b> không phải là số hợp lệ: <code>{data[label]}</code>")
+        else:
+            fields[attr] = value
+
+    return fields, errors
+
+
+def _tn_find_duplicate_inventory(db, material_name, storage_name, exclude_id=None):
+    """Tìm dòng kho khác đã chiếm cặp (nguyên liệu, tên kho) này."""
+    from sqlalchemy import or_
+
+    from app.models.inventory import Inventory
+
+    query = db.query(Inventory).filter(Inventory.material_name == material_name)
+    if storage_name:
+        query = query.filter(Inventory.storage_name == storage_name)
+    else:
+        # Kho để trống tên được lưu là NULL, nhưng dữ liệu cũ có thể là chuỗi rỗng.
+        query = query.filter(or_(Inventory.storage_name.is_(None), Inventory.storage_name == ""))
+    if exclude_id is not None:
+        query = query.filter(Inventory.id != exclude_id)
+    return query.first()
+
+
+# ══════════════════════════════════════════════════════════════
+# TẠO KHO — /tien_nga_tao_kho
+# Danh sách kho → chọn 1 kho (điền sẵn thông tin kho) hoặc "Tạo kho hoàn toàn mới" → form
+# ══════════════════════════════════════════════════════════════
+
+def _tn_ckho_list_view(db, page: int):
+    """Màn hình chọn kho có sẵn để thêm nguyên liệu mới vào kho đó."""
+    return _tn_inventory_view(
+        db, "tn_ckho", "TẠO KHO",
+        "Chọn một kho có sẵn để thêm nguyên liệu mới vào kho đó:",
+        page=page,
+        extra_rows=[[InlineKeyboardButton("➕ Tạo kho hoàn toàn mới", callback_data="tn_ckho_new")]],
+    )
+
+
+def _tn_ckho_form_markup():
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("Quay lại", callback_data="tn_ckho_p|0"),
+        InlineKeyboardButton("Hủy", callback_data="tn_ckho_x"),
+    ]])
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ckho_x$"))
+async def tn_ckho_cancel_callback(client, callback_query):
+    """Hủy luồng tạo kho."""
     await callback_query.message.delete()
 
-@bot.on_callback_query(filters.regex(r"^tn_kho_menu$"))
-async def tn_kho_menu_callback(client, callback_query: CallbackQuery):
-    menu_text = "<b>QUẢN LÝ KHO TIẾN NGA</b>\n\nVui lòng chọn thao tác:"
-    await callback_query.message.edit_text(menu_text, reply_markup=_build_tn_kho_main_keyboard(), parse_mode=ParseMode.HTML)
 
-@bot.on_callback_query(filters.regex(r"^tn_kho_form$"))
-async def tn_kho_form_callback(client, callback_query: CallbackQuery):
-    form_template = (
-        "<b>FORM TẠO KHO MỚI</b>\n"
-        "Vui lòng sao chép form dưới đây, điền thông tin và gửi lại:\n\n"
-        "<pre>/tien_nga_create_inventory\n"
-        "Tên Nguyên Liệu: \n"
-        "Tên Kho: \n"
-        "Số Lượng Ban Đầu: 0\n"
-        "Địa Chỉ Lưu Trữ: \n"
-        "Sức Chứa: 0</pre>"
-    )
-    cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("Hủy", callback_data="tn_kho_cancel")]])
-    await callback_query.message.edit_text(form_template, parse_mode=ParseMode.HTML, reply_markup=cancel_kb)
-
-@bot.on_callback_query(filters.regex(r"^tn_kho_list\|(\d+)$"))
-async def tn_kho_list_callback(client, callback_query: CallbackQuery):
+@bot.on_callback_query(filters.regex(r"^tn_ckho_p\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_ckho_page_callback(client, callback_query):
+    """Chuyển trang / quay về danh sách kho của luồng tạo kho."""
     page = int(callback_query.matches[0].group(1))
+
     db = SessionLocal()
     try:
-        from app.models.inventory import Inventory
-        inventories = db.query(Inventory).order_by(Inventory.material_name).all()
-        
-        if not inventories:
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Trở lại", callback_data="tn_kho_menu"), InlineKeyboardButton("Hủy", callback_data="tn_kho_cancel")]
-            ])
-            await callback_query.message.edit_text("<b>DANH SÁCH KHO NGUYÊN LIỆU</b>\n\n<i>ℹ️ Chưa có kho nào trong hệ thống.</i>", parse_mode=ParseMode.HTML, reply_markup=kb)
-            return
-
-        total = len(inventories)
-        PAGE_SIZE = 10
-        total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
-        page = max(0, min(page, total_pages - 1))
-        
-        start = page * PAGE_SIZE
-        page_inventories = inventories[start:start + PAGE_SIZE]
-
-        lines = [f"<b>DANH SÁCH KHO NGUYÊN LIỆU</b> (Tổng: <b>{total}</b> kho)\n"]
-        for idx, inv in enumerate(page_inventories, start=start + 1):
-            mat_name = inv.material_name or 'N/A'
-            stg_name = inv.storage_name or 'N/A'
-            lines.append(f"{idx}. <b>{mat_name}</b> - {stg_name}")
-
-        text = "\n".join(lines)
-        await callback_query.message.edit_text(text, reply_markup=_build_tn_kho_list_keyboard(total, page), parse_mode=ParseMode.HTML)
+        text, markup = _tn_ckho_list_view(db, page)
+        await _tn_screen_edit(callback_query, text, markup)
     except Exception as e:
-        LogError(f"Error in tn_kho_list_callback: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra khi lấy danh sách.", show_alert=True)
+        LogError(f"Error in tn_ckho_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ckho_new$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_ckho_new_callback(client, callback_query):
+    """Nút Tạo kho hoàn toàn mới — form trống."""
+    try:
+        await _tn_screen_edit(callback_query, _build_inventory_create_form(), _tn_ckho_form_markup())
+    except Exception as e:
+        LogError(f"Error in tn_ckho_new_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ckho_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_ckho_select_callback(client, callback_query):
+    """Chọn 1 kho có sẵn — form tạo điền sẵn thông tin kho, trống tên nguyên liệu."""
+    inv_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        inv = await _tn_load_inventory(callback_query, db, inv_id)
+        if not inv:
+            return
+        await _tn_screen_edit(callback_query, _build_inventory_create_form(inv), _tn_ckho_form_markup())
+    except Exception as e:
+        LogError(f"Error in tn_ckho_select_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
     finally:
         db.close()
 
@@ -15071,49 +15331,115 @@ async def tn_kho_list_callback(client, callback_query: CallbackQuery):
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_create_inventory_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
+
     if len(lines) < 2:
-        menu_text = "<b>QUẢN LÝ KHO TIẾN NGA</b>\n\nVui lòng chọn thao tác:"
-        await message.reply_text(menu_text, reply_markup=_build_tn_kho_main_keyboard(), parse_mode=ParseMode.HTML)
+        db = SessionLocal()
+        try:
+            text, markup = _tn_ckho_list_view(db, 0)
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error listing inventories for create: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        finally:
+            db.close()
         return
 
-    data = {}
-    for line in lines[1:]:
-        if ":" in line:
-            k, v = line.split(":", 1)
-            data[k.strip()] = v.strip()
-
+    data = _parse_inventory_form(message.text)
     material_name = data.get("Tên Nguyên Liệu", "").strip()
     storage_name = data.get("Tên Kho", "").strip()
     storage_loc = data.get("Địa Chỉ Lưu Trữ", "").strip()
 
-    def parse_float_val(val_str):
-        if not val_str: return 0.0
-        val_str = val_str.replace(".", "").replace(",", ".").replace(" ", "")
-        try: return float(val_str)
-        except: return 0.0
-
-    qty = parse_float_val(data.get("Số Lượng Ban Đầu", "0"))
-    cap = parse_float_val(data.get("Sức Chứa", "0"))
-
     if not material_name:
-        await message.reply_text("⚠️ Tên Nguyên Liệu là bắt buộc.")
+        await message.reply_text("⚠️ <b>Tên Nguyên Liệu</b> là bắt buộc.", parse_mode=ParseMode.HTML)
         return
 
-    from app.db.session import SessionLocal
+    errors = []
+    numbers = {}
+    for label, key in (("Số Lượng Ban Đầu", "quantity"), ("Sức Chứa", "capacity")):
+        raw = data.get(label, "").strip()
+        if not raw:
+            numbers[key] = 0.0
+            continue
+        value = _tn_parse_number(raw)
+        if value is None:
+            errors.append(f"<b>{label}</b> không phải là số hợp lệ: <code>{raw}</code>")
+        else:
+            numbers[key] = value
+    if errors:
+        await message.reply_text("⚠️ " + "\n⚠️ ".join(errors), parse_mode=ParseMode.HTML)
+        return
+
     from app.models.inventory import Inventory
+
+    # Xem chú thích cùng loại ở tien_nga_update_inventory_handler: đừng báo "lỗi lưu"
+    # cho một bản ghi đã nằm trong database.
+    saved = False
     db = SessionLocal()
     try:
-        new_inv = Inventory(material_name=material_name, quantity=qty, storage_name=storage_name, storage_location=storage_loc, capacity=cap)
+        if _tn_find_duplicate_inventory(db, material_name, storage_name):
+            await message.reply_text(
+                f"⚠️ Kho <b>{storage_name or '(chưa đặt tên)'}</b> đã có nguyên liệu "
+                f"<b>{material_name}</b>.\n"
+                f"<i>Dùng /tien_nga_cap_nhat_ton_kho để sửa dòng đã có.</i>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        new_inv = Inventory(
+            material_name=material_name,
+            quantity=numbers["quantity"],
+            storage_name=storage_name or None,
+            storage_location=storage_loc or None,
+            capacity=numbers["capacity"],
+        )
         db.add(new_inv)
         db.commit()
-        await message.reply_text(f"✅ Đã tạo kho <b>{material_name}</b> thành công!", parse_mode=ParseMode.HTML)
+        saved = True
+        new_inv_id = str(new_inv.id)
+
+        LogInfo(
+            f"[TienNga] Created inventory '{material_name}' / '{storage_name}' "
+            f"({new_inv_id}) by user {message.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+        await message.reply_text(
+            f"✅ <b>TẠO KHO THÀNH CÔNG</b>\n\n"
+            f"<b>Nguyên Liệu:</b> {material_name}\n"
+            f"<b>Tên Kho:</b> {storage_name or '—'}\n"
+            f"<b>Địa Chỉ:</b> {storage_loc or '—'}\n"
+            f"<b>Tồn Kho:</b> {fmt_num(numbers['quantity'])} kg\n"
+            f"<b>Sức Chứa:</b> {fmt_num(numbers['capacity'])} kg",
+            parse_mode=ParseMode.HTML
+        )
     except Exception as e:
-        db.rollback()
-        await message.reply_text("❌ Lỗi khi thêm vào DB.")
+        if not saved:
+            db.rollback()
+        LogError(f"Error creating inventory (saved={saved}): {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(
+            "✅ Đã tạo kho, nhưng không hiển thị được kết quả. Vui lòng dùng "
+            "/tien_nga_danh_sach_kho để kiểm tra."
+            if saved else
+            "❌ Có lỗi xảy ra khi lưu vào database.",
+            parse_mode=ParseMode.HTML
+        )
     finally:
         db.close()
 
-# --- DANH SÁCH KHO ---
+
+# ══════════════════════════════════════════════════════════════
+# DANH SÁCH KHO — /tien_nga_danh_sach_kho
+# Danh sách → chọn 1 kho → Thông tin chi tiết / Cập nhật thông tin kho / Xóa kho
+# ══════════════════════════════════════════════════════════════
+
+def _tn_lkho_list_view(db, page: int):
+    """Màn hình danh sách kho để chọn."""
+    return _tn_inventory_view(
+        db, "tn_lkho", "DANH SÁCH KHO",
+        "Vui lòng chọn kho để xem thao tác:",
+        page=page,
+    )
+
+
 @bot.on_message(filters.command(["tien_nga_list_inventory", "tien_nga_danh_sach_kho"]) | filters.regex(r"^@\w+\s+/(tien_nga_list_inventory|tien_nga_danh_sach_kho)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -15121,28 +15447,320 @@ async def tien_nga_create_inventory_handler(client, message: Message) -> None:
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_list_inventory_handler(client, message: Message) -> None:
-    from app.db.session import SessionLocal
-    from app.models.inventory import Inventory
     db = SessionLocal()
     try:
-        invs = db.query(Inventory).order_by(Inventory.material_name).all()
-        if not invs:
-            await message.reply_text("⚠️ Chưa có kho chứa nào.")
-            return
-        
-        text = "<b>📦 DANH SÁCH HÀNG TỒN KHO</b>\n\n"
-        for idx, inv in enumerate(invs, 1):
-            text += f"<b>{idx}. {inv.material_name}</b>\n"
-            text += f"   Tên kho: {inv.storage_name or '—'}\n"
-            text += f"   Khối lượng hiện tại: {inv.quantity:,.0f} kg <i>(Sức chứa: {inv.capacity:,.0f} kg)</i>\n"
-            text += f"   Địa chỉ: {inv.storage_location or '—'}\n\n"
-        await message.reply_text(text, parse_mode=ParseMode.HTML)
+        text, markup = _tn_lkho_list_view(db, 0)
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
     except Exception as e:
-        await message.reply_text("❌ Lỗi hệ thống.")
+        LogError(f"Error listing inventories: {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text("❌ Có lỗi xảy ra khi tải danh sách kho.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
-# --- CẬP NHẬT KHO ---
+
+@bot.on_callback_query(filters.regex(r"^tn_lkho_x$"))
+async def tn_lkho_cancel_callback(client, callback_query):
+    """Hủy luồng quản lý kho."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lkho_p\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_lkho_page_callback(client, callback_query):
+    """Chuyển trang / quay về danh sách kho."""
+    page = int(callback_query.matches[0].group(1))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_lkho_list_view(db, page)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_lkho_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lkho_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_lkho_menu_callback(client, callback_query):
+    """Chọn 1 kho → hiện 3 nút thao tác."""
+    inv_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        inv = await _tn_load_inventory(callback_query, db, inv_id)
+        if not inv:
+            return
+
+        text = (
+            f"<b>KHO: {_tn_inv_label(inv)}</b>\n"
+            f"Tồn kho: <b>{fmt_num(inv.quantity or 0)}</b> kg / "
+            f"Sức chứa: <b>{fmt_num(inv.capacity or 0)}</b> kg\n\n"
+            f"Vui lòng chọn thao tác:"
+        )
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Thông tin chi tiết", callback_data=f"tn_lkho_i|{inv_id}")],
+            [InlineKeyboardButton("Cập nhật thông tin kho", callback_data=f"tn_lkho_u|{inv_id}")],
+            [InlineKeyboardButton("Xóa kho", callback_data=f"tn_lkho_d|{inv_id}")],
+            [
+                InlineKeyboardButton("Quay lại", callback_data="tn_lkho_p|0"),
+                InlineKeyboardButton("Hủy", callback_data="tn_lkho_x"),
+            ],
+        ])
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_lkho_menu_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lkho_i\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_lkho_info_callback(client, callback_query):
+    """Nút Thông tin chi tiết."""
+    inv_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        inv = await _tn_load_inventory(callback_query, db, inv_id)
+        if not inv:
+            return
+
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_lkho_s|{inv_id}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_lkho_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_inventory_info_text(db, inv), markup)
+    except Exception as e:
+        LogError(f"Error in tn_lkho_info_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lkho_u\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_lkho_update_callback(client, callback_query):
+    """Nút Cập nhật thông tin kho — cùng form với /tien_nga_cap_nhat_ton_kho."""
+    inv_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        inv = await _tn_load_inventory(callback_query, db, inv_id)
+        if not inv:
+            return
+
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_lkho_s|{inv_id}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_lkho_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_inventory_update_form(inv), markup)
+        # Theo dõi để tự xóa form sau khi lệnh cập nhật chạy thành công
+        form_tracker.track(
+            callback_query.message.chat.id, "tien_nga_update_inv", str(inv.id), callback_query.message.id
+        )
+    except Exception as e:
+        LogError(f"Error in tn_lkho_update_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lkho_d\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_lkho_delete_confirm_callback(client, callback_query):
+    """Nút Xóa kho — hỏi xác nhận, cảnh báo tồn kho và số phiếu đang gắn tên kho."""
+    inv_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        inv = await _tn_load_inventory(callback_query, db, inv_id)
+        if not inv:
+            return
+
+        quantity = inv.quantity or 0
+        purchases, exports, products = _tn_inventory_usage_counts(db, inv)
+
+        warnings = []
+        if quantity > 0:
+            warnings.append(f"⚠️ Kho còn <b>{fmt_num(quantity)} kg</b> tồn.")
+        if purchases or exports or products:
+            warnings.append(
+                f"⚠️ Tên kho <b>{inv.storage_name or '—'}</b> đang gắn với "
+                f"<b>{purchases}</b> phiếu thu mua, <b>{exports}</b> phiếu xuất kho, "
+                f"<b>{products}</b> giao dịch thành phẩm.\n"
+                f"<i>Các phiếu này chỉ lưu tên kho dạng chữ nên vẫn đọc được sau khi xóa.</i>"
+            )
+
+        text = (
+            f"<b>XÁC NHẬN XÓA KHO</b>\n\n"
+            f"<b>Nguyên Liệu:</b> {inv.material_name or '—'}\n"
+            f"<b>Tên Kho:</b> {inv.storage_name or '—'}\n"
+            f"<b>Địa Chỉ:</b> {inv.storage_location or '—'}\n"
+            f"<b>Tồn Kho:</b> {fmt_num(quantity)} kg\n\n"
+            + ("\n\n".join(warnings) + "\n\n" if warnings else "")
+            + "<i>Dòng kho này sẽ bị xóa khỏi hệ thống và không khôi phục được. "
+              "Bạn có chắc chắn muốn xóa?</i>"
+        )
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Xác nhận", callback_data=f"tn_lkho_dy|{inv_id}"),
+            InlineKeyboardButton("Quay lại", callback_data=f"tn_lkho_s|{inv_id}"),
+            InlineKeyboardButton("Hủy", callback_data="tn_lkho_x"),
+        ]])
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_lkho_delete_confirm_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_lkho_dy\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_lkho_delete_confirmed_callback(client, callback_query):
+    """Xác nhận xóa kho."""
+    inv_id = callback_query.matches[0].group(1)
+
+    if not _tn_cb_claim(callback_query, "lkho_del"):
+        await callback_query.answer("⚠️ Thao tác này đã được xử lý rồi.", show_alert=True)
+        return
+
+    # Vẽ lại màn hình sau khi commit vẫn có thể ném lỗi (Telegram từ chối, tin nhắn bị
+    # xóa...). Không có cờ này thì người dùng bị báo "lỗi database" trong khi kho ĐÃ bị
+    # xóa, rồi bấm lại lần nữa vì tưởng chưa xong.
+    deleted = False
+    db = SessionLocal()
+    try:
+        inv = await _tn_load_inventory(callback_query, db, inv_id)
+        if not inv:
+            _tn_cb_release(callback_query, "lkho_del")
+            return
+
+        label = _tn_inv_label(inv)
+        db.delete(inv)
+        db.commit()
+        deleted = True
+
+        LogInfo(
+            f"[TienNga] Deleted inventory '{label}' ({inv_id}) by user {callback_query.from_user.id}",
+            LogType.SYSTEM_STATUS
+        )
+        await _tn_screen_edit(
+            callback_query,
+            f"✅ <b>XÓA KHO THÀNH CÔNG</b>\n\n"
+            f"Kho: <b>{label}</b>\n"
+            f"Mã: <code>{inv_id}</code>",
+            None
+        )
+    except Exception as e:
+        if not deleted:
+            db.rollback()
+            _tn_cb_release(callback_query, "lkho_del")
+        LogError(
+            f"Error in tn_lkho_delete_confirmed_callback (deleted={deleted}): {e}",
+            LogType.SYSTEM_STATUS
+        )
+        await callback_query.answer(
+            "✅ Đã xóa kho, nhưng không hiển thị được kết quả. Vui lòng gõ lại "
+            "/tien_nga_danh_sach_kho để kiểm tra."
+            if deleted else
+            "❌ Có lỗi xảy ra khi cập nhật database.",
+            show_alert=True
+        )
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════
+# CẬP NHẬT KHO — /tien_nga_cap_nhat_ton_kho
+# Danh sách → chọn 1 kho → form cập nhật (khóa theo Mã Kho)
+# ══════════════════════════════════════════════════════════════
+
+def _tn_ukho_list_view(db, page: int):
+    """Màn hình chọn kho cần cập nhật."""
+    return _tn_inventory_view(
+        db, "tn_ukho", "CẬP NHẬT KHO",
+        "Vui lòng chọn kho cần cập nhật:",
+        page=page,
+    )
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ukho_x$"))
+async def tn_ukho_cancel_callback(client, callback_query):
+    """Hủy luồng cập nhật kho."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ukho_p\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_ukho_page_callback(client, callback_query):
+    """Chuyển trang / quay về danh sách kho của luồng cập nhật."""
+    page = int(callback_query.matches[0].group(1))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_ukho_list_view(db, page)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_ukho_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_ukho_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT)
+async def tn_ukho_select_callback(client, callback_query):
+    """Chọn 1 kho — hiện form cập nhật điền sẵn ngay tại chỗ."""
+    inv_id = callback_query.matches[0].group(1)
+
+    db = SessionLocal()
+    try:
+        inv = await _tn_load_inventory(callback_query, db, inv_id)
+        if not inv:
+            return
+
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data="tn_ukho_p|0"),
+            InlineKeyboardButton("Hủy", callback_data="tn_ukho_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_inventory_update_form(inv), markup)
+        form_tracker.track(
+            callback_query.message.chat.id, "tien_nga_update_inv", str(inv.id), callback_query.message.id
+        )
+    except Exception as e:
+        LogError(f"Error in tn_ukho_select_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
 @bot.on_message(filters.command(["tien_nga_update_inventory", "tien_nga_cap_nhat_ton_kho"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_inventory|tien_nga_cap_nhat_ton_kho)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -15151,94 +15769,187 @@ async def tien_nga_list_inventory_handler(client, message: Message) -> None:
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_update_inventory_handler(client, message: Message) -> None:
     lines = message.text.strip().split("\n")
+
     if len(lines) < 2:
-        from app.db.session import SessionLocal
-        from app.models.inventory import Inventory
         db = SessionLocal()
         try:
-            invs = db.query(Inventory).all()
-            if not invs:
-                await message.reply_text("⚠️ Chưa có hàng tồn kho nào.")
-                return
-            buttons = []
-            for inv in invs:
-                btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
-                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_selinv_{inv.id}")])
-            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_selinv_cancel")])
-            await message.reply_text("<b>Vui lòng chọn Hàng Tồn Kho cần cập nhật:</b>", reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+            text, markup = _tn_ukho_list_view(db, 0)
+            await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            LogError(f"Error listing inventories for update: {e}", LogType.SYSTEM_STATUS)
+            await message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
         finally:
             db.close()
         return
 
-    data = {}
-    for line in lines[1:]:
-        if ":" in line:
-            k, v = line.split(":", 1)
-            data[k.strip()] = v.strip()
+    import uuid as _uuid
 
-    material_name = data.get("Tên Nguyên Liệu", "").strip()
-    storage_name = data.get("Tên Kho", "").strip()
-    storage_loc = data.get("Địa Chỉ Lưu Trữ", "").strip()
-
-    def parse_float_val(val_str):
-        if not val_str: return 0.0
-        val_str = val_str.replace(".", "").replace(",", ".").replace(" ", "")
-        try: return float(val_str)
-        except: return 0.0
-
-    qty = parse_float_val(data.get("Số Lượng", "0"))
-    cap = parse_float_val(data.get("Sức Chứa", "0"))
-
-    from app.db.session import SessionLocal
     from app.models.inventory import Inventory
-    db = SessionLocal()
-    try:
-        query = db.query(Inventory).filter(Inventory.material_name == material_name)
-        if storage_name:
-            query = query.filter(Inventory.storage_name == storage_name)
-        inv = query.first()
-        if not inv:
-            await message.reply_text("⚠️ Không tìm thấy nguyên liệu này trong hệ thống.")
-            return
-        if storage_name: inv.storage_name = storage_name
-        if storage_loc: inv.storage_location = storage_loc
-        inv.quantity = qty
-        inv.capacity = cap
-        db.commit()
-        await message.reply_text(f"✅ Đã cập nhật kho <b>{material_name}</b> thành công!", parse_mode=ParseMode.HTML)
-    finally:
-        db.close()
 
-@bot.on_callback_query(filters.regex(r"^tn_selinv_(.+)$"))
-async def _sel_inv_cb(client, callback_query):
-    inv_id = callback_query.matches[0].group(1)
-    if inv_id == "cancel":
-        await callback_query.message.delete()
+    data = _parse_inventory_form(message.text)
+    inv_code = data.get("Mã Kho", "").strip()
+    fields, errors = _tn_inventory_update_fields(data)
+    if errors:
+        await message.reply_text("⚠️ " + "\n⚠️ ".join(errors), parse_mode=ParseMode.HTML)
         return
-    from app.db.session import SessionLocal
-    from app.models.inventory import Inventory
-    import uuid
+
+    # Gửi tin nhắn kết quả vẫn có thể hỏng sau khi commit — không có cờ này thì người
+    # dùng bị báo "lỗi cập nhật" trong khi dữ liệu ĐÃ đổi, và sẽ sửa lại lần nữa.
+    saved = False
     db = SessionLocal()
     try:
-        inv = db.query(Inventory).filter(Inventory.id == uuid.UUID(inv_id)).first()
-        if not inv:
-            await callback_query.answer("Lỗi", show_alert=True)
-            return
-        form = (
-            "<b>FORM CẬP NHẬT KHO</b>\n\n"
-            "<pre>/tien_nga_update_inventory\n"
-            f"Tên Nguyên Liệu: {inv.material_name}\n"
-            f"Tên Kho: {inv.storage_name or ''}\n"
-            f"Số Lượng: {inv.quantity:,.0f}\n"
-            f"Địa Chỉ Lưu Trữ: {inv.storage_location or ''}\n"
-            f"Sức Chứa: {inv.capacity:,.0f}</pre>"
+        if inv_code:
+            try:
+                key = _uuid.UUID(inv_code)
+            except ValueError:
+                await message.reply_text(
+                    f"⚠️ <b>Mã Kho</b> không hợp lệ: <code>{inv_code}</code>.\n"
+                    f"<i>Vui lòng lấy form mới bằng /tien_nga_cap_nhat_ton_kho.</i>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            inv = db.query(Inventory).filter(Inventory.id == key).first()
+            if not inv:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy kho với mã <code>{inv_code}</code>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+        else:
+            # Tương thích ngược với form cũ (chưa có Mã Kho): tìm theo tên nguyên liệu.
+            # Đường này không đổi được tên nguyên liệu / tên kho vì chúng chính là khóa tìm.
+            material_name = data.get("Tên Nguyên Liệu", "").strip()
+            if not material_name:
+                await message.reply_text(
+                    "⚠️ Thiếu <b>Mã Kho</b> và <b>Tên Nguyên Liệu</b>.\n"
+                    "<i>Vui lòng lấy form mới bằng /tien_nga_cap_nhat_ton_kho.</i>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            query = db.query(Inventory).filter(Inventory.material_name == material_name)
+            storage_name = data.get("Tên Kho", "").strip()
+            if storage_name:
+                query = query.filter(Inventory.storage_name == storage_name)
+            matches = query.all()
+
+            if not matches:
+                await message.reply_text(
+                    f"⚠️ Không tìm thấy kho chứa nguyên liệu <b>{material_name}</b>.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            if len(matches) > 1:
+                # Form cũ không đủ thông tin để chọn đúng dòng — thà dừng còn hơn sửa nhầm.
+                names = ", ".join(f"<b>{m.storage_name or '—'}</b>" for m in matches)
+                await message.reply_text(
+                    f"⚠️ Có <b>{len(matches)}</b> kho cùng chứa <b>{material_name}</b>: {names}.\n"
+                    f"<i>Vui lòng dùng /tien_nga_cap_nhat_ton_kho để chọn đúng kho.</i>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+            inv = matches[0]
+            fields.pop("material_name", None)
+            fields.pop("storage_name", None)
+
+        new_material = fields.get("material_name", inv.material_name)
+        new_storage = fields.get("storage_name", inv.storage_name)
+        renamed_storage = new_storage != inv.storage_name
+
+        if (new_material, new_storage) != (inv.material_name, inv.storage_name):
+            if _tn_find_duplicate_inventory(db, new_material, new_storage, exclude_id=inv.id):
+                await message.reply_text(
+                    f"⚠️ Kho <b>{new_storage or '(chưa đặt tên)'}</b> đã có nguyên liệu "
+                    f"<b>{new_material}</b>. Vui lòng chọn tên khác.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        # Đếm trước khi commit: sau khi đổi tên thì không tìm lại được phiếu theo tên cũ.
+        old_storage = inv.storage_name
+        purchases, exports, products = _tn_inventory_usage_counts(db, inv)
+
+        for attr, value in fields.items():
+            setattr(inv, attr, value)
+
+        # Chụp lại giá trị để hiển thị TRƯỚC khi commit. Session dùng expire_on_commit
+        # mặc định, nên đọc inv.* sau commit sẽ bắn thêm truy vấn refresh — và ném
+        # ObjectDeletedError nếu vừa có người xóa dòng này.
+        inv_key = str(inv.id)
+        shown = {
+            "label": _tn_inv_label(inv),
+            "material_name": inv.material_name,
+            "storage_name": inv.storage_name,
+            "storage_location": inv.storage_location,
+            "quantity": inv.quantity or 0,
+            "capacity": inv.capacity or 0,
+        }
+
+        db.commit()
+        saved = True
+
+        LogInfo(
+            f"[TienNga] Updated inventory '{shown['label']}' ({inv_key}) "
+            f"by user {message.from_user.id}",
+            LogType.SYSTEM_STATUS
         )
-        await callback_query.message.reply_text(form.replace(",", "."), parse_mode=ParseMode.HTML)
-        await callback_query.answer()
+
+        result = (
+            f"✅ <b>CẬP NHẬT KHO THÀNH CÔNG</b>\n\n"
+            f"<b>Nguyên Liệu:</b> {shown['material_name'] or '—'}\n"
+            f"<b>Tên Kho:</b> {shown['storage_name'] or '—'}\n"
+            f"<b>Địa Chỉ:</b> {shown['storage_location'] or '—'}\n"
+            f"<b>Tồn Kho:</b> {fmt_num(shown['quantity'])} kg\n"
+            f"<b>Sức Chứa:</b> {fmt_num(shown['capacity'])} kg"
+        )
+        # Phiếu thu mua / xuất kho lưu tên kho dạng chữ chứ không phải khóa ngoại,
+        # nên đổi tên kho là chúng vẫn ghi tên cũ — phải nói rõ, nếu không báo cáo
+        # theo kho sẽ lệch âm thầm.
+        if renamed_storage and (purchases or exports or products):
+            result += (
+                f"\n\n⚠️ <i>Lưu ý: <b>{purchases}</b> phiếu thu mua, <b>{exports}</b> phiếu xuất kho "
+                f"và <b>{products}</b> giao dịch thành phẩm vẫn ghi tên kho cũ "
+                f"<b>{old_storage or '—'}</b>.</i>"
+            )
+        await message.reply_text(result, parse_mode=ParseMode.HTML)
+
+        # Xóa tin nhắn form sau khi cập nhật xong
+        form_msg_id = form_tracker.pop(message.chat.id, "tien_nga_update_inv", inv_key)
+        if form_msg_id:
+            try:
+                await client.delete_messages(chat_id=message.chat.id, message_ids=form_msg_id)
+            except Exception as del_err:
+                LogError(f"Failed to delete update inventory form: {del_err}", LogType.SYSTEM_STATUS)
+    except Exception as e:
+        if not saved:
+            db.rollback()
+        LogError(f"Error updating inventory (saved={saved}): {e}", LogType.SYSTEM_STATUS)
+        await message.reply_text(
+            "✅ Đã cập nhật kho, nhưng không hiển thị được kết quả. Vui lòng dùng "
+            "/tien_nga_kiem_tra_kho để kiểm tra lại."
+            if saved else
+            "❌ Có lỗi xảy ra khi cập nhật.",
+            parse_mode=ParseMode.HTML
+        )
     finally:
         db.close()
 
-# --- KIỂM TRA KHO ---
+
+# ══════════════════════════════════════════════════════════════
+# KIỂM TRA KHO — /tien_nga_kiem_tra_kho
+# Danh sách → chọn 1 kho → thông tin chi tiết
+# ══════════════════════════════════════════════════════════════
+
+def _tn_kkho_list_view(db, page: int):
+    """Màn hình chọn kho cần kiểm tra."""
+    return _tn_inventory_view(
+        db, "tn_kkho", "KIỂM TRA KHO",
+        "Vui lòng chọn kho để xem thông tin:",
+        page=page,
+    )
+
+
 @bot.on_message(filters.command(["tien_nga_check_inventory", "tien_nga_kiem_tra_kho"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_inventory|tien_nga_kiem_tra_kho)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
@@ -15246,130 +15957,78 @@ async def _sel_inv_cb(client, callback_query):
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_inventory_handler(client, message: Message) -> None:
-    from app.db.session import SessionLocal
-    from app.models.inventory import Inventory
     db = SessionLocal()
     try:
-        invs = db.query(Inventory).all()
-        if not invs:
-            await message.reply_text("⚠️ Chưa có kho nào trong hệ thống.", parse_mode=ParseMode.HTML)
-            return
-
-        buttons = []
-        for inv in invs:
-            btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
-            buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_chkinv_{inv.id}")])
-        buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_chkinv_cancel")])
-
-        await message.reply_text(
-            "<b>📦 KIỂM TRA KHO</b>\n\nVui lòng chọn kho để xem thông tin:",
-            reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode=ParseMode.HTML
-        )
+        text, markup = _tn_kkho_list_view(db, 0)
+        await message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
     except Exception as e:
-        from bot.utils.logger import LogError
         LogError(f"Error in tien_nga_check_inventory_handler: {e}", LogType.SYSTEM_STATUS)
         await message.reply_text("❌ Có lỗi xảy ra.", parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
-@bot.on_callback_query(filters.regex(r"^tn_chkinv_(.+)$"))
-async def _check_inv_cb(client, callback_query):
+
+@bot.on_callback_query(filters.regex(r"^tn_kkho_x$"))
+async def tn_kkho_cancel_callback(client, callback_query):
+    """Hủy luồng kiểm tra kho."""
+    await callback_query.message.delete()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_kkho_p\|(\d+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+async def tn_kkho_page_callback(client, callback_query):
+    """Chuyển trang / quay về danh sách kho của luồng kiểm tra."""
+    page = int(callback_query.matches[0].group(1))
+
+    db = SessionLocal()
+    try:
+        text, markup = _tn_kkho_list_view(db, page)
+        await _tn_screen_edit(callback_query, text, markup)
+    except Exception as e:
+        LogError(f"Error in tn_kkho_page_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+    finally:
+        db.close()
+
+
+@bot.on_callback_query(filters.regex(r"^tn_kkho_s\|(.+)$"))
+@require_user_type(UserType.OWNER, UserType.ADMIN)
+@require_project_name("Tiến Nga")
+@require_group_role("main")
+@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_INVENTORY, CustomTitle.MAIN_PRODUCT, CustomTitle.MAIN_SUPPLIER)
+async def tn_kkho_select_callback(client, callback_query):
+    """Chọn 1 kho — hiện thông tin chi tiết."""
     inv_id = callback_query.matches[0].group(1)
-    if inv_id == "cancel":
-        await callback_query.message.delete()
-        return
-    if inv_id == "back":
-        from app.db.session import SessionLocal
-        from app.models.inventory import Inventory
-        db_back = SessionLocal()
-        try:
-            invs = db_back.query(Inventory).all()
-            if not invs:
-                await callback_query.message.edit_text("⚠️ Chưa có kho nào.", parse_mode=ParseMode.HTML)
-                return
-            buttons = []
-            for inv in invs:
-                btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
-                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_chkinv_{inv.id}")])
-            buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_chkinv_cancel")])
-            await callback_query.message.edit_text(
-                "<b>KIỂM TRA KHO</b>\n\nVui lòng chọn kho để xem thông tin:",
-                reply_markup=InlineKeyboardMarkup(buttons),
-                parse_mode=ParseMode.HTML
-            )
-        finally:
-            db_back.close()
-        return
 
-    from app.db.session import SessionLocal
-    from app.models.inventory import Inventory
-    import uuid
     db = SessionLocal()
     try:
-        inv = db.query(Inventory).filter(Inventory.id == uuid.UUID(inv_id)).first()
+        inv = await _tn_load_inventory(callback_query, db, inv_id)
         if not inv:
-            await callback_query.answer("⚠️ Không tìm thấy kho.", show_alert=True)
             return
 
-        quantity = inv.quantity or 0
-        capacity = inv.capacity or 0
-        usage_pct = (quantity / capacity * 100) if capacity > 0 else 0
-
-        msg = (
-            f"<b>THÔNG TIN KHO</b>\n\n"
-            f"<b>Tên Kho:</b> {inv.storage_name or '—'}\n"
-            f"<b>Nguyên Liệu:</b> {inv.material_name or '—'}\n"
-            f"<b>Địa Chỉ:</b> {inv.storage_location or '—'}\n\n"
-            f"<b>Tồn Kho:</b> <code>{quantity:,.0f}</code> kg\n"
-            f"<b>Sức Chứa:</b> <code>{capacity:,.0f}</code> kg\n"
-            f"<b>Sử Dụng:</b> <code>{usage_pct:.1f}%</code>\n"
-        )
-
-        buttons = [
-            [InlineKeyboardButton("⬅️ Quay lại", callback_data="tn_chkinv_back")],
-            [InlineKeyboardButton("Đóng", callback_data="tn_chkinv_cancel")]
-        ]
-        await callback_query.message.edit_text(
-            msg,
-            reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode=ParseMode.HTML
-        )
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Quay lại", callback_data="tn_kkho_p|0"),
+            InlineKeyboardButton("Hủy", callback_data="tn_kkho_x"),
+        ]])
+        await _tn_screen_edit(callback_query, _build_inventory_info_text(db, inv), markup)
     except Exception as e:
-        from bot.utils.logger import LogError
-        LogError(f"Error in _check_inv_cb: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
+        LogError(f"Error in tn_kkho_select_callback: {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
     finally:
         db.close()
 
-@bot.on_callback_query(filters.regex(r"^tn_chkinv_back$"))
-async def _check_inv_back_cb(client, callback_query):
-    from app.db.session import SessionLocal
-    from app.models.inventory import Inventory
-    db = SessionLocal()
-    try:
-        invs = db.query(Inventory).all()
-        if not invs:
-            await callback_query.message.edit_text("⚠️ Chưa có kho nào.", parse_mode=ParseMode.HTML)
-            return
 
-        buttons = []
-        for inv in invs:
-            btn_text = f"{inv.material_name} ({inv.storage_name})" if inv.storage_name else inv.material_name
-            buttons.append([InlineKeyboardButton(btn_text, callback_data=f"tn_chkinv_{inv.id}")])
-        buttons.append([InlineKeyboardButton("Hủy", callback_data="tn_chkinv_cancel")])
+@bot.on_callback_query(filters.regex(r"^(tn_kho_|tn_selinv_|tn_chkinv_)"))
+async def _tn_legacy_inventory_cb(client, callback_query):
+    """
+    Menu kho phiên bản cũ còn sót trong lịch sử chat. Không còn handler thật thì
+    Telegram sẽ quay vòng mãi ở nút bấm, nên trả lời dứt khoát cho người dùng.
+    """
+    await callback_query.answer("⚠️ Menu đã hết hạn, vui lòng gõ lại lệnh.", show_alert=True)
 
-        await callback_query.message.edit_text(
-            "<b>KIỂM TRA KHO</b>\n\nVui lòng chọn kho để xem thông tin:",
-            reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        from bot.utils.logger import LogError
-        LogError(f"Error in _check_inv_back_cb: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra.", show_alert=True)
-    finally:
-        db.close()
 
 # --- THU MUA ---
 @bot.on_message(filters.command(["tien_nga_material_purchase", "tien_nga_thu_mua_nguyen_lieu"]) | filters.regex(r"^@\w+\s+/(tien_nga_material_purchase|tien_nga_thu_mua_nguyen_lieu)\b"))

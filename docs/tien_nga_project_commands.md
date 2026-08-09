@@ -484,27 +484,54 @@ Các lệnh dưới đây được áp dụng khi người dùng ở trong nhóm
 
 ### PHÂN HỆ QUẢN LÝ KHO - `custom_title == "main_inventory"` hoặc `"super_main"`
 
+> **Lưu ý về mô hình dữ liệu:** mỗi bản ghi `Inventory` là một cặp *(nguyên liệu × tên kho)*.
+> Không có bảng kho riêng — "kho" chỉ là cột chữ `storage_name` lặp lại. Vì vậy một kho vật lý
+> chứa 3 loại nguyên liệu sẽ hiện thành 3 dòng trong danh sách.
+
+Cả 4 lệnh dùng chung một luồng: **danh sách kho (10 kho/trang) → chọn 1 kho → thao tác**.
+Mọi màn hình đều có nút `Hủy`, các màn hình con có thêm `Quay lại`.
+
 #### `/tien_nga_tao_kho` (hoặc `/tien_nga_create_inventory`)
-*   **Mục đích:** Tạo một kho chứa nguyên liệu mới (Acid, củi, mủ...) trên hệ thống.
+*   **Mục đích:** Tạo một dòng kho mới (Acid, củi, mủ...) trên hệ thống.
 *   **Cú pháp:** `/tien_nga_tao_kho`
 *   **Cách thức hoạt động:**
-    - Nhận Form: Tên Nguyên Liệu, Tên Kho, Số Lượng Ban Đầu, Địa Chỉ, Sức Chứa.
-    - Lưu thông tin kho vào bảng `Inventory`.
+    - Bot hiện danh sách kho có sẵn + nút `➕ Tạo kho hoàn toàn mới` + `Hủy`.
+    - Chọn một kho có sẵn → form **điền sẵn** Tên Kho / Địa Chỉ Lưu Trữ / Sức Chứa, **để trống
+      Tên Nguyên Liệu** — dùng để thêm nguyên liệu mới vào kho đã có.
+    - Bấm `➕ Tạo kho hoàn toàn mới` → form trống.
+    - Form: Tên Nguyên Liệu (bắt buộc), Tên Kho, Số Lượng Ban Đầu, Địa Chỉ Lưu Trữ, Sức Chứa.
+    - Bot chặn nếu cặp (Tên Nguyên Liệu × Tên Kho) đã tồn tại.
 
 #### `/tien_nga_danh_sach_kho` (hoặc `/tien_nga_list_inventory`)
-*   **Mục đích:** Liệt kê toàn bộ các kho hiện có kèm theo lượng tồn kho hiện tại và địa chỉ.
+*   **Mục đích:** Xem và quản lý từng kho — thông tin, cập nhật, xóa.
 *   **Cú pháp:** `/tien_nga_danh_sach_kho`
+*   **Cách thức hoạt động:**
+    - Danh sách kho → chọn 1 kho → menu 3 thao tác:
+      - **Thông tin chi tiết:** tồn kho, sức chứa, % sử dụng, và số phiếu đang gắn với tên kho này.
+      - **Cập nhật thông tin kho:** mở form cập nhật (giống `/tien_nga_cap_nhat_ton_kho`).
+      - **Xóa kho:** hiện màn xác nhận kèm cảnh báo tồn kho còn lại và số phiếu tham chiếu,
+        rồi mới `Xác nhận` / `Quay lại` / `Hủy`. Xóa là **vĩnh viễn, không khôi phục được**.
 
 #### `/tien_nga_kiem_tra_kho` (hoặc `/tien_nga_check_inventory`)
-*   **Mục đích:** Xem chi tiết và tính toán tỷ lệ % diện tích sử dụng của một kho cụ thể.
+*   **Mục đích:** Xem chi tiết và tính toán tỷ lệ % sử dụng của một kho cụ thể.
 *   **Cú pháp:** `/tien_nga_kiem_tra_kho`
+*   **Quyền:** mở thêm cho `main_supplier` (khác 3 lệnh còn lại).
 *   **Cách thức hoạt động:**
-    - Bot hiển thị danh sách các kho dưới dạng nút bấm inline.
-    - Khi chọn kho, bot tính toán % sử dụng = (Tồn kho / Sức chứa) * 100 và gửi báo cáo chi tiết.
+    - Bot hiển thị danh sách kho dưới dạng nút bấm inline (có phân trang).
+    - Khi chọn kho, bot tính % sử dụng = (Tồn kho / Sức chứa) × 100 và gửi báo cáo chi tiết.
 
-#### `/tien_nga_cap_nhat_ton_kho`
-*   **Mục đích:** Chỉnh sửa thông số kho hoặc điều chỉnh trực tiếp số lượng tồn kho khi kiểm kê thực tế.
+#### `/tien_nga_cap_nhat_ton_kho` (hoặc `/tien_nga_update_inventory`)
+*   **Mục đích:** Chỉnh sửa thông số kho hoặc điều chỉnh số lượng tồn kho khi kiểm kê thực tế.
 *   **Cú pháp:** `/tien_nga_cap_nhat_ton_kho`
+*   **Cách thức hoạt động:**
+    - Danh sách kho → chọn 1 kho → form cập nhật điền sẵn, có dòng `Mã Kho: <uuid>`.
+    - `Mã Kho` là khóa tìm bản ghi — **không được sửa**. Nhờ nó mà đổi được cả
+      Tên Nguyên Liệu lẫn Tên Kho (bản cũ khóa theo tên nên không đổi được).
+    - **Dòng nào xóa khỏi form hoặc để trống thì giữ nguyên giá trị cũ.** Muốn đặt tồn kho
+      về 0 thì ghi rõ `Số Lượng: 0`.
+*   **⚠️ Khi đổi Tên Kho:** phiếu thu mua / xuất kho / giao dịch thành phẩm lưu kho bằng
+    **tên dạng chữ, không phải khóa ngoại** — nên các phiếu cũ vẫn ghi tên kho cũ. Bot sẽ
+    cảnh báo kèm số phiếu bị ảnh hưởng trong thông báo kết quả.
 
 ---
 
