@@ -434,14 +434,17 @@ async def tien_nga_cancel_handler(client, message: Message) -> None:
     from bot.utils.human_resource import handle_cancel_task_reply
     await handle_cancel_task_reply(client, message)
 
-@bot.on_message(filters.command(["tien_nga_check_tasks", "tien_nga_xem_cong_viec"]) | filters.regex(r"^@\w+\s+/(tien_nga_check_tasks|tien_nga_xem_cong_viec)\b"))
+# Không nhận alias /tien_nga_xem_cong_viec: tên đó đã thuộc về handler nhóm member ở
+# đầu file (MEMBER_HR). Pyrogram chỉ chạy handler khớp đầu tiên, nên để ở đây thì alias
+# vĩnh viễn không tới được — chỉ tạo cảm giác sai là lệnh này dùng được ở nhóm main.
+@bot.on_message(filters.command(["tien_nga_check_tasks"]) | filters.regex(r"^@\w+\s+/tien_nga_check_tasks\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga")
 @require_group_role("main")
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HR)
 @command_timeout(auto_delete_cmd=True)
 async def tien_nga_check_tasks_handler(client, message: Message) -> None:
-    args = await check_command_target(client, message.text, ["tien_nga_check_tasks", "tien_nga_xem_cong_viec"])
+    args = await check_command_target(client, message.text, ["tien_nga_check_tasks"])
     if args is None: return
 
     from bot.utils.human_resource import handle_check_tasks
@@ -1068,6 +1071,7 @@ async def tn_lcp_delete_confirmed_callback(client, callback_query):
     """Xác nhận xóa Điểm Thu Mua."""
     cp_id = callback_query.matches[0].group(1)
 
+    saved = False
     db = SessionLocal()
     try:
         cp = await _tn_lcp_load(callback_query, db, cp_id)
@@ -1086,6 +1090,7 @@ async def tn_lcp_delete_confirmed_callback(client, callback_query):
         cp_name = cp.collection_name
         db.delete(cp)
         db.commit()
+        saved = True
 
         LogInfo(
             f"[TienNga] Deleted collection point '{cp_name}' ({cp_id}) by user {callback_query.from_user.id}",
@@ -1099,9 +1104,10 @@ async def tn_lcp_delete_confirmed_callback(client, callback_query):
             None
         )
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error in tn_lcp_delete_confirmed_callback: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra khi cập nhật database.", show_alert=True)
+        await callback_query.answer(("✅ Đã xóa, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi cập nhật database."), show_alert=True)
     finally:
         db.close()
 
@@ -1957,6 +1963,7 @@ async def tn_cc_customer_delete_confirmed_callback(client, callback_query):
     """Xác nhận xóa — chuyển khách hàng sang trạng thái DELETED."""
     hoursehold_id = callback_query.matches[0].group(1)
 
+    saved = False
     db = SessionLocal()
     try:
         customer = await _tn_load_customer(callback_query, db, hoursehold_id)
@@ -1972,6 +1979,7 @@ async def tn_cc_customer_delete_confirmed_callback(client, callback_query):
         fullname = customer.fullname
         customer.status = "DELETED"
         db.commit()
+        saved = True
 
         LogInfo(
             f"[TienNga] Soft deleted customer '{hoursehold_id}' by user {callback_query.from_user.id}",
@@ -1986,9 +1994,10 @@ async def tn_cc_customer_delete_confirmed_callback(client, callback_query):
             None
         )
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error in tn_cc_customer_delete_confirmed_callback: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra khi cập nhật database.", show_alert=True)
+        await callback_query.answer(("✅ Đã xóa, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi cập nhật database."), show_alert=True)
     finally:
         db.close()
 
@@ -2260,6 +2269,7 @@ async def tn_dc_confirm_callback(client, callback_query):
 @require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_SUPPLIER)
 async def tn_dc_delete_confirmed_callback(client, callback_query):
     """Xác nhận xóa — chuyển toàn bộ hộ đã chọn sang trạng thái DELETED."""
+    saved = False
     db = SessionLocal()
     try:
         state = await _tn_dc_get_state(callback_query)
@@ -2285,6 +2295,7 @@ async def tn_dc_delete_confirmed_callback(client, callback_query):
                 c.status = "DELETED"
                 deleted.append(c)
         db.commit()
+        saved = True
 
         # Xóa xong thì phiên chọn kết thúc
         _TN_DC_SELECTIONS.pop(_tn_dc_key(callback_query), None)
@@ -2306,9 +2317,10 @@ async def tn_dc_delete_confirmed_callback(client, callback_query):
 
         await _tn_screen_edit(callback_query, text, None)
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error in tn_dc_delete_confirmed_callback: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra khi cập nhật database.", show_alert=True)
+        await callback_query.answer(("✅ Đã xóa, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi cập nhật database."), show_alert=True)
     finally:
         db.close()
 
@@ -2557,6 +2569,7 @@ async def tien_nga_delete_customer_handler(client, message: Message) -> None:
 
     # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Khách hàng bằng nút bấm
     if len(args) == 1:
+        saved = False
         db = SessionLocal()
         try:
             text, markup = _tn_collection_point_view(db, "tn_dc", "XÓA KHÁCH HÀNG")
@@ -2592,6 +2605,7 @@ async def tien_nga_delete_customer_handler(client, message: Message) -> None:
 
         customer.status = "DELETED"
         db.commit()
+        saved = True
         
         LogInfo(f"[TienNga] Soft deleted customer '{hoursehold_id}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
         
@@ -2604,8 +2618,9 @@ async def tien_nga_delete_customer_handler(client, message: Message) -> None:
         )
     except Exception as e:
         LogError(f"Error soft deleting customer: {e}", LogType.SYSTEM_STATUS)
-        db.rollback()
-        await message.reply_text("❌ Có lỗi xảy ra khi cập nhật database.", parse_mode=ParseMode.HTML)
+        if not saved:
+            db.rollback()
+        await message.reply_text(("✅ Đã xóa, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi cập nhật database."), parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -2977,6 +2992,7 @@ async def tien_nga_daily_purchase_handler(client, message: Message) -> None:
 
         # Không truyền mã hộ -> mở luồng chọn Điểm Thu Mua -> Khách hàng bằng nút bấm
         if len(args) < 2:
+            saved = False
             db = SessionLocal()
             try:
                 text, markup = _tn_collection_point_view(db, "tn_dp", "THU MUA HÀNG NGÀY")
@@ -3137,6 +3153,7 @@ async def tien_nga_daily_purchase_handler(client, message: Message) -> None:
             customer.total_debt += int(saved_amount)
             
         db.commit()
+        saved = True
         
         luu_so_label = "Có" if saved_amount > 0 else "Không"
         
@@ -3174,8 +3191,9 @@ async def tien_nga_daily_purchase_handler(client, message: Message) -> None:
             except Exception as del_err:
                 LogError(f"Failed to delete daily purchase form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
-        db.rollback()
-        await message.reply_text("❌ Có lỗi xảy ra khi lưu dữ liệu.", parse_mode=ParseMode.HTML)
+        if not saved:
+            db.rollback()
+        await message.reply_text(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi lưu dữ liệu."), parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -4818,6 +4836,7 @@ async def control_losses_save_callback(client, callback_query):
         except ValueError:
             pass
 
+    saved = False
     db = SessionLocal()
     try:
         # Check if already saved today for this product code
@@ -4903,6 +4922,7 @@ async def control_losses_save_callback(client, callback_query):
         db.add(new_loss_control)
         try:
             db.commit()
+            saved = True
         except IntegrityError:
             # Unique (product_code, day): một người khác vừa lưu xong trước.
             db.rollback()
@@ -4925,9 +4945,10 @@ async def control_losses_save_callback(client, callback_query):
         await callback_query.message.edit_reply_markup(reply_markup=keyboard)
         
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error in control_losses_save: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Lỗi khi lưu dữ liệu.", show_alert=True)
+        await callback_query.answer(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Lỗi khi lưu dữ liệu."), show_alert=True)
     finally:
         db.close()
 
@@ -4972,6 +4993,7 @@ async def control_losses_overwrite_callback(client, callback_query):
         except ValueError:
             pass
 
+    saved = False
     db = SessionLocal()
     try:
         existing = db.query(LossControls).filter(
@@ -5035,6 +5057,7 @@ async def control_losses_overwrite_callback(client, callback_query):
         existing.created_at = func.now()
         
         db.commit()
+        saved = True
         
         LogInfo(f"[TienNga] User {callback_query.from_user.id} overwrote loss control for {product_code}", LogType.SYSTEM_STATUS)
         
@@ -5056,9 +5079,10 @@ async def control_losses_overwrite_callback(client, callback_query):
         )
         
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error in control_losses_overwrite: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Lỗi khi cập nhật dữ liệu.", show_alert=True)
+        await callback_query.answer(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Lỗi khi cập nhật dữ liệu."), show_alert=True)
     finally:
         db.close()
 
@@ -8900,6 +8924,7 @@ async def tien_nga_firewood_purcharse_handler(client, message: Message) -> None:
 
         from app.models.business import Customers
 
+        saved = False
         db = SessionLocal()
         try:
             customer = db.query(Customers).filter(
@@ -9021,6 +9046,7 @@ Tạm Ứng: 0</pre>
         )
         db.add(new_purchase)
         db.commit()
+        saved = True
         db.refresh(new_purchase)
 
         def fmt_money(val):
@@ -9062,9 +9088,10 @@ Tạm Ứng: 0</pre>
             except Exception as del_err:
                 LogError(f"Failed to delete firewood purchase form: {del_err}", LogType.SYSTEM_STATUS)
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         traceback.print_exc()
-        await message.reply_text("❌ Có lỗi xảy ra khi lưu vào database.", parse_mode=ParseMode.HTML)
+        await message.reply_text(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi lưu vào database."), parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -10618,6 +10645,13 @@ async def partner_pay_callback(client, callback_query) -> None:
     amount = int(data[2])
     member_chat_id = data[3]
 
+    # Nhánh confirm trừ thẳng vào công nợ đối tác, bấm lại là trừ hai lần. Tag phải kèm
+    # `action` để nút "Từ chối" không giành mất quyền của nút "Duyệt" trên cùng tin nhắn.
+    claim_tag = f"ppay_{action}"
+    if not _tn_cb_claim(callback_query, claim_tag):
+        await callback_query.answer("⚠️ Thao tác này đã được xử lý rồi.", show_alert=True)
+        return
+
     from app.models.business import Partners, Projects
     from app.models.telegram import TelegramProjectMember
 
@@ -10625,10 +10659,12 @@ async def partner_pay_callback(client, callback_query) -> None:
         if val is None or val == 0: return "0 VNĐ"
         return f"{int(val):,} VNĐ".replace(",", ".")
 
+    saved = False
     db = SessionLocal()
     try:
         partner = db.query(Partners).filter(Partners.partner_id == partner_id).first()
         if not partner:
+            _tn_cb_release(callback_query, claim_tag)
             await callback_query.answer("⚠️ Không tìm thấy đối tác.", show_alert=True)
             return
 
@@ -10665,12 +10701,14 @@ async def partner_pay_callback(client, callback_query) -> None:
         old_debt = partner.total_debt or 0
 
         if amount > abs(old_debt):
+            _tn_cb_release(callback_query, claim_tag)
             await callback_query.answer("⚠️ Số tiền vượt quá công nợ hiện tại!", show_alert=True)
             return
 
         new_debt = old_debt + amount  # old_debt < 0, thêm amount để giảm nợ
         partner.total_debt = new_debt
         db.commit()
+        saved = True
 
         await callback_query.answer()
         
@@ -10709,10 +10747,17 @@ async def partner_pay_callback(client, callback_query) -> None:
         LogInfo(f"[TienNga] Partner payment confirmed {partner_id} amount={amount} by {callback_query.from_user.id}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
-        db.rollback()
+        # Đã commit thì không release: công nợ đã trừ, cho bấm lại là trừ lần hai.
+        if not saved:
+            db.rollback()
+            _tn_cb_release(callback_query, claim_tag)
         import traceback as tb
-        LogError(f"Error in partner_pay_callback: {tb.format_exc()}", LogType.SYSTEM_STATUS)
-        await callback_query.message.reply_text("❌ Lỗi hệ thống.", parse_mode=ParseMode.HTML)
+        LogError(f"Error in partner_pay_callback (saved={saved}): {tb.format_exc()}", LogType.SYSTEM_STATUS)
+        await callback_query.message.reply_text(
+            "✅ Đã ghi nhận thanh toán, nhưng không hiển thị được kết quả."
+            if saved else "❌ Lỗi hệ thống.",
+            parse_mode=ParseMode.HTML
+        )
     finally:
         db.close()
 
@@ -10868,6 +10913,7 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
     from app.models.inventory import Inventory
     import uuid as uuid_lib
 
+    saved = False
     db = SessionLocal()
     try:
         partner = db.query(Partners).filter(
@@ -10951,6 +10997,7 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
             )
 
         db.commit()
+        saved = True
 
         def fmt_money(val):
             return f"{int(val):,} VNĐ".replace(",", ".")
@@ -11022,8 +11069,9 @@ async def tien_nga_partner_transaction_handler(client, message: Message) -> None
     except Exception as e:
         import traceback as tb
         LogError(f"Error creating partner business: {tb.format_exc()}", LogType.SYSTEM_STATUS)
-        db.rollback()
-        await message.reply_text("❌ Có lỗi hệ thống khi lưu giao dịch.", parse_mode=ParseMode.HTML)
+        if not saved:
+            db.rollback()
+        await message.reply_text(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi hệ thống khi lưu giao dịch."), parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -11075,6 +11123,7 @@ async def tien_nga_cancel_partner_txn_handler(client, message: Message) -> None:
     from app.models.business import Partners, PartnerBusinesses
     from app.models.inventory import Inventory
 
+    saved = False
     db = SessionLocal()
     try:
         txn = db.query(PartnerBusinesses).filter(PartnerBusinesses.id == txn_id).first()
@@ -11131,6 +11180,7 @@ async def tien_nga_cancel_partner_txn_handler(client, message: Message) -> None:
         # Xóa giao dịch
         db.delete(txn)
         db.commit()
+        saved = True
 
         def fmt_money(val):
             if val is None or val == 0:
@@ -11156,10 +11206,11 @@ async def tien_nga_cancel_partner_txn_handler(client, message: Message) -> None:
         LogInfo(f"[TienNga] Partner txn cancelled {txn_id} by user {message.from_user.id}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         import traceback as tb
         LogError(f"Error in cancel partner txn: {tb.format_exc()}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Có lỗi hệ thống khi hủy giao dịch.", parse_mode=ParseMode.HTML)
+        await message.reply_text(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi hệ thống khi hủy giao dịch."), parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -12668,6 +12719,7 @@ async def tien_nga_create_investment_handler(client, message: Message) -> None:
     import uuid as _uuid
     from sqlalchemy.exc import IntegrityError
 
+    saved = False
     db = SessionLocal()
     try:
         # Check for duplicate investment_code
@@ -12699,6 +12751,7 @@ async def tien_nga_create_investment_handler(client, message: Message) -> None:
         )
         db.add(new_inv)
         db.commit()
+        saved = True
 
         LogInfo(f"[TienNga] Created investment '{name}' with code '{inv_code}' by user {message.from_user.id}", LogType.SYSTEM_STATUS)
 
@@ -12718,9 +12771,10 @@ async def tien_nga_create_investment_handler(client, message: Message) -> None:
 
         await message.reply_text(success_msg, parse_mode=ParseMode.HTML)
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error creating investment: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Có lỗi xảy ra khi tạo khoản đầu tư.", parse_mode=ParseMode.HTML)
+        await message.reply_text(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi tạo khoản đầu tư."), parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -13098,6 +13152,7 @@ async def _process_daily_payment_form(client, message: Message, lines: list):
     from app.models.business import Investment, DailyPayment
     import uuid as _uuid
 
+    saved = False
     db = SessionLocal()
     try:
         import uuid as _uuid
@@ -13162,6 +13217,7 @@ async def _process_daily_payment_form(client, message: Message, lines: list):
             _sync_parent_investment(db, inv)
 
         db.commit()
+        saved = True
 
         if requires_approval:
             # Attempt to find the dynamic Owner's username
@@ -13222,9 +13278,10 @@ async def _process_daily_payment_form(client, message: Message, lines: list):
         LogInfo(f"[TienNga] daily_payment {payment_type} {amount} for inv {inv.name} by {message.from_user.id}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error in _process_daily_payment_form: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Hệ thống gặp lỗi khi lưu phiếu thu/chi.", parse_mode=ParseMode.HTML)
+        await message.reply_text(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Hệ thống gặp lỗi khi lưu phiếu thu/chi."), parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -13253,6 +13310,7 @@ async def tien_nga_confirm_payment_handler(client, message: Message) -> None:
     payment_id = match.group(1)
     
     from app.models.business import Investment, DailyPayment
+    saved = False
     db = SessionLocal()
     try:
         payment = db.query(DailyPayment).filter(DailyPayment.id == payment_id).first()
@@ -13276,6 +13334,7 @@ async def tien_nga_confirm_payment_handler(client, message: Message) -> None:
         _sync_parent_investment(db, inv)
         
         db.commit()
+        saved = True
         
         success_msg = (
             f"✅ <b>ĐÃ PHÊ DUYỆT PHIẾU CHI</b>\n\n"
@@ -13289,9 +13348,10 @@ async def tien_nga_confirm_payment_handler(client, message: Message) -> None:
         LogInfo(f"[TienNga] Owner {message.from_user.id} approved payment {payment.id}", LogType.SYSTEM_STATUS)
         
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error in confirm_payment: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Hệ thống gặp lỗi khi duyệt phiếu chi.", parse_mode=ParseMode.HTML)
+        await message.reply_text(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Hệ thống gặp lỗi khi duyệt phiếu chi."), parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -13316,6 +13376,7 @@ async def tien_nga_deny_payment_handler(client, message: Message) -> None:
     payment_id = match.group(1)
     
     from app.models.business import DailyPayment
+    saved = False
     db = SessionLocal()
     try:
         payment = db.query(DailyPayment).filter(DailyPayment.id == payment_id).first()
@@ -13329,14 +13390,16 @@ async def tien_nga_deny_payment_handler(client, message: Message) -> None:
             
         payment.status = "REJECTED"
         db.commit()
+        saved = True
         
         await message.reply_text(f"❌ <b>ĐÃ TỪ CHỐI PHIẾU CHI</b>\n\nMã Phiếu: <code>{payment.id}</code>", parse_mode=ParseMode.HTML)
         LogInfo(f"[TienNga] Owner {message.from_user.id} rejected payment {payment.id}", LogType.SYSTEM_STATUS)
         
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error in deny_payment: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Hệ thống gặp lỗi khi huỷ phiếu chi.", parse_mode=ParseMode.HTML)
+        await message.reply_text(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Hệ thống gặp lỗi khi huỷ phiếu chi."), parse_mode=ParseMode.HTML)
     finally:
         db.close()
 
@@ -16555,6 +16618,7 @@ async def tien_nga_product_transaction_handler(client, message: Message) -> None
     if len(lines) < 2:
         from app.db.session import SessionLocal
         from app.models.inventory import Inventory
+        saved = False
         db = SessionLocal()
         try:
             invs = db.query(Inventory).all()
@@ -16681,6 +16745,7 @@ async def tien_nga_product_transaction_handler(client, message: Message) -> None
         )
         db.add(new_txn)
         db.commit()
+        saved = True
 
         # Reply Success
         txn_type_vn = "NHẬP KHO" if txn_type.lower() == "import" else "XUẤT KHO"
@@ -16701,9 +16766,10 @@ async def tien_nga_product_transaction_handler(client, message: Message) -> None
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error handling product transaction: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Lỗi hệ thống khi cập nhật cơ sở dữ liệu.")
+        await message.reply_text(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Lỗi hệ thống khi cập nhật cơ sở dữ liệu."))
     finally:
         db.close()
 
@@ -16995,6 +17061,7 @@ async def tien_nga_confirm_shareholder_callback(client, callback_query):
     from app.models.business import Shareholder, Investment, DailyPayment
     import uuid as _uuid
 
+    saved = False
     db = SessionLocal()
     try:
         inv_id = pending["inv_id"]
@@ -17075,6 +17142,7 @@ async def tien_nga_confirm_shareholder_callback(client, callback_query):
         db.add(new_payment)
 
         db.commit()
+        saved = True
 
         LogInfo(f"[TienNga] {action_label} '{shareholder_code}' amount {fmt_vn(amount)} for Investment '{investment.name}' + DailyPayment created", LogType.SYSTEM_STATUS)
 
@@ -17159,9 +17227,10 @@ async def tien_nga_confirm_shareholder_callback(client, callback_query):
                 LogError(f"[TienNga] Failed to send notification to member group '{telegram_group}': {notify_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error confirming shareholder creation: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra khi lưu dữ liệu.", show_alert=True)
+        await callback_query.answer(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi lưu dữ liệu."), show_alert=True)
         await callback_query.message.edit_text(
             f"❌ <b>LỖI</b>\n\nCó lỗi xảy ra khi lưu vào database: {e}",
             parse_mode=ParseMode.HTML
@@ -17588,6 +17657,7 @@ async def tien_nga_confirm_dividend_callback(client, callback_query):
     from app.models.business import Investment, DailyPayment
     import uuid as _uuid
 
+    saved = False
     db = SessionLocal()
     try:
         inv_id = pending["inv_id"]
@@ -17642,6 +17712,7 @@ async def tien_nga_confirm_dividend_callback(client, callback_query):
                 _sync_parent_investment(db, m_inv)
 
         db.commit()
+        saved = True
 
         LogInfo(f"[TienNga] Dividend distribution confirmed for '{investment.name}', total paid: {fmt_vn(total_dividend_paid)} by @{callback_query.from_user.username}", LogType.SYSTEM_STATUS)
 
@@ -17719,9 +17790,10 @@ async def tien_nga_confirm_dividend_callback(client, callback_query):
             LogError(f"[TienNga] Error sending dividend notifications: {notify_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error confirming dividend distribution: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra khi lưu dữ liệu.", show_alert=True)
+        await callback_query.answer(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi lưu dữ liệu."), show_alert=True)
         await callback_query.message.edit_text(
             f"❌ <b>LỖI</b>\n\nCó lỗi xảy ra khi lưu vào database: {e}",
             parse_mode=ParseMode.HTML
@@ -18080,6 +18152,7 @@ async def tien_nga_confirm_payment_sh_callback(client, callback_query):
     from app.models.business import Investment, DailyPayment
     import uuid as _uuid
 
+    saved = False
     db = SessionLocal()
     try:
         inv_id = pending["inv_id"]
@@ -18138,6 +18211,7 @@ async def tien_nga_confirm_payment_sh_callback(client, callback_query):
         investment.end_date = today
 
         db.commit()
+        saved = True
 
         LogInfo(f"[TienNga] Payment shareholder confirmed for '{investment.name}', total paid: {fmt_vn(total_paid)} by @{callback_query.from_user.username}", LogType.SYSTEM_STATUS)
 
@@ -18217,9 +18291,10 @@ async def tien_nga_confirm_payment_sh_callback(client, callback_query):
             LogError(f"[TienNga] Error sending payment notifications: {notify_err}", LogType.SYSTEM_STATUS)
 
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error confirming payment shareholder: {e}\n{traceback.format_exc()}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Có lỗi xảy ra khi lưu dữ liệu.", show_alert=True)
+        await callback_query.answer(("✅ Đã lưu, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Có lỗi xảy ra khi lưu dữ liệu."), show_alert=True)
         await callback_query.message.edit_text(
             f"❌ <b>LỖI</b>\n\nCó lỗi xảy ra khi lưu vào database: {e}",
             parse_mode=ParseMode.HTML
@@ -19311,19 +19386,22 @@ async def del_land_callback(client, callback_query) -> None:
     land_code = data.split(":")[1]
     from app.models.business import AgriculturalLand
 
+    saved = False
     db = SessionLocal()
     try:
         land = db.query(AgriculturalLand).filter(AgriculturalLand.land_code == land_code, AgriculturalLand.status == "ACTIVE").first()
         if land:
             land.status = "INACTIVE"
             db.commit()
+            saved = True
             await callback_query.message.edit_text(f"✅ Đã ngưng hoạt động đất <b>{land_code}</b> thành công.", parse_mode=ParseMode.HTML)
         else:
             await callback_query.answer("⚠️ Không tìm thấy.", show_alert=True)
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error deleting land: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.message.edit_text("❌ Lỗi hệ thống.")
+        await callback_query.message.edit_text(("✅ Đã xóa, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Lỗi hệ thống."))
     finally:
         db.close()
 
@@ -20426,16 +20504,25 @@ async def harvest_confirm_callback(client, callback_query):
 
     total_amount = tree_count * unit_price
 
+    # Toàn bộ dữ liệu nằm trong callback_data nên bấm lại là chạy lại y nguyên: cộng công
+    # nợ hai lần và tạo hai phiếu thu hoạch. Giành quyền xử lý TRƯỚC mọi await.
+    if not _tn_cb_claim(callback_query, "hc_harvest"):
+        await callback_query.answer("⚠️ Thao tác này đã được xử lý rồi.", show_alert=True)
+        return
+
     try:
         day = datetime.strptime(day_str, "%d%m%Y").date()
     except Exception:
+        _tn_cb_release(callback_query, "hc_harvest")
         await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
         return
 
+    saved = False
     db = SessionLocal()
     try:
         hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
         if not hh:
+            _tn_cb_release(callback_query, "hc_harvest")
             await callback_query.answer(f"⚠️ Không tìm thấy hộ dân {hh_code}.", show_alert=True)
             return
 
@@ -20460,6 +20547,7 @@ async def harvest_confirm_callback(client, callback_query):
         # Cộng thành tiền vào công nợ
         hh.total_debt = (hh.total_debt or 0) + total_amount
         db.commit()
+        saved = True
 
         def fmt_money(val):
             if val is None or val == 0: return "0 VNĐ"
@@ -20508,9 +20596,16 @@ async def harvest_confirm_callback(client, callback_query):
 
         await callback_query.answer("✅ Đã xác nhận thu hoạch.", show_alert=False)
     except Exception as e:
-        db.rollback()
-        LogError(f"Error confirming harvest: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+        # Đã commit thì tuyệt đối không release: công nợ đã cộng, cho bấm lại là cộng lần hai.
+        if not saved:
+            db.rollback()
+            _tn_cb_release(callback_query, "hc_harvest")
+        LogError(f"Error confirming harvest (saved={saved}): {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer(
+            "✅ Đã ghi nhận thu hoạch, nhưng không hiển thị được kết quả."
+            if saved else "❌ Lỗi hệ thống.",
+            show_alert=True
+        )
     finally:
         db.close()
 
@@ -21369,119 +21464,6 @@ Ngân Hàng: </pre>"""
         await cb.answer()
         return
 
-@bot.on_message(filters.command(["tien_nga_update_household", "tien_nga_cap_nhat_ho_dan"]) | filters.regex(r"^@\w+\s+/(tien_nga_update_household|tien_nga_cap_nhat_ho_dan)\b"))
-@require_user_type(UserType.OWNER, UserType.ADMIN)
-@require_project_name("Tiến Nga", "Thu Hoạch")
-@require_group_role("main")
-@require_custom_title(CustomTitle.SUPER_MAIN, CustomTitle.MAIN_HARVEST)
-@command_timeout(auto_delete_cmd=True)
-async def tien_nga_update_household_handler(client, message: Message) -> None:
-    lines = message.text.strip().split("\n")
-    from app.models.business import Households
-
-    if len(lines) < 2:
-        args = lines[0].split()
-        if len(args) < 2:
-            await message.reply_text("⚠️ Cú pháp: <code>/tien_nga_cap_nhat_ho_dan [Mã Hộ Dân]</code>", parse_mode=ParseMode.HTML)
-            return
-        hh_code = args[1].upper()
-        db = SessionLocal()
-        try:
-            hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
-            if not hh:
-                await message.reply_text(f"⚠️ Không tìm thấy hộ dân với mã <b>{hh_code}</b>.", parse_mode=ParseMode.HTML)
-                return
-
-            def fmt_money(val):
-                if val is None or val == 0: return "0"
-                return str(int(val))
-
-            form = f"""<b>CẬP NHẬT HỘ DÂN</b>
-
-Sao chép form dưới, chỉnh sửa và gửi lại:
-
-<pre>/tien_nga_cap_nhat_ho_dan
-Mã Hộ Dân: {hh.household_code}
-Mã Hộ Thu Mua: {hh.purchase_code or ''}
-Mã Đất: {hh.land_code or ''}
-Họ Và Tên: {hh.fullname or ''}
-Username: {hh.username or ''}
-Nhóm Telegram: {hh.telegram_group or ''}
-SĐT: {hh.phone or ''}
-Địa Chỉ: {hh.address or ''}
-Công Nợ: {fmt_money(hh.total_debt)}
-Đơn Giá Cạo Mủ: {fmt_money(hh.tapping_price)}
-Số TK: {hh.bank_account or ''}
-Ngân Hàng: {hh.bank_name or ''}</pre>"""
-            await message.reply_text(form, parse_mode=ParseMode.HTML)
-        finally:
-            db.close()
-        return
-
-    data = {}
-    for line in lines[1:]:
-        if ":" in line:
-            key, val = line.split(":", 1)
-            data[key.strip()] = val.strip()
-
-    hh_code = data.get("Mã Hộ Dân", "").strip().upper()
-    if not hh_code:
-        await message.reply_text("⚠️ <b>Mã Hộ Dân</b> là bắt buộc.", parse_mode=ParseMode.HTML)
-        return
-
-    db = SessionLocal()
-    try:
-        hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
-        if not hh:
-            await message.reply_text(f"⚠️ Không tìm thấy hộ dân với mã <b>{hh_code}</b>.", parse_mode=ParseMode.HTML)
-            return
-
-        if "Mã Hộ Thu Mua" in data and data["Mã Hộ Thu Mua"]:
-            new_pc = data["Mã Hộ Thu Mua"].upper()
-            dup = db.query(Households).filter(Households.purchase_code == new_pc, Households.household_code != hh_code).first()
-            if dup:
-                await message.reply_text(f"⚠️ Mã thu mua <b>{new_pc}</b> đã được sử dụng.", parse_mode=ParseMode.HTML)
-                return
-            hh.purchase_code = new_pc
-        if "Mã Đất" in data: hh.land_code = data["Mã Đất"].upper() or None
-        if "Họ Và Tên" in data: hh.fullname = data["Họ Và Tên"] or None
-        if "Username" in data: hh.username = data["Username"].lstrip("@") or None
-        if "Nhóm Telegram" in data: hh.telegram_group = data["Nhóm Telegram"] or None
-        if "SĐT" in data: hh.phone = data["SĐT"] or None
-        if "Địa Chỉ" in data: hh.address = data["Địa Chỉ"] or None
-        if "Công Nợ" in data: hh.total_debt = parse_float_vn(data["Công Nợ"])
-        if "Đơn Giá Cạo Mủ" in data: hh.tapping_price = parse_float_vn(data["Đơn Giá Cạo Mủ"])
-        if "Số TK" in data: hh.bank_account = data["Số TK"] or None
-        if "Ngân Hàng" in data: hh.bank_name = data["Ngân Hàng"] or None
-        db.commit()
-
-        def fmt_money(val):
-            if val is None or val == 0: return "0 VNĐ"
-            return f"{int(val):,} VNĐ".replace(",", ".")
-
-        await message.reply_text(
-            f"✅ <b>Cập Nhật Hộ Dân Thành Công!</b>\n\n"
-            f"<b>Mã Hộ Dân:</b> <code>{hh.household_code}</code>\n"
-            f"<b>Mã Thu Mua:</b> <code>{hh.purchase_code or '—'}</code>\n"
-            f"<b>Mã Đất:</b> <code>{hh.land_code or '—'}</code>\n"
-            f"<b>Họ Tên:</b> {hh.fullname or '—'}\n"
-            f"<b>Username:</b> @{hh.username or '—'}\n"
-            f"<b>Nhóm Telegram:</b> {hh.telegram_group or '—'}\n"
-            f"<b>SĐT:</b> {hh.phone or '—'}\n"
-            f"<b>Địa Chỉ:</b> {hh.address or '—'}\n"
-            f"<b>Công Nợ:</b> <code>{fmt_money(hh.total_debt)}</code>\n"
-            f"<b>Đơn Giá Cạo Mủ:</b> <code>{fmt_money(hh.tapping_price)}</code>\n"
-            f"<b>Số TK:</b> <code>{hh.bank_account or '—'}</code>\n"
-            f"<b>Ngân Hàng:</b> {hh.bank_name or '—'}",
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        db.rollback()
-        LogError(f"Error updating household: {e}", LogType.SYSTEM_STATUS)
-        await message.reply_text("❌ Có lỗi hệ thống.", parse_mode=ParseMode.HTML)
-    finally:
-        db.close()
-
 @bot.on_message(filters.command(["tien_nga_delete_household", "tien_nga_xoa_ho_dan"]) | filters.regex(r"^@\w+\s+/(tien_nga_delete_household|tien_nga_xoa_ho_dan)\b"))
 @require_user_type(UserType.OWNER, UserType.ADMIN)
 @require_project_name("Tiến Nga", "Thu Hoạch")
@@ -21528,19 +21510,22 @@ async def del_hh_callback(client, callback_query) -> None:
     hh_code = data.split(":")[1]
     from app.models.business import Households
 
+    saved = False
     db = SessionLocal()
     try:
         hh = db.query(Households).filter(Households.household_code == hh_code).first()
         if hh:
             hh.status = "DELETED"
             db.commit()
+            saved = True
             await callback_query.message.edit_text(f"✅ Đã xóa hộ dân <b>{hh_code}</b> thành công.", parse_mode=ParseMode.HTML)
         else:
             await callback_query.answer("⚠️ Không tìm thấy.", show_alert=True)
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error deleting household: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.message.edit_text("❌ Lỗi hệ thống.")
+        await callback_query.message.edit_text(("✅ Đã xóa, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Lỗi hệ thống."))
     finally:
         db.close()
 
@@ -22622,16 +22607,25 @@ async def durian_harvest_confirm_callback(client, callback_query):
 
     total_amount = harvest_weight * unit_price
 
+    # Xem chú thích ở harvest_confirm_callback: dữ liệu nằm hết trong callback_data nên
+    # bấm lại là cộng công nợ lần hai. Giành quyền xử lý TRƯỚC mọi await.
+    if not _tn_cb_claim(callback_query, "sc_harvest"):
+        await callback_query.answer("⚠️ Thao tác này đã được xử lý rồi.", show_alert=True)
+        return
+
     try:
         day = dt_cls.strptime(day_str, "%d%m%Y").date()
     except Exception:
+        _tn_cb_release(callback_query, "sc_harvest")
         await callback_query.answer("⚠️ Ngày không hợp lệ.", show_alert=True)
         return
 
+    saved = False
     db = SessionLocal()
     try:
         hh = db.query(Households).filter(Households.household_code == hh_code, Households.status == "ACTIVE").first()
         if not hh:
+            _tn_cb_release(callback_query, "sc_harvest")
             await callback_query.answer(f"⚠️ Không tìm thấy hộ dân {hh_code}.", show_alert=True)
             return
 
@@ -22654,6 +22648,7 @@ async def durian_harvest_confirm_callback(client, callback_query):
 
         hh.total_debt = (hh.total_debt or 0) + total_amount
         db.commit()
+        saved = True
 
         def fmt_money(val):
             if val is None or val == 0: return "0 VNĐ"
@@ -22698,9 +22693,16 @@ async def durian_harvest_confirm_callback(client, callback_query):
 
         await callback_query.answer("✅ Đã xác nhận thu hoạch sầu riêng.", show_alert=False)
     except Exception as e:
-        db.rollback()
-        LogError(f"Error confirming durian harvest: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.answer("❌ Lỗi hệ thống.", show_alert=True)
+        # Đã commit thì tuyệt đối không release: công nợ đã cộng, cho bấm lại là cộng lần hai.
+        if not saved:
+            db.rollback()
+            _tn_cb_release(callback_query, "sc_harvest")
+        LogError(f"Error confirming durian harvest (saved={saved}): {e}", LogType.SYSTEM_STATUS)
+        await callback_query.answer(
+            "✅ Đã ghi nhận thu hoạch, nhưng không hiển thị được kết quả."
+            if saved else "❌ Lỗi hệ thống.",
+            show_alert=True
+        )
     finally:
         db.close()
 
@@ -26798,19 +26800,22 @@ async def del_sp_callback(client, callback_query) -> None:
     expense_id = data.split(":")[1]
     from app.models.business import SuppliesExpense
 
+    saved = False
     db = SessionLocal()
     try:
         expense = db.query(SuppliesExpense).filter(SuppliesExpense.id == expense_id).first()
         if expense:
             db.delete(expense)
             db.commit()
+            saved = True
             await callback_query.message.edit_text(f"✅ Đã xóa bản ghi chi phí vật tư thành công.", parse_mode=ParseMode.HTML)
         else:
             await callback_query.answer("⚠️ Bản ghi không tồn tại hoặc đã bị xóa.", show_alert=True)
     except Exception as e:
-        db.rollback()
+        if not saved:
+            db.rollback()
         LogError(f"Error deleting supplies expense: {e}", LogType.SYSTEM_STATUS)
-        await callback_query.message.edit_text("❌ Lỗi hệ thống.")
+        await callback_query.message.edit_text(("✅ Đã xóa, nhưng không hiển thị được kết quả. Vui lòng kiểm tra lại." if saved else "❌ Lỗi hệ thống."))
     finally:
         db.close()
 

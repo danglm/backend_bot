@@ -4753,6 +4753,13 @@ async def execute_public_holiday(client, reply_to, target_date, custom_note: str
 
     message = reply_to  # phần thân bên dưới vẫn dùng tên `message`
     holiday_note = f"Nghỉ ngày lễ - {custom_note}" if custom_note else "Nghỉ ngày lễ"
+    # Hàm nhận target_date đã parse sẵn, nhưng phần hiển thị/log bên dưới cần lại chuỗi
+    # ngày đúng như người dùng gõ — phép nghịch của strptime ở handle_public_holiday.
+    date_str = target_date.strftime("%d/%m/%Y")
+
+    # Lỗi khi dựng/gửi tin nhắn kết quả không được hiểu thành lỗi ghi database: chấm công
+    # đã commit rồi mà báo thất bại thì người dùng sẽ chạy lại lệnh.
+    saved = False
 
     # Tìm project_id từ chat hiện tại
     db = SessionLocal()
@@ -4767,6 +4774,8 @@ async def execute_public_holiday(client, reply_to, target_date, custom_note: str
                 parse_mode=ParseMode.HTML,
             )
             return
+
+        project_id = current_member.project_id
 
         # Dùng chung một định nghĩa "nhân viên của dự án này" với mọi lệnh HR khác
         from bot.utils.hr_picker import project_employees as _project_employees
@@ -4849,6 +4858,7 @@ async def execute_public_holiday(client, reply_to, target_date, custom_note: str
             created_count += 1
 
         db.commit()
+        saved = True
 
         # Build response
         result = (
@@ -4878,9 +4888,13 @@ async def execute_public_holiday(client, reply_to, target_date, custom_note: str
         )
 
     except Exception as e:
-        db.rollback()
-        LogError(f"Error in handle_public_holiday: {e}", LogType.SYSTEM_STATUS)
+        if not saved:
+            db.rollback()
+        LogError(f"Error in execute_public_holiday (saved={saved}): {e}", LogType.SYSTEM_STATUS)
         await message.reply_text(
+            "✅ Đã chấm công nghỉ lễ, nhưng không hiển thị được kết quả. "
+            "Vui lòng dùng /tien_nga_danh_sach_cham_cong để kiểm tra."
+            if saved else
             "❌ Có lỗi xảy ra khi chấm công nghỉ lễ. Vui lòng thử lại.",
             parse_mode=ParseMode.HTML,
         )

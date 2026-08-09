@@ -565,7 +565,12 @@ def build_employee_menu(
 
     if not employees:
         warnings = build_diagnostic_lines(diagnostic)
-        return "\n".join([empty_text, *warnings]) if warnings else empty_text, None
+        text = "\n".join([empty_text, *warnings]) if warnings else empty_text
+        # Phải giữ extra_rows: đó là nút "Thêm mới nhân viên". Trả về markup=None thì dự án
+        # chưa có nhân viên nào sẽ không còn đường tạo người đầu tiên (không nút, không form).
+        rows = [list(r) for r in (extra_rows or [])]
+        rows.append([InlineKeyboardButton("Hủy", callback_data=f"{prefix}_x")])
+        return text, InlineKeyboardMarkup(rows)
 
     return (
         build_employee_header(employees, None, title, hint, diagnostic),

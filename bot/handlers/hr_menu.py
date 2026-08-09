@@ -838,9 +838,12 @@ async def hrh_confirm_callback(client, callback_query: CallbackQuery):
     await delete_menu(callback_query)
 
 
-@hr_callback(r"^hrh_x$")
-async def hrh_cancel_callback(client, callback_query: CallbackQuery):
-    await delete_menu(callback_query)
+# Đăng ký hrh_noop (nút đếm trang, do build_nav_row sinh ra) và hrh_x (Hủy) như 10 luồng
+# còn lại. Phải gọi SAU khối hrh ở trên: register_common chỉ đăng ký _noop và _x, nên nó
+# không đụng tới hrh_p|<trang>|<ngày> và hrh_s|<id>|<trang> vốn có chữ ký riêng kèm ngày.
+# Thân _cancel của register_common giống hệt hrh_cancel_callback cũ (delete_menu), nên
+# hành vi nút Hủy không đổi — giữ cả hai chỉ tạo ra một handler chết.
+register_common("hrh")
 
 
 # ══════════════════════════════════════════════════════════════
