@@ -16,6 +16,9 @@ class CashAdvanceLogResponse(BaseModel):
     balance_before: Optional[int] = None
     balance_after: Optional[int] = None
     is_over_limit: Optional[bool] = None
+    debt_applied: Optional[bool] = None         # Thao tác có trừ/cộng vào công nợ không
+    debt_before: Optional[int] = None           # Công nợ trước thao tác
+    debt_after: Optional[int] = None            # Công nợ sau thao tác
     approved_by: Optional[str] = None
     created_by: Optional[str] = None
     chat_id: Optional[str] = None

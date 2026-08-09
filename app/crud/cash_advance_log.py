@@ -9,6 +9,12 @@ from app.models.business import CashAdvanceLog, Customers, CollectionPoint
 ENTRY_TYPES = ("ADVANCE", "DEDUCT")
 ADVANCE_TYPES = ("SEASON_END", "IN_MONTH")
 
+# Số dư của mỗi loại ứng nằm ở một cột riêng trên customers.
+BALANCE_COLUMN = {
+    "SEASON_END": "cash_advance",
+    "IN_MONTH": "cash_advance_monthly",
+}
+
 
 def _apply_filters(
     query,
@@ -82,6 +88,9 @@ def get_cash_advance_logs(
             "balance_before": log.balance_before,
             "balance_after": log.balance_after,
             "is_over_limit": log.is_over_limit,
+            "debt_applied": log.debt_applied,
+            "debt_before": log.debt_before,
+            "debt_after": log.debt_after,
             "approved_by": log.approved_by,
             "created_by": log.created_by,
             "chat_id": log.chat_id,
@@ -107,6 +116,109 @@ def count_cash_advance_logs(
         advance_type, start_date, end_date, is_over_limit,
     )
     return query.scalar() or 0
+
+
+def delete_cash_advance_logs(db: Session, ids: List) -> dict:
+    """Xóa dòng nhật ký và hoàn tác đúng phần số dư mà dòng đó đã ghi.
+
+    Xóa một dòng ADVANCE thì trừ lại `amount` khỏi số dư, xóa một dòng DEDUCT thì
+    cộng lại, nhờ vậy customers.cash_advance / cash_advance_monthly luôn khớp với
+    phần nhật ký còn lại. Dòng nào có `debt_applied` thì hoàn tác thêm cả
+    customers.total_debt theo cùng chiều.
+
+    Lưu ý: balance_before / balance_after của những dòng phát sinh SAU dòng bị xóa
+    vẫn giữ giá trị lịch sử nên chuỗi số dư trong nhật ký sẽ không còn nối liền mạch.
+
+    Trả về ``{"deleted": [...], "skipped": [...]}`` — mỗi id xử lý độc lập, một id
+    hỏng không chặn các id còn lại.
+    """
+    deleted = []
+    skipped = []
+
+    for log_id in ids:
+        log = db.query(CashAdvanceLog).filter(CashAdvanceLog.id == log_id).first()
+        if not log:
+            skipped.append({"id": str(log_id), "reason": "Không tìm thấy bản ghi nhật ký."})
+            continue
+
+        entry_type = (log.entry_type or "").upper()
+        column = BALANCE_COLUMN.get((log.advance_type or "").upper())
+        if column is None or entry_type not in ENTRY_TYPES:
+            skipped.append({
+                "id": str(log_id),
+                "reason": (
+                    f"Bản ghi có entry_type={log.entry_type!r} / advance_type={log.advance_type!r} "
+                    "không hợp lệ nên không xác định được số dư cần hoàn tác."
+                ),
+            })
+            continue
+
+        # Khóa dòng hộ dân giống /process-advance-amount: bot và API là hai tiến
+        # trình cùng ghi số dư, đọc rồi ghi mà không khóa thì một thao tác sẽ mất.
+        # Mọi nhánh thoát bên dưới phải commit hoặc rollback trước khi sang id kế
+        # tiếp để không tích lũy khóa gây deadlock.
+        customer = db.query(Customers).filter(
+            Customers.hoursehold_id == log.hoursehold_id
+        ).with_for_update().first()
+        if not customer:
+            skipped.append({
+                "id": str(log_id),
+                "reason": f"Không tìm thấy hộ dân có mã {log.hoursehold_id}.",
+            })
+            db.rollback()
+            continue
+
+        amount = int(log.amount or 0)
+        balance_before = int(getattr(customer, column) or 0)
+        balance_after = balance_before - amount if entry_type == "ADVANCE" else balance_before + amount
+
+        if balance_after < 0:
+            skipped.append({
+                "id": str(log_id),
+                "reason": (
+                    f"Hoàn tác sẽ làm số dư ứng của hộ {log.hoursehold_id} bị âm "
+                    f"({balance_before:,} - {amount:,}). Hãy kiểm tra các giao dịch phát sinh sau đó."
+                ),
+            })
+            db.rollback()
+            continue
+
+        # Dòng nào đã trừ/cộng vào công nợ thì hoàn tác luôn công nợ, ngược chiều
+        # với lúc ghi: DEDUCT đã giảm total_debt -> cộng lại, ADVANCE thì ngược lại.
+        debt_before = int(customer.total_debt or 0)
+        debt_after = debt_before
+        if log.debt_applied:
+            debt_after = debt_before - amount if entry_type == "ADVANCE" else debt_before + amount
+            if debt_after < 0:
+                skipped.append({
+                    "id": str(log_id),
+                    "reason": (
+                        f"Hoàn tác sẽ làm công nợ của hộ {log.hoursehold_id} bị âm "
+                        f"({debt_before:,} - {amount:,}). Hãy kiểm tra các giao dịch phát sinh sau đó."
+                    ),
+                })
+                db.rollback()
+                continue
+            customer.total_debt = debt_after
+
+        setattr(customer, column, balance_after)
+        db.delete(log)
+        db.commit()
+
+        deleted.append({
+            "id": str(log_id),
+            "hoursehold_id": log.hoursehold_id,
+            "entry_type": entry_type,
+            "advance_type": (log.advance_type or "").upper(),
+            "amount": amount,
+            "balance_before": balance_before,
+            "balance_after": balance_after,
+            "debt_applied": bool(log.debt_applied),
+            "debt_before": debt_before,
+            "debt_after": debt_after,
+        })
+
+    return {"deleted": deleted, "skipped": skipped}
 
 
 def get_cash_advance_summary(

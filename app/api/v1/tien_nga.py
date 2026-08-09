@@ -11,7 +11,7 @@ from app.schemas.cash_advance_log import (
 )
 from app.crud.cash_advance_log import (
     get_cash_advance_logs, count_cash_advance_logs, get_cash_advance_summary,
-    ENTRY_TYPES, ADVANCE_TYPES,
+    delete_cash_advance_logs, ENTRY_TYPES, ADVANCE_TYPES,
 )
 from app.schemas.loss_control import (
     ProcessLossControlRequest, LossControlItem, ProcessLossControlResponse,
@@ -3153,6 +3153,10 @@ async def process_advance_amount(
         balance_after = int(balance_before + cash_advance_requested)
         setattr(customer, column, balance_after)
 
+        # Ứng tiền không đụng vào công nợ, nhưng vẫn ghi snapshot để đọc nhật ký
+        # biết công nợ của hộ tại thời điểm đó là bao nhiêu.
+        debt_snapshot = int(customer.total_debt or 0)
+
         db.add(CashAdvanceLog(
             hoursehold_id=customer.hoursehold_id,
             collection_point_id=customer.collection_point_id,
@@ -3162,6 +3166,9 @@ async def process_advance_amount(
             balance_before=int(balance_before),
             balance_after=balance_after,
             is_over_limit=False,
+            debt_applied=False,
+            debt_before=debt_snapshot,
+            debt_after=debt_snapshot,
             created_by=current_user.username or str(current_user.employee_id or ""),
             note="Ứng tiền qua API",
         ))
@@ -3207,6 +3214,11 @@ class ProcessDeductionAdvanceAmountRequest(BaseModel):
     # SEASON_END (ứng cuối mùa) hoặc IN_MONTH (ứng trong tháng). Client cũ không
     # gửi field này -> giữ nguyên hành vi cũ là trừ vào ứng cuối mùa.
     advance_type: Optional[str] = "SEASON_END"
+    # Có trừ luôn số tiền khấu trừ vào công nợ (customers.total_debt) hay không.
+    # Mặc định False chứ KHÔNG phải True: luồng thanh toán chi phí đã gọi
+    # /process-debt ngay sau endpoint này, bật mặc định thì công nợ bị trừ hai lần.
+    # Form khấu trừ ở tab Hộ dân gửi True tường minh.
+    deduct_debt: Optional[bool] = False
 
 
 @router.post("/process-deduction-advance-amount")
@@ -3272,6 +3284,22 @@ async def process_deduction_advance_amount(
             db.rollback()          # nhả khóa dòng trước khi sang hộ kế tiếp
             continue
 
+        # Khấu trừ có thể kèm giảm công nợ. Cùng nằm trong khóa dòng đã giữ ở trên
+        # nên số dư ứng và công nợ đổi trong một transaction, không có khe hở.
+        debt_before = int(customer.total_debt or 0)
+        debt_after = debt_before
+        if payload.deduct_debt:
+            if int(amount) > debt_before:
+                results.append({
+                    "hoursehold_id": hoursehold_id,
+                    "success": False,
+                    "message": f"Công nợ hiện tại chỉ còn {debt_before:,.0f} VNĐ, không đủ để trừ."
+                })
+                db.rollback()      # nhả khóa dòng trước khi sang hộ kế tiếp
+                continue
+            debt_after = debt_before - int(amount)
+            customer.total_debt = debt_after
+
         balance_after = int(balance_before - int(amount))
         setattr(customer, column, balance_after)
 
@@ -3284,19 +3312,30 @@ async def process_deduction_advance_amount(
             balance_before=int(balance_before),
             balance_after=balance_after,
             is_over_limit=False,
+            debt_applied=bool(payload.deduct_debt),
+            debt_before=debt_before,
+            debt_after=debt_after,
             created_by=current_user.username or str(current_user.employee_id or ""),
             note="Khấu trừ tiền ứng qua API",
         ))
         db.commit()
         db.refresh(customer)
 
-        LogInfo(f"[TienNga API] User {current_user.username} processed deduction advance amount {amount} ({advance_type}) for household {hoursehold_id}")
+        LogInfo(
+            f"[TienNga API] User {current_user.username} processed deduction advance amount {amount} "
+            f"({advance_type}, deduct_debt={bool(payload.deduct_debt)}) for household {hoursehold_id}"
+        )
 
         results.append({
             "hoursehold_id": hoursehold_id,
             "success": True,
-            "message": "Khấu trừ công nợ thành công!",
+            "message": (
+                "Khấu trừ tiền ứng và công nợ thành công!" if payload.deduct_debt
+                else "Khấu trừ tiền ứng thành công!"
+            ),
             "advance_type": advance_type,
+            "deduct_debt": bool(payload.deduct_debt),
+            "debt_before": debt_before,
             "new_debt": customer.total_debt,
             "new_advance": (customer.cash_advance or 0) + (customer.cash_advance_monthly or 0),
             "new_season_advance": customer.cash_advance or 0,
@@ -3327,7 +3366,9 @@ async def process_deduction_advance_amount(
 # ===================== NHẬT KÝ ỨNG TIỀN (cash_advance_logs) =====================
 # Bảng này là sổ ghi vết: các dòng được sinh tự động bởi /process-advance-amount,
 # /process-deduction-advance-amount và các lệnh ứng/khấu trừ trên bot. Không mở
-# endpoint tạo/sửa/xóa để số dư trên customers và nhật ký không bao giờ lệch nhau.
+# endpoint tạo/sửa để số dư trên customers và nhật ký không bao giờ lệch nhau.
+# Riêng /delete-cash-advance-logs được mở để gỡ giao dịch nhập nhầm, và nó hoàn
+# tác luôn phần số dư mà dòng bị xóa đã ghi nên bất biến trên vẫn được giữ.
 
 
 def _validate_log_filters(entry_type: Optional[str], advance_type: Optional[str]) -> None:
@@ -3466,6 +3507,54 @@ def get_cash_advance_summary_api(
         return summary
     except Exception as e:
         LogInfo(f"[TienNga API] Error in get-cash-advance-summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/delete-cash-advance-logs")
+async def delete_cash_advance_logs_api(
+    ids: List[UUID],
+    db: Session = Depends(get_db),
+    current_user: Credential = Depends(require_permission("tien-nga"))
+):
+    """Xóa giao dịch ứng tiền nhập nhầm và hoàn tác số dư tương ứng của hộ dân.
+
+    Trả về ``{"deleted": [...], "skipped": [...]}``: mỗi id được xử lý độc lập, id
+    nào không hoàn tác được (không tìm thấy, hoặc hoàn tác sẽ làm số dư âm) thì nằm
+    trong ``skipped`` kèm lý do thay vì làm hỏng cả request.
+    """
+    LogInfo(f"[TienNga API] Received delete-cash-advance-logs request. Count: {len(ids)}")
+    try:
+        result = delete_cash_advance_logs(db, ids)
+        LogInfo(
+            f"[TienNga API] Deleted {len(result['deleted'])} cash advance log records, "
+            f"skipped {len(result['skipped'])}."
+        )
+
+        # Send Telegram notification
+        try:
+            if result["deleted"]:
+                performer = current_user.employee_id or current_user.username or "unknown"
+                details = "Đã xóa giao dịch ứng tiền (đã hoàn tác số dư):\n" + "\n".join([
+                    f"- Hộ dân: {d['hoursehold_id']} - "
+                    f"{'Ứng' if d['entry_type'] == 'ADVANCE' else 'Khấu trừ'} "
+                    f"{'cuối mùa' if d['advance_type'] == 'SEASON_END' else 'trong tháng'}: "
+                    f"{d['amount']:,.0f} VNĐ - Dư nợ ứng mới: {d['balance_after']:,.0f} VNĐ"
+                    for d in result["deleted"]
+                ])
+                await notify_telegram_group(
+                    db=db,
+                    action="DELETE",
+                    module_key="payment",
+                    details=details,
+                    performer=performer
+                )
+        except Exception as err:
+            LogError(f"[TienNga API] Failed to send Telegram notification: {err}")
+
+        return result
+    except Exception as e:
+        db.rollback()
+        LogInfo(f"[TienNga API] Error in delete-cash-advance-logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

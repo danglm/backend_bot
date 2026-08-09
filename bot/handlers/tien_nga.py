@@ -24057,6 +24057,10 @@ def _tn_log_cash_advance(db, customer, entry_type, advance_type, amount,
     """
     from app.models.business import CashAdvanceLog
 
+    # Luồng bot không đụng vào công nợ, nhưng vẫn ghi snapshot để mọi dòng trong
+    # nhật ký đều cho biết công nợ của hộ tại thời điểm đó.
+    debt_snapshot = int(customer.total_debt or 0)
+
     db.add(CashAdvanceLog(
         hoursehold_id=customer.hoursehold_id,
         collection_point_id=customer.collection_point_id,
@@ -24066,6 +24070,9 @@ def _tn_log_cash_advance(db, customer, entry_type, advance_type, amount,
         balance_before=int(balance_before),
         balance_after=int(balance_after),
         is_over_limit=is_over_limit,
+        debt_applied=False,
+        debt_before=debt_snapshot,
+        debt_after=debt_snapshot,
         approved_by=approved_by,
         created_by=_tn_actor_label(actor),
         chat_id=str(chat_id) if chat_id is not None else None,

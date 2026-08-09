@@ -56,6 +56,12 @@ class CashAdvanceLog(Base):
     balance_before = Column(BigInteger)                 # Số dư của đúng loại trước thao tác
     balance_after = Column(BigInteger)                  # Số dư của đúng loại sau thao tác
     is_over_limit = Column(Boolean, default=False)      # Ứng vượt hạn mức, cần Owner duyệt
+    # Một thao tác khấu trừ có thể đồng thời trừ vào công nợ (customers.total_debt).
+    # Ghi cả cờ lẫn snapshot để đọc nhật ký biết ngay công nợ có đổi hay không, và để
+    # khi xóa dòng log còn hoàn tác đúng phần công nợ mà nó đã ghi.
+    debt_applied = Column(Boolean, default=False)       # Thao tác có trừ/cộng vào công nợ không
+    debt_before = Column(BigInteger, nullable=True)     # Công nợ trước thao tác
+    debt_after = Column(BigInteger, nullable=True)      # Công nợ sau thao tác
     approved_by = Column(String, nullable=True)         # Owner đã duyệt (khi vượt hạn mức)
     created_by = Column(String, nullable=True)          # Người thực hiện (Telegram)
     chat_id = Column(String, nullable=True)             # Nhóm thực hiện
